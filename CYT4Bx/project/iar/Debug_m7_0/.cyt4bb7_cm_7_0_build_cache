@@ -8,5 +8,11 @@
                 <Path>F:\wheeled_legged\Zhufei_repository\Seekfree_CYT4BB_Opensource_Library\project\iar\Debug_m7_0\List\cyt4bb7_cm_7_0.map</Path>
             </Output>
         </Parent>
+        <Parent>
+            <Path>F:\WHEEL_LEGGED_207\CYT4Bx\project\iar\project_config\Debug_m7_0\Exe\cyt4bb7_cm_7_0.out</Path>
+            <Output>
+                <Path>F:\WHEEL_LEGGED_207\CYT4Bx\project\iar\Debug_m7_0\List\cyt4bb7_cm_7_0.map</Path>
+            </Output>
+        </Parent>
     </Tool>
 </BuildDb>

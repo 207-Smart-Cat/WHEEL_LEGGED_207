@@ -1429,6 +1429,18 @@
     <group>
         <name>code</name>
         <file>
+            <name>$PROJ_DIR$\..\..\code\imu.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\imu.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\kalman_rm.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\kalman_rm.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>
         </file>
     </group>

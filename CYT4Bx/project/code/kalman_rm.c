@@ -2,7 +2,6 @@
 #include "zf_common_headfile.h"
 extern IMU_t IMU_data;
 
-//鏉ユ簮鏈煡锛屽痉璇唬鐮侊紝浣嗘槸闂涓嶅ぇ
 // 互补滤波定义
 
 void cal(int16 imu963ra_acc_x,  int16 imu963ra_acc_y, int16 imu963ra_acc_z,int16 imu963ra_gyro_x, int16 imu963ra_gyro_y,int16 imu963ra_gyro_z,
@@ -43,10 +42,9 @@ void Kalman_update(Attitude_3D_t* result, Attitude_3D_Kalman* filter, float Acc_
     //Innovation, yaw pitch roll
     float y[3];
 
-    //x鐘舵�佸��
     float K1_1, K6_1, K2_2, K5_2, K6_2, K3_3, K4_3, K5_3, K6_3;
-
-    /*********  娴嬮噺鍊艰绠�  **********/
+    
+    
     //Winkel in RAD f眉r Winkelfunktionen
     float roll_rad;
     float pitch_rad;

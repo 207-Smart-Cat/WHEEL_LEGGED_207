@@ -1,0 +1,18 @@
+{
+  "workspace": {
+    "path": "${workspaceFolder}\\CYT2BL3\\Seekfree_CYT2BL3_Double_Foc_Project\\project\\iar\\cyt2bl3.eww"
+  },
+  "workspaces": {
+    "${workspaceFolder}\\CYT2BL3\\Seekfree_CYT2BL3_Double_Foc_Project\\project\\iar\\cyt2bl3.eww": {
+      "configs": {
+        "${workspaceFolder}\\CYT2BL3\\Seekfree_CYT2BL3_Double_Foc_Project\\project\\iar\\project_config\\cyt2bl3.ewp": "Debug"
+      },
+      "selected": {
+        "path": "${workspaceFolder}\\CYT2BL3\\Seekfree_CYT2BL3_Double_Foc_Project\\project\\iar\\project_config\\cyt2bl3.ewp"
+      }
+    }
+  },
+  "workbench": {
+    "path": "E:\\IAR\\Program Files\\IAR Systems\\Embedded Workbench 9.2"
+  }
+}
