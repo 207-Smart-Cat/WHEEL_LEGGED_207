@@ -1,0 +1,21 @@
+"E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\arm\bin\armPROC.dll" 
+
+"E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\arm\bin\armJET.dll" 
+
+"F:\WHEEL_LEGGED_207\CYT4Bx\project\iar\project_config\Debug_m7_0\Exe\cyt4bb7_cm_7_0.out" 
+
+--plugin="E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\arm\bin\armbat.dll" 
+
+--device_macro="E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\arm/config/debugger/Infineon/CYT4BB_M7.dmac" 
+
+--device_macro="E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\arm/config/debugger/Infineon/CYTVII_M7.dmac" 
+
+--device_macro="E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\arm/config/debugger/Infineon/CYTVII_Trace.dmac" 
+
+--device_macro="E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\arm/config/debugger/Infineon/CYTVII_Common.dmac" 
+
+--flash_loader="E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\arm/config/flashloader/Infineon/FlashCYT4_CF4M_WF256K.board" 
+
+
+
+

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspace>
+    <project>
+        <path>$WS_DIR$\..\..\..\CYT2BL3\Seekfree_CYT2BL3_Double_Foc_Project\project\iar\project_config\cyt2bl3.ewp</path>
+    </project>
+    <project>
+        <path>$WS_DIR$\project_config\cyt4bb7_cm_7_0.ewp</path>
+    </project>
+    <project>
+        <path>$WS_DIR$\project_config\cyt4bb7_cm_7_1.ewp</path>
+    </project>
+    <batchBuild />
+</workspace>
