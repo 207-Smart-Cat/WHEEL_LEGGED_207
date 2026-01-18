@@ -1,0 +1,23 @@
+# IAR Embedded Workbench 自动生成的文件
+Debug*/
+Release*/
+BrowseInfo/
+*.pbi
+*.xcl
+*.dep
+*.ninja
+*.brow
+*.pbw
+*.parto
+*.partp
+*.o
+*.d
+*.out
+*.bin
+*.elf
+*.map
+*.lnp
+*.cmd
+*.cspy.bat
+*.cspy.ps1
+*.dnx
