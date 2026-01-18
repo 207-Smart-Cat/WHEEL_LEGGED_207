@@ -10,6 +10,14 @@
       "selected": {
         "path": "${workspaceFolder}\\CYT2BL3\\Seekfree_CYT2BL3_Double_Foc_Project\\project\\iar\\project_config\\cyt2bl3.ewp"
       }
+    },
+    "${workspaceFolder}\\CYT4Bx\\project\\iar\\project_config\\cyt4bb7_cm_7_0.eww": {
+      "configs": {
+        "${workspaceFolder}\\CYT4Bx\\project\\iar\\project_config\\cyt4bb7_cm_7_0.ewp": "Debug"
+      },
+      "selected": {
+        "path": "${workspaceFolder}\\CYT4Bx\\project\\iar\\project_config\\cyt4bb7_cm_7_0.ewp"
+      }
     }
   },
   "workbench": {

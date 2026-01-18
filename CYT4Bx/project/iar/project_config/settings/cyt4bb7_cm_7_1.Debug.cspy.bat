@@ -25,7 +25,7 @@ if not "%~1" == "" goto debugFile
 
 @echo on 
 
-"E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\common\bin\cspybat" -f "F:\wheeled_legged\Zhufei_repository\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" --backend -f "F:\wheeled_legged\Zhufei_repository\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
+"E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\common\bin\cspybat" -f "F:\WHEEL_LEGGED_207\CYT4Bx\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" --backend -f "F:\WHEEL_LEGGED_207\CYT4Bx\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
 
 @echo off 
 goto end 
@@ -34,7 +34,7 @@ goto end
 
 @echo on 
 
-"E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\common\bin\cspybat" -f "F:\wheeled_legged\Zhufei_repository\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" "--debug_file=%~1" --backend -f "F:\wheeled_legged\Zhufei_repository\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
+"E:\IAR\Program Files\IAR Systems\Embedded Workbench 9.2\common\bin\cspybat" -f "F:\WHEEL_LEGGED_207\CYT4Bx\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" "--debug_file=%~1" --backend -f "F:\WHEEL_LEGGED_207\CYT4Bx\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
 
 @echo off 
 :end

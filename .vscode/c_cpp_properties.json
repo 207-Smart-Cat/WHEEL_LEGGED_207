@@ -5,18 +5,30 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "F:/WHEEL_LEGGED_207/CYT4Bx/libraries/**",
-                "F:/WHEEL_LEGGED_207/CYT2BL3/Seekfree_CYT2BL3_Double_Foc_Project/libraries/**"
+                "F:/WHEEL_LEGGED_207/CYT2BL3/Seekfree_CYT2BL3_Double_Foc_Project/libraries/**",
+                "F:/WHEEL_LEGGED_207/CYT2BL3/Seekfree_CYT2BL3_Double_Foc_Project/project/**",
+                "F:/WHEEL_LEGGED_207/CYT4Bx/project/code/**"
             ],
             "defines": [
                 "_DEBUG",
                 "UNICODE",
-                "_UNICODE"
+                "_UNICODE",
+                "tviibh4m",
+                "CYT4BB7CEE",
+                "CY_USE_PSVP=0",
+                "CY_MCU_rev_b",
+                "CPU_BOARD_REVB",
+                "CY_CORE_CM7_0",
+                "__ICACHE_PRESENT=1",
+                "__DCACHE_PRESENT=1"
             ],
-            "compilerPath": "E:\\MinGW\\bin\\gcc.exe",
             "cStandard": "c17",
             "cppStandard": "gnu++17",
-            "intelliSenseMode": "windows-gcc-x64",
-            "configurationProvider": "iarsystems.iar-build"
+            "intelliSenseMode": "windows-iar-arm",
+            "compilerPath": "E:/IAR/Program Files/IAR Systems/Embedded Workbench 9.2/arm/bin/iccarm.exe",
+            "forcedInclude": [
+                "${workspaceFolder}/.vscode/iar_defines.h"
+            ]
         }
     ],
     "version": 4
