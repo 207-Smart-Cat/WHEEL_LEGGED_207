@@ -25,8 +25,8 @@
         <MultiCoreRunAll>0</MultiCoreRunAll>
     </Jet>
     <ArmDriver>
-        <EnableCache>1</EnableCache>
         <EnforceMemoryConfiguration>1</EnforceMemoryConfiguration>
+        <EnableCache>1</EnableCache>
     </ArmDriver>
     <DebugChecksum>
         <Checksum>2842118273</Checksum>
