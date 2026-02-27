@@ -1,0 +1,19 @@
+{
+  "workspace": {
+    "path": "${workspaceFolder}\\project\\iar\\cyt4bb7.eww"
+  },
+  "workspaces": {
+    "${workspaceFolder}\\project\\iar\\cyt4bb7.eww": {
+      "configs": {
+        "${workspaceFolder}\\project\\iar\\project_config\\cyt4bb7_cm_7_0.ewp": "Debug",
+        "${workspaceFolder}\\project\\iar\\project_config\\cyt4bb7_cm_7_1.ewp": "Debug"
+      },
+      "selected": {
+        "path": "${workspaceFolder}\\project\\iar\\project_config\\cyt4bb7_cm_7_0.ewp"
+      }
+    }
+  },
+  "workbench": {
+    "path": "E:\\IAR\\Program Files\\IAR Systems\\Embedded Workbench 9.2"
+  }
+}

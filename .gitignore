@@ -1,0 +1,10 @@
+# 排除 IAR 編譯產生的中間文件與調試信息
+Debug/
+Release/
+*.ninja_log
+*.dep
+*.pbi
+*.pbd
+*.browse
+*.tmp
+settings/
