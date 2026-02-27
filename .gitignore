@@ -7,4 +7,6 @@ Release/
 *.pbd
 *.browse
 *.tmp
+*.o
+*.obj
 settings/
