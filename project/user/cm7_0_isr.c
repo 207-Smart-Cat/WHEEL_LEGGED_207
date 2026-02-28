@@ -36,19 +36,14 @@
 
 #include "zf_common_headfile.h"
 
-// **************************** Include & define部分****************************
-#include "imu.h"
+#include "small_driver_uart_control.h"
 
-// 1. 定义全局flag（中断仅置位，主循环检测）
-extern uint8 IPS200_flag;  // 屏幕显示
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH0);
   
-    imu_attitude();
-    //printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
-	
+    
     
 }
 
@@ -56,14 +51,12 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数
 {
     pit_isr_flag_clear(PIT_CH1);
     
-    IPS200_flag=1;
-
 }
 
 void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH2);
-
+    
 }
 
 void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务函数      
@@ -389,7 +382,8 @@ void uart2_isr (void)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
 
-        gnss_uart_callback();
+//        gnss_uart_callback();
+        
         
         
     }
@@ -429,7 +423,7 @@ void uart4_isr (void)
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_4), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
 
         
-        uart_receiver_handler();                                                                // 串口接收机回调函数
+        uart_control_callback();                                                               
         
         
     }
