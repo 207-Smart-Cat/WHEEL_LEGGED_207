@@ -12,6 +12,17 @@ void imu_get(void)
     imu963ra_get_gyro();                                                        // 获取 IMU963RA 的角速度测量数值
     imu963ra_get_mag();
 }
+//获取滤波后姿态角（yaw，pitch，roll）
+void imu_get_3D(float *yaw,float *pitch,float *roll)  {
+    // 空指针校验（避免程序崩溃）
+    if (yaw == NULL || pitch == NULL || roll == NULL) {
+        return;  // 返回错误码，告知调用者参数错误
+    }
+  
+   *yaw = IMU_data.filter_result.yaw;
+   *pitch = IMU_data.filter_result.pitch;
+   *roll = IMU_data.filter_result.roll;  
+}
 //姿态解算
 void imu_attitude(void)
 {

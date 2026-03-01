@@ -12,6 +12,6 @@ void imu_init (gpio_pin_enum pin);
 
 
 void imu_attitude(void);
-
+void imu_get_3D(float *yaw,float *pitch,float *roll);
 
 #endif /* CODE_IMU_H_ */
