@@ -12,10 +12,9 @@ small_device_value_struct motor_value;      // 定义通讯参数结构体
 //-------------------------------------------------------------------------------------------------------------------
 void uart_control_callback(void)
 {
-    uint8 receive_data;                                                 // 定义临时变量
+    uint8 receive_data;                                                                     // 定义临时变量
 
-    // 【关键修改】：将 if 改为 while
-    while(uart_query_byte(SMALL_DRIVER_UART, &receive_data))            // 循环接收串口数据，直到读空当前缓存
+    if(uart_query_byte(SMALL_DRIVER_UART, &receive_data))                                   // 接收串口数据
     {
         if(receive_data == 0xA5 && motor_value.receive_data_buffer[0] != 0xA5)              // 判断是否收到帧头 并且 当前接收内容中是否正确包含帧头
         {
@@ -47,17 +46,20 @@ void uart_control_callback(void)
                     }
 
                     motor_value.receive_data_count = 0;                                     // 清除缓冲区计数值
+
                     memset(motor_value.receive_data_buffer, 0, 7);                          // 清除缓冲区数据
                 }
                 else
                 {
                     motor_value.receive_data_count = 0;                                     // 清除缓冲区计数值
+
                     memset(motor_value.receive_data_buffer, 0, 7);                          // 清除缓冲区数据
                 }
             }
             else
             {
                 motor_value.receive_data_count = 0;                                         // 清除缓冲区计数值
+
                 memset(motor_value.receive_data_buffer, 0, 7);                              // 清除缓冲区数据
             }
         }

@@ -1,127 +1,160 @@
-/*********************************************************************************************************************
- * CYT4BB Opensourec Library 即（ CYT4BB 开源库）是一个基于官方 SDK 接口的第三方开源库
- * Copyright (c) 2022 SEEKFREE 逐飞科技
- *
- * 本文件是 CYT4BB 开源库的一部分
- *
- * CYT4BB 开源库 是免费软件
- * 您可以根据自由软件基金会发布的 GPL（GNU General Public License，即 GNU通用公共许可证）的条款
- * 即 GPL 的第3版（即 GPL3.0）或（您选择的）任何后来的版本，重新发布和/或修改它
- *
- * 本开源库的发布是希望它能发挥作用，但并未对其作任何的保证
- * 甚至没有隐含的适销性或适合特定用途的保证
- * 更多细节请参见 GPL
- *
- * 您应该在收到本开源库的同时收到一份 GPL 的副本
- * 如果没有，请参阅<https://www.gnu.org/licenses/>
- *
- * 额外注明：
- * 本开源库使用 GPL3.0 开源许可证协议 以上许可申明为译文版本
- * 许可申明英文版在 libraries/doc 文件夹下的 GPL3_permission_statement.txt 文件中
- * 许可证副本在 libraries 文件夹下 即该文件夹下的 LICENSE 文件
- * 欢迎各位使用并传播本程序 但修改内容时必须保留逐飞科技的版权声明（即本声明）
- *
- * 文件名称          main_cm7_0
- * 公司名称          成都逐飞科技有限公司
- * 版本信息          查看 libraries/doc 文件夹内 version 文件 版本说明
- * 开发环境          IAR 9.40.1
- * 适用平台          CYT4BB
- * 店铺链接          https://seekfree.taobao.com/
- *
- * 修改记录
- * 日期              作者                备注
- * 2024-1-4       pudding            first version
- ********************************************************************************************************************/
-
 #include "zf_common_headfile.h"
-// 打开新的工程或者工程移动了位置务必执行以下操作
-// 第一步 关闭上面所有打开的文件
-// 第二步 project->clean  等待下方进度条走完
+#include "small_driver_uart_control.h"
+#include "imu.h" // 确保这里包含了你之前写的姿态解算头文件
 
-// *************************** 例程硬件连接说明 ***************************
-// 使用逐飞科技 CMSIS-DAP 调试下载器连接
-//      直接将下载器正确连接在核心板的调试下载接口即可
-// 使用 USB-TTL 模块连接
-//      模块管脚            单片机管脚
-//      USB-TTL-RX          查看 zf_common_debug.h 文件中 DEBUG_UART_TX_PIN 宏定义的引脚 默认 P14_0
-//      USB-TTL-TX          查看 zf_common_debug.h 文件中 DEBUG_UART_RX_PIN 宏定义的引脚 默认 P14_1
-//      USB-TTL-GND         核心板电源地 GND
-//      USB-TTL-3V3         核心板 3V3 电源
-// 接入 imu963ra
-//      模块管脚            单片机管脚
-//      SCL/SPC             查看 zf_device_imu963ra.h 中 imu963ra_SPC_PIN 宏定义 默认 P20_11
-//      SDA/DSI             查看 zf_device_imu963ra.h 中 imu963ra_SDI_PIN 宏定义 默认 P20_14
-//      SA0/SDO             查看 zf_device_imu963ra.h 中 imu963ra_SDO_PIN 宏定义 默认 P20_12
-//      CS                  查看 zf_device_imu963ra.h 中 imu963ra_CS_PIN  宏定义 默认 P20_13
-//      GND                 电源地 GND
-//      3V3                 电源 3V3
+// **************************** 宏定义区域 ****************************
+//中断
+#define PIT_IMU (PIT_CH0)
+#define PIT_IPS (PIT_CH1)
+#define PIT_Motor_Control (PIT_CH2)
+//GPIO端口
+#define LED1 (P19_0)
+//IPS200
+#define IPS200_TYPE (IPS200_TYPE_SPI)
+#define RGB565_SKYBLUE 0x87CE
+//电机
+#define MAX_DUTY (30)
 
-// *************************** 例程测试说明 ***************************
-// 1.核心板烧录完成本例程，单独使用核心板与调试下载器或者 USB-TTL 模块，并连接好编码器，在断电情况下完成连接
-// 2.将调试下载器或者 USB-TTL 模块连接电脑 完成上电 正常 H2 LED 会闪烁
-// 3.电脑上使用 逐飞助手 打开对应的串口，串口波特率为 zf_common_debug.h 文件中 DEBUG_UART_BAUDRATE 宏定义 默认 115200，核心板按下复位按键
-// 4.可以在 逐飞助手 上看到如下串口信息：
-//      imu963ra acc data: x-..., y-..., z-...
-//      imu963ra gyro data: x-..., y-..., z-...
-//      imu963ra mag data: x-..., y-..., z-...
-// 5.移动旋转 imu963ra 就会看到数值变化
-// 如果发现现象与说明严重不符 请参照本文件最下方 例程常见问题说明 进行排查
+// **************************** 全局变量区域 ****************************
+//IPS200
+uint8 IPS200_flag = 0; //  屏幕显示flag（PIT中断置位）
+//电机
+uint8 Motor_Control_flag = 0;   // 50ms 电机控制标志位
+int8 duty = 0;
+bool dir = true;
+//imu
+extern float pitch1, roll1, yaw1;
 
-// **************************** 代码区域 ****************************
-#define LED1 (P19_0) // SPI 串口 SPI 两寸屏 这里宏定义填写 IPS200_TYPE_SPI
 
+// **************************** 封装函数区域 ****************************
+// ================= 函数1：屏幕控制函数(200ms) ==============
+void screen_display_process(void) //  封装屏幕显示函数
+{
+    if (IPS200_flag)
+    {
+        IPS200_flag = 0; // 清除flag
+
+        // 2. 显示顶部logo图片（240×80，坐标(0,0)）
+        ips200_show_rgb565_image(0, 0, (const uint16_t *)gImage_seekfree_logo, 240, 80, 240, 80, 0);
+
+        // 3. 绘制图片与数据区的粉色分隔线（横线，宽度240）
+        ips200_draw_line(0, 80, 239, 80, RGB565_SKYBLUE);
+
+        // 4. 分栏参数配置
+        uint16_t col_height = 30;             // 每个栏位的高度（像素）
+        uint16_t y_start = 81;                // 第一个栏位的起始Y坐标（分隔线下）
+        uint16_t text_x = 10;                 // 文字起始X坐标
+        uint16_t line_color = RGB565_SKYBLUE; // 分隔线颜色
+        char temp_str[16];                    // 用于格式化字符串的缓冲区
+
+        // ---------------- 第1栏：模式 ----------------
+        ips200_show_string(text_x, y_start + 5, "Mode: Run");
+        ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
+        y_start += col_height; 
+
+        // ---------------- 第2栏：Roll角 ----------------
+        ips200_show_string(text_x, y_start + 5, "Roll:");
+        ips200_show_float(text_x + 60, y_start + 5, IMU_data.filter_result.roll, 3, 3);
+        ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
+        y_start += col_height;
+
+        // ---------------- 第3栏：Pitch角 ----------------
+        ips200_show_string(text_x, y_start + 5, "Pitch:");
+        ips200_show_float(text_x + 60, y_start + 5, IMU_data.filter_result.pitch, 3, 3);
+        ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
+        y_start += col_height;
+
+        // ---------------- 第4栏：Yaw角 ----------------
+        ips200_show_string(text_x, y_start + 5, "Yaw:");
+        ips200_show_float(text_x + 60, y_start + 5, IMU_data.filter_result.yaw, 3, 3);
+        ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
+        y_start += col_height;
+
+        // ---------------- 第5栏：左轮转速 ----------------
+        ips200_show_string(text_x, y_start + 5, "L_Spd:");
+        // 使用 sprintf 格式化为占用 5 个字符宽度并左对齐，防止数字变小时尾部残影
+        sprintf(temp_str, "%-5d", motor_value.receive_left_speed_data); 
+        ips200_show_string(text_x + 60, y_start + 5, temp_str);
+        ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
+        y_start += col_height;
+
+        // ---------------- 第6栏：右轮转速 ----------------
+        ips200_show_string(text_x, y_start + 5, "R_Spd:");
+        sprintf(temp_str, "%-5d", motor_value.receive_right_speed_data);
+        ips200_show_string(text_x + 60, y_start + 5, temp_str);
+        ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
+        y_start += col_height;
+
+    }
+}
+// ================= 函数2：电机控制与解析 (50ms) =================
+void Motor_Control(void)
+{
+    if(Motor_Control_flag)
+    {        
+        Motor_Control_flag = 0; 
+        
+        // 1. 解析底层 FIFO 中接收到的完整数据包
+       // uart_control_callback();    
+        
+        // 2. 发送电机控制指令 (当前为模拟锯齿波)
+        small_driver_set_duty(duty * (PWM_DUTY_MAX / 100), -duty * (PWM_DUTY_MAX / 100));   
+        
+        // 模拟速度变化逻辑
+        if(dir) {
+            duty ++;
+            if(duty >= MAX_DUTY) dir = false;
+        } else {
+            duty --;
+            if(duty <= -MAX_DUTY) dir = true;
+        }
+
+        // 3. 降频打印 (50ms * 4 = 200ms 打印一次)
+        static uint8 print_div = 0; 
+        print_div++;
+        if(print_div >= 4) 
+        {
+            print_div = 0; 
+            // 完美融合：同时打印电机的真实转速 和 IMU解算的姿态角！
+            printf("Spd[L:%d R:%d] | Att[P:%.2f R:%.2f Y:%.2f]\r\n", 
+                   motor_value.receive_left_speed_data, motor_value.receive_right_speed_data,
+                   IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
+        }
+    }
+}
+
+// ================= 主函数 =================
 int main(void)
 {
     clock_init(SYSTEM_CLOCK_250M); // 时钟配置及系统初始化<务必保留>
     debug_init();                  // 调试串口信息初始化
-
     // 此处编写用户代码 例如外设初始化代码等
+    //    SCB_DisableDCache(); // 关闭DCache
+    //初始化外设之前先关闭中断
+    interrupt_global_disable();
+    //=================================GPIO初始化=======================
     gpio_init(LED1, GPO, GPIO_HIGH, GPO_PUSH_PULL); // 初始化 LED1 输出 默认高电平 推挽输出模式
+    //=================================IMU初始化=======================
+    imu_init(LED1);     
+    pit_ms_init(PIT_IMU, 5);
+    //=================================屏幕初始化============================
+    ips200_set_dir(IPS200_PORTAIT);
+    ips200_set_color(RGB565_WHITE, RGB565_BLACK);
+    ips200_init(IPS200_TYPE);
+    pit_ms_init(PIT_IPS, 200);
 
-    while (1)
-    {
-        if (imu963ra_init())
-        {
-            printf("\r\n imu963ra init error."); // imu963ra 初始化失败
-        }
-        else
-        {
-            break;
-        }
-        gpio_toggle_level(LED1); // 翻转 LED 引脚输出电平 控制 LED 亮灭 初始化出错这个灯会闪的很慢
-    }
+    //=================================电机控制初始化=======================
+    small_driver_uart_init();       
+    pit_ms_init(PIT_Motor_Control, 50);
+    
 
-    // 此处编写用户代码 例如外设初始化代码等
+    interrupt_global_enable(0);
+
     while (true)
     {
         // 此处编写需要循环执行的代码
-        imu963ra_get_acc();  // 获取 imu963ra 的加速度测量数值
-        imu963ra_get_gyro(); // 获取 imu963ra 的角速度测量数值
-       // imu963ra_get_mag();  // 获取 IMU963RA 的地磁计测量数值
-        printf("imu963ra acc data: %d,%d,%d,%d,%d,%d\n", imu963ra_acc_x, imu963ra_acc_y, imu963ra_acc_z,imu963ra_gyro_x, imu963ra_gyro_y, imu963ra_gyro_z);
-
-       
-       // printf("\r\nimu963ra gyro data: %d,%d,%d\n", imu963ra_gyro_x, imu963ra_gyro_y, imu963ra_gyro_z);
-        // system_delay_ms(50);
-        // printf("\r\nimu963ra mag data:  %d,%d,%d\n", imu963ra_mag_x, imu963ra_mag_y, imu963ra_mag_z);
-        system_delay_ms(50);
-        // 此处编写需要循环执行的代码
+        screen_display_process(); 
+        Motor_Control();
+        system_delay_ms(1);
     }
 }
-
-// **************************** 代码区域 ****************************
-// *************************** 例程常见问题说明 ***************************
-// 遇到问题时请按照以下问题检查列表检查
-// 问题1：串口没有数据
-//      查看 逐飞助手 打开的是否是正确的串口，检查打开的 COM 口是否对应的是调试下载器或者 USB-TTL 模块的 COM 口
-//      如果是使用逐飞科技 CMSIS-DAP 调试下载器连接，那么检查下载器线是否松动，检查核心板串口跳线是否已经焊接，串口跳线查看核心板原理图即可找到
-//      如果是使用 USB-TTL 模块连接，那么检查连线是否正常是否松动，模块 TX 是否连接的核心板的 RX，模块 RX 是否连接的核心板的 TX
-// 问题2：串口数据乱码
-//      查看 逐飞助手 设置的波特率是否与程序设置一致，程序中 zf_common_debug.h 文件中 DEBUG_UART_BAUDRATE 宏定义为 debug uart 使用的串口波特率
-// 问题3：串口输出 imu963ra init error.
-//      检查imu963ra的接线是否正确
-//      检查imu963ra的模块是不是坏了
-//      给信号线加上拉看看
-// 问题4：imu963ra 数值异常
-//      看看是不是线松了 或者信号线被短路了
-//      可能模块部分受损

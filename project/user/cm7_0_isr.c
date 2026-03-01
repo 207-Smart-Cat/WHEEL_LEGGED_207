@@ -35,28 +35,32 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
-
 #include "small_driver_uart_control.h"
-
+#include "imu.h"
+// 引入主函数中的定时标志位
+extern uint8 IMU_Task_flag;
+extern uint8 IPS200_flag;
+extern uint8 Motor_Control_flag;
 // **************************** PIT中断函数 ****************************
-void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
+void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数 (5ms)
 {
     pit_isr_flag_clear(PIT_CH0);
-  
-    
-    
+    imu_attitude();
+    //printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
 }
 
-void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
+
+void pit0_ch1_isr()                     
 {
     pit_isr_flag_clear(PIT_CH1);
+    IPS200_flag = 1;
     
 }
 
-void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      
+void pit0_ch2_isr()                     
 {
     pit_isr_flag_clear(PIT_CH2);
-    
+    Motor_Control_flag = 1; // 仅置位，不执行任何耗时操作
 }
 
 void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务函数      
@@ -378,21 +382,16 @@ void uart1_isr (void)
 
 void uart2_isr (void)
 {
-    if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_RX_NOT_EMPTY)            // 串口2接收中断
+    if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_RX_NOT_EMPTY)
     {
-        Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
+        Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);
 
-//        gnss_uart_callback();
-        
-        
-        
+        // 【名花有主】：电机驱动的解析函数必须放在串口 2 这里！
+        uart_control_callback();
     }
-    else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_TX_DONE)            // 串口2发送中断
+    else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_TX_DONE)
     {
-        Cy_SCB_ClearTxInterrupt(get_scb_module(UART_2), CY_SCB_UART_TX_DONE);                   // 清除接收中断标志位
-        
-        
-        
+        Cy_SCB_ClearTxInterrupt(get_scb_module(UART_2), CY_SCB_UART_TX_DONE);
     }
 }
 
@@ -414,25 +413,16 @@ void uart3_isr (void)
         
     }
 }
-
 void uart4_isr (void)
 {
-    
-    if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_RX_NOT_EMPTY)            // 串口4接收中断
+    if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_RX_NOT_EMPTY)
     {
-        Cy_SCB_ClearRxInterrupt(get_scb_module(UART_4), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
-
-        
-        uart_control_callback();                                                               
-        
-        
+        Cy_SCB_ClearRxInterrupt(get_scb_module(UART_4), CY_SCB_UART_RX_NOT_EMPTY);
+        uart_receiver_handler();   
     }
-    else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_TX_DONE)            // 串口4发送中断
+    else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_TX_DONE)
     {
-        Cy_SCB_ClearTxInterrupt(get_scb_module(UART_4), CY_SCB_UART_TX_DONE);                   // 清除接收中断标志位
-        
-        
-        
+        Cy_SCB_ClearTxInterrupt(get_scb_module(UART_4), CY_SCB_UART_TX_DONE);
     }
 }
 // **************************** 串口中断函数 ****************************
