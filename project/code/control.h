@@ -6,8 +6,8 @@
 #include "kalman_rm.h"
 #include"engine.h"
 #include "small_driver_uart_control.h"
-#include "jump_control.h"
-#include "image.h"
+//#include "jump_control.h"
+//#include "image.h"
 #include"leg_adaptive.h"
 
 extern float target_velocity;//目标速度值0————400

@@ -79,20 +79,4 @@ void imu_attitude(void)
     yaw1 = IMU_data.filter_result.yaw;
 }
 
-void imu_init (gpio_pin_enum pin)
-{
-    while(1)
-    {
-        if(imu963ra_init())
-        {
-            printf("\r\nIMU963RA init error.");      // IMU963RA 初始化失败
-        }
-        else
-        {
-            break;
-        }
-        gpio_toggle_level(pin); // 翻转 LED 引脚输出电平 控制 LED 亮灭 初始化出错这个灯会闪的很慢
-    }
-    Kalman_init(&filter, 0.005f, 0.01f, 0.001f, 0.003f, 10.0f, 0.015f); // 初始化卡尔曼滤波器
-}
 */

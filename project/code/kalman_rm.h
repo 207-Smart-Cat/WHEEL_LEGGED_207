@@ -1,6 +1,6 @@
 #ifndef _Kalman_rm_H
 #define _Kalman_rm_H
-#endif
+
 #define DEG_TO_RAD 0.017453292519943295769236907684886
 #define RAD_TO_DEG 57.295779513082320876798154814105
 #include <math.h>
@@ -11,7 +11,7 @@ extern "C" {
 #endif
 
 
-typedef struct Attitude_3D_t
+typedef struct
 {
     float yaw;
     float pitch;
@@ -30,7 +30,7 @@ typedef struct
 
     Attitude_3D_t filter_result;//¿¨¶ûÂüÂË²¨½á¹û
 }IMU_t;
-typedef struct Attitude_3D_Kalman {
+typedef struct {
     //Abtastzeit des Filters für Integration [Sekunden]#
     float Abtastzeit_s;
 
@@ -60,4 +60,5 @@ void Kalman_update(Attitude_3D_t * result, Attitude_3D_Kalman * filter, float Ac
 
 #ifdef __cplusplus
 }
+#endif
 #endif

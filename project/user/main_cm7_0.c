@@ -1,32 +1,47 @@
 #include "zf_common_headfile.h"
 #include "small_driver_uart_control.h"
-#include "imu.h" // 确保这里包含了你之前写的姿态解算头文件
+#include "imu.h"
+#include "engine.h"
+#include "control.h"
 
 // **************************** 宏定义区域 ****************************
-//中断
+// 中断
 #define PIT_IMU (PIT_CH0)
 #define PIT_IPS (PIT_CH1)
 #define PIT_Motor_Control (PIT_CH2)
-//GPIO端口
+#define PIT_Balance (PIT_CH10)
+// GPIO端口
 #define LED1 (P19_0)
-//IPS200
+// IPS200
 #define IPS200_TYPE (IPS200_TYPE_SPI)
 #define RGB565_SKYBLUE 0x87CE
-//电机
-#define MAX_DUTY (30)
+// 电机
 
 // **************************** 全局变量区域 ****************************
-//IPS200
+// IPS200
 uint8 IPS200_flag = 0; //  屏幕显示flag（PIT中断置位）
-//电机
-uint8 Motor_Control_flag = 0;   // 50ms 电机控制标志位
-int8 duty = 0;
-bool dir = true;
-//imu
+// 电机（调试时）
+// uint8 Motor_Control_flag = 0; // 50ms 电机控制标志位
+// int duty = 0;
+// bool dir = true;
+// 电机+舵机（运行）
+float angel_init = 0;
+int duty = 1;
+int stop = 0;
 extern float pitch1, roll1, yaw1;
+float v_buchang;
+/*腿部姿态设置*/
+float x_current, y_current;     // 用于舵机（x，y）位置的调整
+extern pid_param_t engine_high; // 发动机高度PID参数（暂时我也不知道干什么的）
+int stop_flash = 0;             // 完赛标志位
 
+int Bridge_position = 1;     // 可能是过单边桥时候需要的（腿部自适应）
+int yanshi_biaozhiwei = 100; // 可能是过单边桥时候需要的（腿部自适应模式）
+int change_speed = 0;
 
-// **************************** 封装函数区域 ****************************
+// imu
+
+// **************************** 封装调试部分函数区域 ****************************
 // ================= 函数1：屏幕控制函数(200ms) ==============
 void screen_display_process(void) //  封装屏幕显示函数
 {
@@ -50,7 +65,7 @@ void screen_display_process(void) //  封装屏幕显示函数
         // ---------------- 第1栏：模式 ----------------
         ips200_show_string(text_x, y_start + 5, "Mode: Run");
         ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
-        y_start += col_height; 
+        y_start += col_height;
 
         // ---------------- 第2栏：Roll角 ----------------
         ips200_show_string(text_x, y_start + 5, "Roll:");
@@ -73,7 +88,7 @@ void screen_display_process(void) //  封装屏幕显示函数
         // ---------------- 第5栏：左轮转速 ----------------
         ips200_show_string(text_x, y_start + 5, "L_Spd:");
         // 使用 sprintf 格式化为占用 5 个字符宽度并左对齐，防止数字变小时尾部残影
-        sprintf(temp_str, "%-5d", motor_value.receive_left_speed_data); 
+        sprintf(temp_str, "%-5d", motor_value.receive_left_speed_data);
         ips200_show_string(text_x + 60, y_start + 5, temp_str);
         ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
         y_start += col_height;
@@ -84,77 +99,84 @@ void screen_display_process(void) //  封装屏幕显示函数
         ips200_show_string(text_x + 60, y_start + 5, temp_str);
         ips200_draw_line(0, y_start + col_height, 239, y_start + col_height, line_color);
         y_start += col_height;
-
     }
 }
 // ================= 函数2：电机控制与解析 (50ms) =================
-void Motor_Control(void)
+/*void Motor_Control(void)
 {
-    if(Motor_Control_flag)
-    {        
-        Motor_Control_flag = 0; 
-        
+    if (Motor_Control_flag)
+    {
+        Motor_Control_flag = 0;
+
         // 1. 解析底层 FIFO 中接收到的完整数据包
-       // uart_control_callback();    
-        
+        // uart_control_callback();
+
         // 2. 发送电机控制指令 (当前为模拟锯齿波)
-        small_driver_set_duty(duty * (PWM_DUTY_MAX / 100), -duty * (PWM_DUTY_MAX / 100));   
-        
+        small_driver_set_duty(duty * (PWM_DUTY_MAX / 100), -duty * (PWM_DUTY_MAX / 100));
+
         // 模拟速度变化逻辑
-        if(dir) {
-            duty ++;
-            if(duty >= MAX_DUTY) dir = false;
-        } else {
-            duty --;
-            if(duty <= -MAX_DUTY) dir = true;
+        if (dir)
+        {
+            duty++;
+            if (duty >= MAX_DUTY)
+                dir = false;
+        }
+        else
+        {
+            duty--;
+            if (duty <= -MAX_DUTY)
+                dir = true;
         }
 
         // 3. 降频打印 (50ms * 4 = 200ms 打印一次)
-        static uint8 print_div = 0; 
+        static uint8 print_div = 0;
         print_div++;
-        if(print_div >= 4) 
+        if (print_div >= 4)
         {
-            print_div = 0; 
+            print_div = 0;
             // 完美融合：同时打印电机的真实转速 和 IMU解算的姿态角！
-            printf("Spd[L:%d R:%d] | Att[P:%.2f R:%.2f Y:%.2f]\r\n", 
+            printf("Spd[L:%d R:%d] | Att[P:%.2f R:%.2f Y:%.2f]\r\n",
                    motor_value.receive_left_speed_data, motor_value.receive_right_speed_data,
-                   IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
+                   IMU_data.filter_result.yaw, IMU_data.filter_result.pitch, IMU_data.filter_result.roll);
         }
     }
 }
-
+*/
 // ================= 主函数 =================
 int main(void)
 {
     clock_init(SYSTEM_CLOCK_250M); // 时钟配置及系统初始化<务必保留>
     debug_init();                  // 调试串口信息初始化
     // 此处编写用户代码 例如外设初始化代码等
-    //    SCB_DisableDCache(); // 关闭DCache
-    //初始化外设之前先关闭中断
-    interrupt_global_disable();
+
+    interrupt_global_disable(); // 初始化外设之前先关闭中断
     //=================================GPIO初始化=======================
     gpio_init(LED1, GPO, GPIO_HIGH, GPO_PUSH_PULL); // 初始化 LED1 输出 默认高电平 推挽输出模式
     //=================================IMU初始化=======================
-    imu_init(LED1);     
+    imu_init(LED1);
     pit_ms_init(PIT_IMU, 5);
     //=================================屏幕初始化============================
     ips200_set_dir(IPS200_PORTAIT);
     ips200_set_color(RGB565_WHITE, RGB565_BLACK);
     ips200_init(IPS200_TYPE);
     pit_ms_init(PIT_IPS, 200);
-
+    //==========================平衡动作初始化===========================
+    Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
+    pit_ms_init(PIT_Balance, 4);
     //=================================电机控制初始化=======================
-    small_driver_uart_init();       
-    pit_ms_init(PIT_Motor_Control, 50);
-    
+    small_driver_uart_init();
+    //pit_ms_init(PIT_Motor_Control, 50);
 
-    interrupt_global_enable(0);
+    interrupt_global_enable(0); // 在初始化后使能中断
+
+    
+    system_delay_ms(1000);
 
     while (true)
     {
         // 此处编写需要循环执行的代码
-        screen_display_process(); 
-        Motor_Control();
+        screen_display_process();
+        // Motor_Control();
         system_delay_ms(1);
     }
 }

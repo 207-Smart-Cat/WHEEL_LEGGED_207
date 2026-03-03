@@ -32,6 +32,13 @@ extern float v_buchang;
 float roll;                         // 倾斜角度
 int engine_change = 600;            // 发动机变化量
 
+
+
+//=======================未加入Jump Camera时的临时动作====================================
+int jump_stop=0;
+int jump_position =0;
+float border =94;
+//============================================================================/
 // 腿部控制参数
 #define MIN_LEG_LENGTH 0.04        // 最小腿部长度
 #define MAX_LEG_LENGTH 0.1         // 最大腿部长度

@@ -60,11 +60,12 @@ void pit0_ch1_isr()
 void pit0_ch2_isr()                     
 {
     pit_isr_flag_clear(PIT_CH2);
-    Motor_Control_flag = 1; // 仅置位，不执行任何耗时操作
+    //Motor_Control_flag = 1; // 仅置位，不执行任何耗时操作
 }
 
-void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务函数      
+void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务函数  （用于控制平衡）    
 {
+    balance_control();
     pit_isr_flag_clear(PIT_CH10);
     
 }
@@ -361,6 +362,36 @@ void uart0_isr (void)
     }
 }
 
+
+/*
+typedef enum                   // 枚举串口发送引脚 此枚举定义不允许用户修改
+{
+    UART0_TX_P00_1,             // 串口0 发送引脚
+ 
+    UART1_TX_P04_1,             // 串口1 发送引脚
+
+    UART2_TX_P10_1,             // 串口2 发送引脚可选范围
+
+    UART3_TX_P17_2,             // 串口3 发送引脚可选范围
+
+    UART4_TX_P14_1,             // 串口4 发送引脚可选范围
+}uart_tx_pin_enum;
+
+
+typedef enum                   // 枚举串口接收引脚 此枚举定义不允许用户修改
+{
+
+    UART0_RX_P00_0,             // 串口0 接收引脚
+ 
+    UART1_RX_P04_0,             // 串口1 接收引脚
+  
+    UART2_RX_P10_0,             // 串口2 接收引脚可选范围
+
+    UART3_RX_P17_1,             // 串口3 接收引脚可选范围
+	
+    UART4_RX_P14_0,             // 串口4 接收引脚可选范围
+}uart_rx_pin_enum;
+ */
 void uart1_isr (void)
 {
     if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_1)) & CY_SCB_UART_RX_NOT_EMPTY)            // 串口1接收中断
@@ -418,7 +449,7 @@ void uart4_isr (void)
     if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_RX_NOT_EMPTY)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_4), CY_SCB_UART_RX_NOT_EMPTY);
-        uart_receiver_handler();   
+        uart_receiver_handler();   //无线串口接收中断函数指针，根据初始化时设置的函数进行跳转
     }
     else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_TX_DONE)
     {

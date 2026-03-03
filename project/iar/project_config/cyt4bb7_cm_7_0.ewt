@@ -1429,6 +1429,24 @@
     <group>
         <name>code</name>
         <file>
+            <name>$PROJ_DIR$\..\..\code\control.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\control.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\engine.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\engine.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\FiveBarLinkageData.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\FiveBarLinkageData.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\imu.c</name>
         </file>
         <file>
@@ -1439,6 +1457,18 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\kalman_rm.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\leg_adaptive.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\leg_adaptive.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\pid.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\pid.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\small_driver_uart_control.c</name>
