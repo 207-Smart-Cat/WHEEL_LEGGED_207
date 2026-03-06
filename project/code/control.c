@@ -300,6 +300,7 @@ void Balance_init() {
     Kalman_init(&filter, 1.0f, 0.05f, 0.05f, 0.05f, 0.05f, 0.05f); // 初始化卡尔曼滤波器
     int leg1, leg2;
     servo_control(x_current, y_current, &leg1, &leg2);
+    printf("Leg1: %d, Leg2: %d\r\n", leg1, leg2);
     engine_init(leg1, leg2); // 初始化发动机
 }
 
@@ -586,18 +587,18 @@ void leg_control(float *x, float *y)
     leg1_last = leg1; leg2_last = leg2;
     leg3_last = leg3; leg4_last = leg4;
 }
-// //腿部控制
-//void leg_control(float *x, float *y) {
-////    float speed;
-////    static float speed_last;
-////    speed = (Encoder_Left - Encoder_Right) / 2;
-////
-////    // 速度滤波
-////    if (fabs(speed_last - speed) < 10) {
-////        speed = speed_last;
-////    }
-////    speed_last = speed;
-//
+//腿部控制
+// void leg_control(float *x, float *y) {
+// //    float speed;
+// //    static float speed_last;
+// //    speed = (Encoder_Left - Encoder_Right) / 2;
+// //
+// //    // 速度滤波
+// //    if (fabs(speed_last - speed) < 10) {
+// //        speed = speed_last;
+// //    }
+// //    speed_last = speed;
+
 //    // 计算腿部位置
 //   // float x_cal = 0.000022 * (speed - target_velocity)+;
 //   // float x_cal = PidLocCtrl(&engine_high,speed - target_velocity);
@@ -622,7 +623,7 @@ void leg_control(float *x, float *y)
 //        leg1_last = leg1;
 //        leg2_last = leg2;
 //    }
-//}
+// }
 // 速度补偿计算
 float calculate_speed_compensation(float v, float h, float l) {
     // 计算单边桥上的轮子路程

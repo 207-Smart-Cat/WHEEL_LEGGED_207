@@ -31,7 +31,7 @@ int stop = 0;
 extern float pitch1, roll1, yaw1;
 float v_buchang;
 /*腿部姿态设置*/
-float x_current, y_current;     // 用于舵机（x，y）位置的调整
+float x_current, y_current=0.05;     // 用于舵机（x，y）位置的调整,务必记住应该给一个符合区间的初始值，否则舵机将不在转动
 extern pid_param_t engine_high; // 发动机高度PID参数（暂时我也不知道干什么的）
 int stop_flash = 0;             // 完赛标志位
 
@@ -101,47 +101,7 @@ void screen_display_process(void) //  封装屏幕显示函数
         y_start += col_height;
     }
 }
-// ================= 函数2：电机控制与解析 (50ms) =================
-/*void Motor_Control(void)
-{
-    if (Motor_Control_flag)
-    {
-        Motor_Control_flag = 0;
 
-        // 1. 解析底层 FIFO 中接收到的完整数据包
-        // uart_control_callback();
-
-        // 2. 发送电机控制指令 (当前为模拟锯齿波)
-        small_driver_set_duty(duty * (PWM_DUTY_MAX / 100), -duty * (PWM_DUTY_MAX / 100));
-
-        // 模拟速度变化逻辑
-        if (dir)
-        {
-            duty++;
-            if (duty >= MAX_DUTY)
-                dir = false;
-        }
-        else
-        {
-            duty--;
-            if (duty <= -MAX_DUTY)
-                dir = true;
-        }
-
-        // 3. 降频打印 (50ms * 4 = 200ms 打印一次)
-        static uint8 print_div = 0;
-        print_div++;
-        if (print_div >= 4)
-        {
-            print_div = 0;
-            // 完美融合：同时打印电机的真实转速 和 IMU解算的姿态角！
-            printf("Spd[L:%d R:%d] | Att[P:%.2f R:%.2f Y:%.2f]\r\n",
-                   motor_value.receive_left_speed_data, motor_value.receive_right_speed_data,
-                   IMU_data.filter_result.yaw, IMU_data.filter_result.pitch, IMU_data.filter_result.roll);
-        }
-    }
-}
-*/
 // ================= 主函数 =================
 int main(void)
 {

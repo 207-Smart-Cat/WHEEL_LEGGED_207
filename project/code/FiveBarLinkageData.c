@@ -16,8 +16,7 @@
 #define L4  0.06
 #define L5  0.038
 #define PI 3.141592653589793
-// 閼惧嘲褰囬崗瀹犲Ν鐟欐帒瀹?
-void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
+void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {  //负责由目标点位计算关节角度
     float a = 2 * (x_target + L5 / 2) * L1;
         float b = 2 * y_target * L1;
         float c = pow((x_target + L5 / 2), 2) + pow(y_target, 2) + pow(L1, 2) - pow(L2, 2);
@@ -25,8 +24,8 @@ void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
         float sum_val = pow(a, 2) + pow(b, 2) - pow(c, 2);
 
         if (sum_val >= 0) {
-            float phi1_rad = 2 * atan((b + sqrt(sum_val)) / (a + c)); // 鍙?鍙栨?ｈВ
-            *phi1 = phi1_rad * (180.0 / PI); // 寮у害杞?瑙掑害
+            float phi1_rad = 2 * atan((b + sqrt(sum_val)) / (a + c));
+            *phi1 = phi1_rad * (180.0 / PI); 
 
             if (*phi1 > 360) {
                 *phi1 -= 360;
@@ -34,19 +33,18 @@ void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
                 *phi1 += 360;
             }
         } else {
-            *phi1 = 400; // 鏃犺В
+            *phi1 = 400;
         }
 
-        // 璁＄畻绗?浜屼釜鍏宠妭瑙掑害 phi4
-        float a1 = 2 * (x_target - L5 / 2) * L4; // 杩欓噷搴旇?ユ槸 L4 鑰屼笉鏄? L1
+        float a1 = 2 * (x_target - L5 / 2) * L4; 
         float b1 = 2 * y_target * L4;
         float c1 = pow((x_target - L5 / 2), 2) + pow(y_target, 2) + pow(L4, 2) - pow(L3, 2);
 
         sum_val = pow(a1, 2) + pow(b1, 2) - pow(c1, 2);
 
         if (sum_val >= 0) {
-            float phi4_rad = 2 * atan((b1 - sqrt(sum_val)) / (a1 + c1)); // 鍙?鍙栬礋瑙?
-            *phi4 = phi4_rad * (180.0 / PI); // 寮у害杞?瑙掑害
+            float phi4_rad = 2 * atan((b1 - sqrt(sum_val)) / (a1 + c1)); 
+            *phi4 = phi4_rad * (180.0 / PI); 
 
             if (*phi4 > 360) {
                 *phi4 -= 360;
@@ -54,15 +52,15 @@ void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
                 *phi4 += 360;
             }
         } else {
-            *phi4 = 400; // 鏃犺В
+            *phi4 = 400;
         }
 }
 
-// 娴肩儤婀囬悽鍨?婧�閹貉冨煑
-void servo_control(float x, float y, int *leg1, int *leg2) {
+
+void servo_control(float x, float y, int *leg1, int *leg2) {   //负责由目标点位计算
     float phi1, phi4;
 
-    // 閼惧嘲褰囬崗瀹犲Ν鐟欐帒瀹?
+    
     getJointAngles(x, y, &phi1, &phi4);
         if(phi1==400||phi4==400)
         {
