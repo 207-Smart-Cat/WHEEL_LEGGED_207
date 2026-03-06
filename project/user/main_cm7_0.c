@@ -31,7 +31,7 @@ int stop = 0;
 extern float pitch1, roll1, yaw1;
 float v_buchang;
 /*腿部姿态设置*/
-float x_current, y_current=0.05;     // 用于舵机（x，y）位置的调整,务必记住应该给一个符合区间的初始值，否则舵机将不在转动
+float x_current, y_current=0.08;     // 用于舵机（x，y）位置的调整,务必记住应该给一个符合区间的初始值，否则舵机将不在转动
 extern pid_param_t engine_high; // 发动机高度PID参数（暂时我也不知道干什么的）
 int stop_flash = 0;             // 完赛标志位
 
@@ -116,13 +116,13 @@ int main(void)
     imu_init(LED1);
     pit_ms_init(PIT_IMU, 5);
     //=================================屏幕初始化============================
-    ips200_set_dir(IPS200_PORTAIT);
-    ips200_set_color(RGB565_WHITE, RGB565_BLACK);
-    ips200_init(IPS200_TYPE);
-    pit_ms_init(PIT_IPS, 200);
+    // ips200_set_dir(IPS200_PORTAIT);
+    // ips200_set_color(RGB565_WHITE, RGB565_BLACK);
+    // ips200_init(IPS200_TYPE);
+    // pit_ms_init(PIT_IPS, 200);
     //==========================平衡动作初始化===========================
     Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
-    pit_ms_init(PIT_Balance, 4);
+    pit_ms_init(PIT_Balance, 10);
     //=================================电机控制初始化=======================
     small_driver_uart_init();
     //pit_ms_init(PIT_Motor_Control, 50);
@@ -135,7 +135,7 @@ int main(void)
     while (true)
     {
         // 此处编写需要循环执行的代码
-        screen_display_process();
+        //screen_display_process();
         // Motor_Control();
         system_delay_ms(1);
     }
