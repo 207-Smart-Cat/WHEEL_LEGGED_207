@@ -3,6 +3,7 @@
 #include "imu.h"
 #include "engine.h"
 #include "control.h"
+#include "wifi.h"
 
 // **************************** 宏定义区域 ****************************
 // 中断
@@ -10,6 +11,7 @@
 #define PIT_IPS (PIT_CH1)
 #define PIT_Motor_Control (PIT_CH2)
 #define PIT_Balance (PIT_CH10)
+#define PIT_WiFi (PIT_CH11)
 // GPIO端口
 #define LED1 (P19_0)
 // IPS200
@@ -116,15 +118,17 @@ int main(void)
     imu_init(LED1);
     pit_ms_init(PIT_IMU, 5);
     //=================================屏幕初始化============================
-    // ips200_set_dir(IPS200_PORTAIT);
-    // ips200_set_color(RGB565_WHITE, RGB565_BLACK);
-    // ips200_init(IPS200_TYPE);
-    // pit_ms_init(PIT_IPS, 200);
-    //==========================平衡动作初始化===========================
-    Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
-    pit_ms_init(PIT_Balance, 10);
-    //=================================电机控制初始化=======================
-    small_driver_uart_init();
+     ips200_set_dir(IPS200_PORTAIT);
+     ips200_set_color(RGB565_WHITE, RGB565_BLACK);
+     ips200_init(IPS200_TYPE);
+     pit_ms_init(PIT_IPS, 200);
+     //=================================WIFI模块初始化======================
+     wifi_init();
+     pit_ms_init(PIT_WiFi, 20);
+    //=================================平衡动作初始化========================
+    //Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
+    //pit_ms_init(PIT_Balance, 10);
+    small_driver_uart_init();           //驱动板通信初始化
     //pit_ms_init(PIT_Motor_Control, 50);
 
     interrupt_global_enable(0); // 在初始化后使能中断
@@ -135,7 +139,8 @@ int main(void)
     while (true)
     {
         // 此处编写需要循环执行的代码
-        //screen_display_process();
+        screen_display_process();               //屏幕显示
+        wifi_process_loop();                    //wifi接收数据解析
         // Motor_Control();
         system_delay_ms(1);
     }

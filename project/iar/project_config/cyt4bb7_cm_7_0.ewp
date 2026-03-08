@@ -1164,6 +1164,12 @@
             <name>$PROJ_DIR$\..\..\code\small_driver_uart_control.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\wifi.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\wifi.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>
         </file>
     </group>
