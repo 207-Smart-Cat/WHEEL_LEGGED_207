@@ -108,7 +108,7 @@ void wifi_process_loop(void)
                         {
                             // 情况A：从其他模式首次切入波形模式 -> 保留上次的文本格式
                             current_wifi_mode = WIFI_MODE_WAVE;
-                            printf("\r\n >>> Enter WAVE Mode, Format: %s <<< \r\n", wave_format ? "TEXT" : "HEX"););
+                            printf("\r\n >>> Enter WAVE Mode, Format: %s <<< \r\n", wave_format ? "TEXT" : "HEX");
                         }
                         else 
                         {
