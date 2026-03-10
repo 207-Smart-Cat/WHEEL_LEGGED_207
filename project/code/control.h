@@ -23,7 +23,7 @@ extern int bridge_high;//单边桥高低标志位
 extern int speed_up;//加速标志位
 extern pid_param_t motor_direction; // 方向PID参数
 #define PRECISION 0.001
-#define MAX_DUTY                (65)
+#define MAX_DUTY                (70)  //电机最大PWM=70%
 void Balance_init(void);
 void balance_control(void);
 void leg_control(float *x, float *y) ;

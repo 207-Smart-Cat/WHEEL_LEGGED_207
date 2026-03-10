@@ -4,7 +4,7 @@
 #include "engine.h"
 #include "control.h"
 #include "wifi.h"
-
+#include "remote.h"
 // **************************** 宏定义区域 ****************************
 // 中断
 #define PIT_IMU (PIT_CH0)
@@ -12,6 +12,7 @@
 #define PIT_Motor_Control (PIT_CH2)
 #define PIT_Balance (PIT_CH10)
 #define PIT_WiFi (PIT_CH11)
+#define PIT_Remote (PIT_CH12)
 // GPIO端口
 #define LED1 (P19_0)
 // IPS200
@@ -40,8 +41,6 @@ int stop_flash = 0;             // 完赛标志位
 int Bridge_position = 1;     // 可能是过单边桥时候需要的（腿部自适应）
 int yanshi_biaozhiwei = 100; // 可能是过单边桥时候需要的（腿部自适应模式）
 int change_speed = 0;
-
-// imu
 
 // **************************** 封装调试部分函数区域 ****************************
 // ================= 函数1：屏幕控制函数(200ms) ==============
@@ -118,16 +117,19 @@ int main(void)
     imu_init(LED1);
     pit_ms_init(PIT_IMU, 5);
     //=================================屏幕初始化============================
-     ips200_set_dir(IPS200_PORTAIT);
-     ips200_set_color(RGB565_WHITE, RGB565_BLACK);
-     ips200_init(IPS200_TYPE);
-     pit_ms_init(PIT_IPS, 200);
+    //  ips200_set_dir(IPS200_PORTAIT);
+    //  ips200_set_color(RGB565_WHITE, RGB565_BLACK);
+    //  ips200_init(IPS200_TYPE);
+    //  pit_ms_init(PIT_IPS, 200);
+     //========================遥控器控制初始化==========================
+     Remote_Init();
+     pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
      //=================================WIFI模块初始化======================
-     wifi_init();
-     pit_ms_init(PIT_WiFi, 20);
+    // wifi_init();
+     //pit_ms_init(PIT_WiFi, 20);
     //=================================平衡动作初始化========================
-    //Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
-    //pit_ms_init(PIT_Balance, 10);
+    Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
+    pit_ms_init(PIT_Balance, 10);
     small_driver_uart_init();           //驱动板通信初始化
     //pit_ms_init(PIT_Motor_Control, 50);
 
@@ -139,8 +141,8 @@ int main(void)
     while (true)
     {
         // 此处编写需要循环执行的代码
-        screen_display_process();               //屏幕显示
-        wifi_process_loop();                    //wifi接收数据解析
+       // screen_display_process();               //屏幕显示
+       // wifi_process_loop();                    //wifi接收数据解析
         // Motor_Control();
         system_delay_ms(1);
     }

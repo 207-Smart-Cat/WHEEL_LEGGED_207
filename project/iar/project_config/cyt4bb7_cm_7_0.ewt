@@ -1471,6 +1471,12 @@
             <name>$PROJ_DIR$\..\..\code\pid.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\remote.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\remote.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\small_driver_uart_control.c</name>
         </file>
         <file>

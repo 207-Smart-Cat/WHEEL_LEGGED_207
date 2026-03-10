@@ -19,7 +19,7 @@ void pit0_ch0_isr()                     // IMU读取与滤波解析，非常重要 (5ms)
 void pit0_ch1_isr()                     //屏幕刷新中断，不重要（200ms）
 {
     pit_isr_flag_clear(PIT_CH1);
-    IPS200_flag = 1;
+   // IPS200_flag = 1;
     
 }
 
@@ -39,12 +39,13 @@ void pit0_ch10_isr()                    // 平衡控制，非常重要（10ms）
 void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH11);
-    wifi_report_task();
+   // wifi_report_task();
     
 }
 
 void pit0_ch12_isr()                    // 定时器通道 12 周期中断服务函数      
 {
+    Remote_control_callback();
     pit_isr_flag_clear(PIT_CH12);
     
 }

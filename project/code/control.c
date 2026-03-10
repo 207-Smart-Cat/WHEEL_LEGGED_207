@@ -1,22 +1,24 @@
 #include "control.h"
 #include "FiveBarLinkageData.h"
-
+#include "kalman_rm.h"
 // 全局变量
-float target_velocity = 0.0;       // 目标速度
+float target_velocity = 0.0; // 目标速度
+float target_angle = 0;      //目标角度
 float now_velocity = 0.0;          // 实际速度值
-float target_motor_Stand = 0.0;    // 目标电机角度
+float target_motor_Stand = 1.6;    // 目标电机角度
 float target_engine_high = 0.0;    // 目标发动机高度
 float target_motor_angle = 0.0;    // 目标电机角度
 float Encoder_Left, Encoder_Right; // 左右电机编码器值
 extern float leg_error;
+
 int speed_up = 0;
 float Turn_Pwm; // 转向PWM值
 // PID参数
-pid_param_t motor_speed;     // 速度PID参数
-pid_param_t motor_Stand;     // 电机角度PID参数
-pid_param_t motor_direction; // 方向PID参数
+pid_param_t motor_speed;     // 速度PID参数---------------------速度环
+pid_param_t motor_Stand;     // 电机角度PID参数---------------------角度环
+pid_param_t motor_direction; // 方向PID参数------------------------方向调整
 pid_param_t engine_high;     // 发动机高度PID参数
-pid_param_t motor_gyro;      // 陀螺仪PID参数
+pid_param_t motor_gyro;      // 陀螺仪PID参数------------------------角速度环
 pid_param_t air_roll_pid;    // 空中控制器参数
 // static float left_angle, right_angle;
 extern float x_current, y_current;
@@ -31,7 +33,6 @@ extern IMU_t IMU_data;            // IMU数据
 extern float v_buchang;
 float roll;              // 倾斜角度
 int engine_change = 600; // 发动机变化量
-
 //=======================未加入Jump Camera时的临时动作====================================
 int jump_stop = 0;
 int jump_position = 0;
@@ -171,18 +172,18 @@ void pid_init()
 {
     // 初始化速度PID
     PidInit(&motor_speed);
-    PidChange(&motor_speed, 0.06, 0, 0.022);
+    PidChange(&motor_speed, 0.06, 0, 0.022); //速度环
 
     // 初始化电机角度PID
     PidInit(&motor_Stand);
-    PidChange(&motor_Stand, 6, 0, 0.4);
-
+    // PidChange(&motor_Stand, 6, 0, 0.4);    //角度环
+    PidChange(&motor_Stand, 6, 0, 0.4);    //角度环
     // 初始化方向PID
     PidInit(&motor_direction);
     /*最低速 压弯3，单边桥350*/
     // PidChange(&motor_direction, 0.043, 0.00078,0.84);//600
     /*中速 压弯2，单边桥400*/
-    PidChange(&motor_direction, 0.044, 0.00086, 0.85); // 650.1.83
+    PidChange(&motor_direction, 0.044, 0.00086, 0.85); // 角速度环
     /*高速 压弯1，单边桥400*/
     // PidChange(&motor_direction, 0.048, 0.00090,0.86);//680.1.93
     /*高速 压弯1，单边桥400，时间空余可调*/
@@ -322,10 +323,10 @@ float Balance(float Angle, float Gyro, float target)
     // fuzzy_pid_adjust(&motor_Stand, Angle_bias, Gyro_bias, &angle_rules, &angle_pid_limits);
 
     last_error = Angle_bias; // 更新误差
-    if (balance > 4000)
-        balance = 4000; //=========限幅4000
-    if (balance < -4000)
-        balance = -4000;
+    if (balance > 2000)
+        balance = 2000; //=========限幅4000
+    if (balance < -2000)
+        balance = -2000;
 
     //============调试使用=========================
     // printf("Angle_bias|Gyro_bias|balance : %f,%f,%f\r\n", Angle_bias, Gyro_bias, balance);
@@ -345,13 +346,13 @@ float Velocity(int encoder_left, float target_velocity) //===========左边为�
     Encoder_Integral += Encoder_bias;              // 积分
 
     
-    //==============================更改了积分限幅措施（10000）======================
+    //==============================更改了积分限幅措施（7000）======================
     // 限制积分范围
-    if (Encoder_Integral > 7000)
-        Encoder_Integral = 000;
-    if (Encoder_Integral < -7000)
-        Encoder_Integral = -7000;
-    //==============================更改了积分限幅措施（10000）======================
+    if (Encoder_Integral > 2000)
+        Encoder_Integral = 2000;
+    if (Encoder_Integral < -2000)
+        Encoder_Integral = -2000;
+    //==============================更改了积分限幅措施（7000）======================
 
 
     // 计算角度（Velocity的物理意义是输出角度）
@@ -374,15 +375,15 @@ float Velocity(int encoder_left, float target_velocity) //===========左边为�
 }
 
 // 陀螺仪控制计算（PID计算朝向角度）
-float GyroControl(float target_gyro, float current_gyro)
+float GyroControl(float target_gyro, float current_gyro)  //角速度环
 {
     float gyro_error = target_gyro - current_gyro; // 计算陀螺仪误差
     static float gyro_Integral;                    // 积分项
     gyro_Integral += gyro_error;                   // 积分
-    if (gyro_Integral > 5000)
-        gyro_Integral = 5000;
-    if (gyro_Integral < -5000)
-        gyro_Integral = -5000;
+    if (gyro_Integral > 2000)
+        gyro_Integral = 2000;
+    if (gyro_Integral < -2000)
+        gyro_Integral = -2000;
     // 计算控制输出
     float gyro_control = +motor_gyro.kp * gyro_error + motor_gyro.ki * gyro_Integral + motor_gyro.kd * (gyro_error - last_error);
     last_error = gyro_error; // 更新误差
@@ -446,8 +447,12 @@ float Turn_target(float target_angle)
 // 转向控制计算
 float Turn(float gyro, float target_angle)
 {
+    //Gyro传入的是当前的角度
     static float previous_error = 0.0;         // 上一次误差
     float error = gyro - target_angle;         // 当前误差
+    if(fabs(error)<3){                  //低通截断，避免毛刺影响
+        return 0;
+    }
     float derivative = error - previous_error; // 微分项
     previous_error = error;                    // 更新误差
 
@@ -538,11 +543,11 @@ void balance_control()
     else
     {
         // 计算转向PWM值
-        Turn_Pwm = Turn(border, 94); // 中点拟合
-        //===================仅调试去除转向功能使用=================================
-        Turn_Pwm = 0;
-        //====================================================================
-        if (Turn_Pwm <= 0.2)
+        Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle); // 中点拟合
+        // //===================仅调试去除转向功能使用=================================
+        // Turn_Pwm = 0;
+        // //====================================================================
+        if (Turn_Pwm <= 0.2)// !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
         {
             speed_up = 1;
         }
