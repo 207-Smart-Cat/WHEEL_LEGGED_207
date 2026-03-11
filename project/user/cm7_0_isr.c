@@ -52,6 +52,8 @@ void pit0_ch12_isr()                    // 定时器通道 12 周期中断服务函数
 
 void pit0_ch13_isr()                    // 定时器通道 13 周期中断服务函数      
 {
+    extern float x_current, y_current;
+    leg_control(&x_current, &y_current);
     pit_isr_flag_clear(PIT_CH13);
     
 }

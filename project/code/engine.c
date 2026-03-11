@@ -95,8 +95,8 @@ void engine_left_maintain(int pwm1, int pwm2)
 {
     pwm1 = auu(pwm1);
     pwm2 = auu(pwm2);
-    pwm_set_duty(PWM_1, buu(pwm1));
-    pwm_set_duty(PWM_2, pwm2);
+    pwm_set_duty(PWM_1, pwm1);
+    pwm_set_duty(PWM_2, buu(pwm2));
 }
 
 /*************************************************************************
@@ -112,8 +112,8 @@ void engine_right_maintain(int pwm1, int pwm2)
 {
     pwm1 = auu(pwm1);
     pwm2 = auu(pwm2);
-    pwm_set_duty(PWM_3, buu(pwm2));
-    pwm_set_duty(PWM_4, pwm1);
+    pwm_set_duty(PWM_3, pwm2);
+    pwm_set_duty(PWM_4,buu( pwm1));
 }
 
 /*************************************************************************

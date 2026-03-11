@@ -13,6 +13,7 @@
 #define PIT_Balance (PIT_CH10)
 #define PIT_WiFi (PIT_CH11)
 #define PIT_Remote (PIT_CH12)
+#define PIT_Engine (PIT_CH13)
 // GPIO端口
 #define LED1 (P19_0)
 // IPS200
@@ -131,7 +132,8 @@ int main(void)
     Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
     pit_ms_init(PIT_Balance, 10);
     small_driver_uart_init();           //驱动板通信初始化
-    //pit_ms_init(PIT_Motor_Control, 50);
+    //=======================舵机初始化==========================
+    pit_ms_init(PIT_Engine,10);
 
     interrupt_global_enable(0); // 在初始化后使能中断
 

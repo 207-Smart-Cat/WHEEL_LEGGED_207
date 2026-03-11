@@ -2,8 +2,8 @@
 #include "FiveBarLinkageData.h"
 #include "kalman_rm.h"
 // 全局变量
-float target_velocity = 0.0; // 目标速度
-float target_angle = 0;      //目标角度
+float target_velocity = 0.0;       // 目标速度
+float target_angle = 0;            // 目标角度
 float now_velocity = 0.0;          // 实际速度值
 float target_motor_Stand = 1.6;    // 目标电机角度
 float target_engine_high = 0.0;    // 目标发动机高度
@@ -172,12 +172,12 @@ void pid_init()
 {
     // 初始化速度PID
     PidInit(&motor_speed);
-    PidChange(&motor_speed, 0.06, 0, 0.022); //速度环
+    PidChange(&motor_speed, 0.06, 0, 0.022); // 速度环
 
     // 初始化电机角度PID
     PidInit(&motor_Stand);
     // PidChange(&motor_Stand, 6, 0, 0.4);    //角度环
-    PidChange(&motor_Stand, 6, 0, 0.4);    //角度环
+    PidChange(&motor_Stand, 6, 0, 0.4); // 角度环
     // 初始化方向PID
     PidInit(&motor_direction);
     /*最低速 压弯3，单边桥350*/
@@ -345,7 +345,6 @@ float Velocity(int encoder_left, float target_velocity) //===========左边为�
     Encoder_bias = target_velocity - encoder_left; // 计算偏差
     Encoder_Integral += Encoder_bias;              // 积分
 
-    
     //==============================更改了积分限幅措施（7000）======================
     // 限制积分范围
     if (Encoder_Integral > 2000)
@@ -353,7 +352,6 @@ float Velocity(int encoder_left, float target_velocity) //===========左边为�
     if (Encoder_Integral < -2000)
         Encoder_Integral = -2000;
     //==============================更改了积分限幅措施（7000）======================
-
 
     // 计算角度（Velocity的物理意义是输出角度）
     velocity = motor_speed.kp * Encoder_bias + motor_speed.ki * Encoder_Integral;
@@ -367,7 +365,7 @@ float Velocity(int encoder_left, float target_velocity) //===========左边为�
     // fuzzy_pid_adjust(&motor_speed, Encoder_bias, velocity - last_error, &speed_rules, &speed_pid_limits);
 
     //============调试使用=========================
-    printf("Encoder_bias|Encoder_Integral|velocity(angle):%f,%f,%f\r\n", Encoder_bias, Encoder_Integral, velocity);
+    // printf("Encoder_bias|Encoder_Integral|velocity(angle):%f,%f,%f\r\n", Encoder_bias, Encoder_Integral, velocity);
     // printf("target_velocity : %lf\r\n", target_velocity);
     //============调试使用=========================
 
@@ -375,7 +373,7 @@ float Velocity(int encoder_left, float target_velocity) //===========左边为�
 }
 
 // 陀螺仪控制计算（PID计算朝向角度）
-float GyroControl(float target_gyro, float current_gyro)  //角速度环
+float GyroControl(float target_gyro, float current_gyro) // 角速度环
 {
     float gyro_error = target_gyro - current_gyro; // 计算陀螺仪误差
     static float gyro_Integral;                    // 积分项
@@ -447,10 +445,11 @@ float Turn_target(float target_angle)
 // 转向控制计算
 float Turn(float gyro, float target_angle)
 {
-    //Gyro传入的是当前的角度
-    static float previous_error = 0.0;         // 上一次误差
-    float error = gyro - target_angle;         // 当前误差
-    if(fabs(error)<3){                  //低通截断，避免毛刺影响
+    // Gyro传入的是当前的角度
+    static float previous_error = 0.0; // 上一次误差
+    float error = gyro - target_angle; // 当前误差
+    if (fabs(error) < 3)
+    { // 低通截断，避免毛刺影响
         return 0;
     }
     float derivative = error - previous_error; // 微分项
@@ -547,7 +546,7 @@ void balance_control()
         // //===================仅调试去除转向功能使用=================================
         // Turn_Pwm = 0;
         // //====================================================================
-        if (Turn_Pwm <= 0.2)// !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
+        if (Turn_Pwm <= 0.2) // !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
         {
             speed_up = 1;
         }
@@ -578,41 +577,35 @@ float filter_leg_control(float current_angle, float target_angle, float filter_f
     return current_angle * filter_factor + target_angle * (1 - filter_factor);
 }
 /* 腿部控制器 */
-float g_roll_int_gain = 0.000002f; // 650以上变为1,600,3;650以下2
+float g_roll_int_gain = 0.0045f;
+/* 腿部控制器 */
 void leg_control(float *x, float *y)
 {
-
-    // 计算腿部位置
-    // float x_cal = 0.000022 * (speed - target_velocity)+;
-    // float x_cal = PidLocCtrl(&engine_high,speed - target_velocity);
+    // 计算腿部位置：前后倾斜补偿
     float x_cal = -0.035 * tan((double)((Velocity_Angle_left + Velocity_Angle_right) / 2 / 180 * 3.14));
 
-    //    /* ---------- 1. 前后速度环，计算公共基准高度 ---------- */
-    //    float x_cal = (Encoder_Left - Encoder_Right - 2.0f * target_velocity)
-    //                  * 0.013f / 2.0f / g_base_gain;
     if (x_cal > 0.04f)
         x_cal = 0.04f;
     else if (x_cal < -0.04f)
         x_cal = -0.04f;
 
     *x = x_cal; // 前后倾斜量（给舵机前后摆）
-                //
+
     /* ---------- 2. 左右平衡：单边抬高 ---------- */
-    static float leg_error = 0.0f;
+    // 【修改点1】：删除了 static float leg_error = 0.0f;
+    // 让函数直接修改头部 extern 引入的全局变量 leg_error，使得 balance_control() 能够读到正确的值！
     static float angle_last = 0.0f;
 
-    /* 2.1 低通滤波 & 误差计算 */
     float angle = 0.2f * angle_last + 0.8f * IMU_data.filter_result.pitch;
     angle_last = angle;
 
-    float error = imu963ra_gyro_z; // 目标 0.6° 以内算水平
-    leg_error = g_roll_int_gain * error;
+    leg_error = g_roll_int_gain * angle;
 
-    /* 2.2 限幅：±25 mm 最大补偿 */
-    if (leg_error > 0.03f)
-        leg_error = 0.03f;
-    else if (leg_error < -0.03f)
-        leg_error = -0.03f;
+    /* 2.2 限幅：±80 mm 最大补偿 (根据代码实际值修改了注释) */
+    if (leg_error > 0.08f)
+        leg_error = 0.08f;
+    else if (leg_error < -0.08f)
+        leg_error = -0.08f;
 
     /* ---------- 3. 计算前后基准高度 ---------- */
     float leg_target = *y; // 你原本的前后基准高度
@@ -626,6 +619,7 @@ void leg_control(float *x, float *y)
     else if (leg_error < 0) // 向左倾 → 抬高左腿
         left_y = leg_target - leg_error;
 
+    
     /* ---------- 5. 解算 + 输出 ---------- */
     int leg1, leg2, leg3, leg4;
     static int leg1_last, leg2_last, leg3_last, leg4_last;
@@ -633,12 +627,13 @@ void leg_control(float *x, float *y)
     servo_control(*x, left_y, &leg1, &leg2);  // 左腿
     servo_control(*x, right_y, &leg3, &leg4); // 右腿
 
-    /* 6. 一阶平滑 */
-    leg1 = leg1 * 0.7f + leg1_last * 0.3f;
-    leg2 = leg2 * 0.7f + leg2_last * 0.3f;
-    leg3 = leg3 * 0.7f + leg3_last * 0.3f;
-    leg4 = leg4 * 0.7f + leg4_last * 0.3f;
+    // printf("left: %d, %d; right: %d, %d\n", leg1, leg2, leg3, leg4);
 
+    /* 6. 一阶平滑 */
+    // leg1 = leg1 * 0.7f + leg1_last * 0.3f;
+    // leg2 = leg2 * 0.7f + leg2_last * 0.3f;
+    // leg3 = leg3 * 0.7f + leg3_last * 0.3f;
+    // leg4 = leg4 * 0.7f + leg4_last * 0.3f;
     engine_left_maintain(leg1, leg2);
     engine_right_maintain(leg3, leg4);
 
@@ -647,43 +642,7 @@ void leg_control(float *x, float *y)
     leg3_last = leg3;
     leg4_last = leg4;
 }
-// 腿部控制
-//  void leg_control(float *x, float *y) {
-//  //    float speed;
-//  //    static float speed_last;
-//  //    speed = (Encoder_Left - Encoder_Right) / 2;
-//  //
-//  //    // 速度滤波
-//  //    if (fabs(speed_last - speed) < 10) {
-//  //        speed = speed_last;
-//  //    }
-//  //    speed_last = speed;
 
-//    // 计算腿部位置
-//   // float x_cal = 0.000022 * (speed - target_velocity)+;
-//   // float x_cal = PidLocCtrl(&engine_high,speed - target_velocity);
-//    float x_cal=-0.04*tan((double)((Velocity_Angle_left+Velocity_Angle_right)/2/180*3.14));
-//   // printf("jiadata:%f,%f\r\n",x_cal,((Velocity_Angle_left+Velocity_Angle_right)/2/180*3.14));
-//    if(x_cal>0.05)
-//    {
-//        x_cal=0.05;
-//    }  if(x_cal<-0.05)
-//    {
-//        x_cal=-0.05;
-//    }
-//    int leg1, leg2;
-//    static int leg1_last, leg2_last;
-//    if (fabs(x_cal - *x) > 0.001) {
-//        *x = x_cal;
-//        servo_control(*x, *y, &leg1, &leg2);
-//        engine_left_maintain((int)leg1, (int)leg2);
-//        engine_right_maintain((int)leg1, (int)leg2);
-//        leg1 = leg1 * 0.8 + leg1_last * 0.2;
-//        leg2 = leg2 * 0.8 + leg2_last * 0.2;
-//        leg1_last = leg1;
-//        leg2_last = leg2;
-//    }
-// }
 // 速度补偿计算
 float calculate_speed_compensation(float v, float h, float l)
 {

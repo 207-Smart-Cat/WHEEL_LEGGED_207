@@ -16,44 +16,65 @@
 #define L4  0.06
 #define L5  0.038
 #define PI 3.141592653589793
-void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {  //¸ºÔðÓÉÄ¿±êµãÎ»¼ÆËã¹Ø½Ú½Ç¶È
-    float a = 2 * (x_target + L5 / 2) * L1;
-        float b = 2 * y_target * L1;
-        float c = pow((x_target + L5 / 2), 2) + pow(y_target, 2) + pow(L1, 2) - pow(L2, 2);
+#include <math.h>
 
-        float sum_val = pow(a, 2) + pow(b, 2) - pow(c, 2);
+#define PI 3.141592653589793f
+// ¼ÙÉè L1~L5 ÒÑ¾­ÔÚÍâ²¿ºê¶¨Òå
 
-        if (sum_val >= 0) {
-            float phi1_rad = 2 * atan((b + sqrt(sum_val)) / (a + c));
-            *phi1 = phi1_rad * (180.0 / PI); 
+void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
+    // ==========================================
+    // 1. ¼ÆËã×ó²à¹Ø½Ú½Ç phi1
+    // ==========================================
+    float x_plus = x_target + L5 / 2.0f;
+    float a = 2.0f * x_plus * L1;
+    float b = 2.0f * y_target * L1;
+    float c = (x_plus * x_plus) + (y_target * y_target) + (L1 * L1) - (L2 * L2);
 
-            if (*phi1 > 360) {
-                *phi1 -= 360;
-            } else if (*phi1 < 0) {
-                *phi1 += 360;
-            }
-        } else {
-            *phi1 = 400;
-        }
+    float a_sq_plus_b_sq = (a * a) + (b * b);
+    float sum_val = a_sq_plus_b_sq - (c * c); // µÈ¼ÛÓÚÄãÔ­À´µÄ a^2 + b^2 - c^2
 
-        float a1 = 2 * (x_target - L5 / 2) * L4; 
-        float b1 = 2 * y_target * L4;
-        float c1 = pow((x_target - L5 / 2), 2) + pow(y_target, 2) + pow(L4, 2) - pow(L3, 2);
+    if (sum_val >= 0) {
+        float psi1 = atan2(b, a);
+        float alpha1 = acos(c / sqrt(a_sq_plus_b_sq));
+        
+        // ÕâÀïµÄ + ºÅ¶ÔÓ¦Ô­´úÂëµÄ +sqrt Âß¼­ (Í¨³£´ú±íÄ³ÖÖ"Öâ²¿"ÅäÖÃ)
+        float phi1_rad = psi1 + alpha1; 
+        
+        *phi1 = phi1_rad * (180.0f / PI);
 
-        sum_val = pow(a1, 2) + pow(b1, 2) - pow(c1, 2);
+        // ±ê×¼»¯½Ç¶Èµ½ 0 ~ 360 ¶È
+        while (*phi1 > 360.0f) *phi1 -= 360.0f;
+        while (*phi1 < 0.0f)   *phi1 += 360.0f;
+    } else {
+        *phi1 = 400.0f; // Ä¿±ê²»¿É´ï±êÖ¾
+    }
 
-        if (sum_val >= 0) {
-            float phi4_rad = 2 * atan((b1 - sqrt(sum_val)) / (a1 + c1)); 
-            *phi4 = phi4_rad * (180.0 / PI); 
+    // ==========================================
+    // 2. ¼ÆËãÓÒ²à¹Ø½Ú½Ç phi4
+    // ==========================================
+    float x_minus = x_target - L5 / 2.0f;
+    float a1 = 2.0f * x_minus * L4;
+    float b1 = 2.0f * y_target * L4;
+    float c1 = (x_minus * x_minus) + (y_target * y_target) + (L4 * L4) - (L3 * L3);
 
-            if (*phi4 > 360) {
-                *phi4 -= 360;
-            } else if (*phi4 < 0) {
-                *phi4 += 360;
-            }
-        } else {
-            *phi4 = 400;
-        }
+    float a1_sq_plus_b1_sq = (a1 * a1) + (b1 * b1);
+    float sum_val1 = a1_sq_plus_b1_sq - (c1 * c1);
+
+    if (sum_val1 >= 0) {
+        float psi4 = atan2(b1, a1);
+        float alpha4 = acos(c1 / sqrt(a1_sq_plus_b1_sq));
+        
+        // ÕâÀïµÄ - ºÅ¶ÔÓ¦Ô­´úÂëµÄ -sqrt Âß¼­
+        float phi4_rad = psi4 - alpha4; 
+        
+        *phi4 = phi4_rad * (180.0f / PI);
+
+        // ±ê×¼»¯½Ç¶Èµ½ 0 ~ 360 ¶È
+        while (*phi4 > 360.0f) *phi4 -= 360.0f;
+        while (*phi4 < 0.0f)   *phi4 += 360.0f;
+    } else {
+        *phi4 = 400.0f; // Ä¿±ê²»¿É´ï±êÖ¾
+    }
 }
 
 
@@ -64,7 +85,7 @@ void servo_control(float x, float y, int *leg1, int *leg2) {   //¸ºÔðÓÉÄ¿±êµãÎ»¼
     getJointAngles(x, y, &phi1, &phi4);
         if(phi1==400||phi4==400)
         {
-
+            
         }
         else
         {
@@ -82,8 +103,7 @@ void servo_control(float x, float y, int *leg1, int *leg2) {   //¸ºÔðÓÉÄ¿±êµãÎ»¼
             }
             else
             {
-                *leg1=*leg2;
-                *leg2=*leg2;
+                
             }
         }
  }
