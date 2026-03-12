@@ -9,7 +9,7 @@ float target_motor_Stand = 1.6;    // 目标电机角度
 float target_engine_high = 0.0;    // 目标发动机高度
 float target_motor_angle = 0.0;    // 目标电机角度
 float Encoder_Left, Encoder_Right; // 左右电机编码器值
-extern float leg_error;
+float leg_error;
 
 int speed_up = 0;
 float Turn_Pwm; // 转向PWM值
@@ -577,11 +577,12 @@ float filter_leg_control(float current_angle, float target_angle, float filter_f
     return current_angle * filter_factor + target_angle * (1 - filter_factor);
 }
 /* 腿部控制器 */
-float g_roll_int_gain = 0.0045f;
-/* 腿部控制器 */
+float g_roll_int_gain = 0.005f;
+float g_roll_d_gain = -0.006f;
+
 void leg_control(float *x, float *y)
 {
-    // 计算腿部位置：前后倾斜补偿
+    // ---------- 1. 计算腿部位置：前后倾斜补偿 ----------
     float x_cal = -0.035 * tan((double)((Velocity_Angle_left + Velocity_Angle_right) / 2 / 180 * 3.14));
 
     if (x_cal > 0.04f)
@@ -589,60 +590,92 @@ void leg_control(float *x, float *y)
     else if (x_cal < -0.04f)
         x_cal = -0.04f;
 
-    *x = x_cal; // 前后倾斜量（给舵机前后摆）
+    *x = x_cal;
 
-    /* ---------- 2. 左右平衡：单边抬高 ---------- */
-    // 【修改点1】：删除了 static float leg_error = 0.0f;
-    // 让函数直接修改头部 extern 引入的全局变量 leg_error，使得 balance_control() 能够读到正确的值！
+    // ---------- 2. 左右平衡：单边抬高 (去毛刺与平滑处理) ----------
+    float angle_now = IMU_data.filter_result.pitch;
     static float angle_last = 0.0f;
+    static bool is_first_run = true;
 
-    float angle = 0.2f * angle_last + 0.8f * IMU_data.filter_result.pitch;
+    // 初始化防突变：第一次运行时，直接同步当前角度，防止冷启动时的大阶跃
+    if (is_first_run)
+    {
+        angle_last = angle_now;
+    }
+
+    // 【修改1：限幅滤波切除毛刺】
+    // 限制单个控制周期内允许的最大突变值（阈值视你的控制频率而定，这里设为 1.5 度）
+    // 如果突变超过 1.5 度，我们认为是传感器毛刺或冲击，强制削峰。
+    const float MAX_ANGLE_STEP = 2.0f;
+    if ((angle_now - angle_last) > MAX_ANGLE_STEP)
+    {
+        angle_now = angle_last + MAX_ANGLE_STEP;
+    }
+    else if ((angle_now - angle_last) < -MAX_ANGLE_STEP)
+    {
+        angle_now = angle_last - MAX_ANGLE_STEP;
+    }
+
+    // 【修改2：修正一阶低通滤波系数进行轨迹平滑】
+    // 降低新数据的信任度（例如 0.2），提高历史数据的惯性（0.8），实现真正的平滑
+    float angle = 0.7f * angle_last + 0.3f * angle_now;//0.65  0.35
     angle_last = angle;
 
-    leg_error = g_roll_int_gain * angle;
+    leg_error = g_roll_int_gain * angle - g_roll_d_gain * IMU_data.accel[2];
 
-    /* 2.2 限幅：±80 mm 最大补偿 (根据代码实际值修改了注释) */
+    // 限幅：±80 mm 最大补偿
     if (leg_error > 0.08f)
         leg_error = 0.08f;
     else if (leg_error < -0.08f)
         leg_error = -0.08f;
 
-    /* ---------- 3. 计算前后基准高度 ---------- */
-    float leg_target = *y; // 你原本的前后基准高度
+    // ---------- 3. 计算前后基准高度 ----------
+    float leg_target = *y;
 
-    /* ---------- 4. 叠加左右补偿：单边抬高 ---------- */
+    // ---------- 4. 叠加左右补偿：单边抬高 ----------
     float left_y = leg_target;
     float right_y = leg_target;
 
-    if (leg_error > 0) // 向右倾 → 抬高右腿
-        right_y = leg_target + leg_error;
-    else if (leg_error < 0) // 向左倾 → 抬高左腿
-        left_y = leg_target - leg_error;
+    if (leg_error > 0)
+        left_y = leg_target + leg_error;
+    else if (leg_error < 0)
+        right_y = leg_target - leg_error;
 
-    
-    /* ---------- 5. 解算 + 输出 ---------- */
+    // ---------- 5. 逆运动学解算 ----------
     int leg1, leg2, leg3, leg4;
-    static int leg1_last, leg2_last, leg3_last, leg4_last;
+    static int leg1_last = 0, leg2_last = 0, leg3_last = 0, leg4_last = 0;
 
     servo_control(*x, left_y, &leg1, &leg2);  // 左腿
     servo_control(*x, right_y, &leg3, &leg4); // 右腿
 
-    // printf("left: %d, %d; right: %d, %d\n", leg1, leg2, leg3, leg4);
+    if (is_first_run)
+    {
+        leg1_last = leg1;
+        leg2_last = leg2;
+        leg3_last = leg3;
+        leg4_last = leg4;
+        is_first_run = false;
+    }
 
-    /* 6. 一阶平滑 */
-    // leg1 = leg1 * 0.7f + leg1_last * 0.3f;
-    // leg2 = leg2 * 0.7f + leg2_last * 0.3f;
-    // leg3 = leg3 * 0.7f + leg3_last * 0.3f;
-    // leg4 = leg4 * 0.7f + leg4_last * 0.3f;
+    // ---------- 6. 舵机最终输出的机械平滑 ----------
+    // 在最终驱动电机前再加一道轻度平滑，防止机械机构高频抖动共振
+    // alpha 越小越平滑，但响应越慢；0.3 到 0.5 通常是不错的平衡点
+    const float servo_alpha = 0.3f;//0.4--oorigin
+    leg1 = (int)(leg1 * servo_alpha + leg1_last * (1.0f - servo_alpha));
+    leg2 = (int)(leg2 * servo_alpha + leg2_last * (1.0f - servo_alpha));
+    leg3 = (int)(leg3 * servo_alpha + leg3_last * (1.0f - servo_alpha));
+    leg4 = (int)(leg4 * servo_alpha + leg4_last * (1.0f - servo_alpha));
+
     engine_left_maintain(leg1, leg2);
     engine_right_maintain(leg3, leg4);
-
+    // printf("Leg Positions:%d,%d,%d,%d\n", leg1, leg2, leg3, leg4);
+    printf("%lf\n", IMU_data.filter_result.pitch);
+    // 记录历史值
     leg1_last = leg1;
     leg2_last = leg2;
     leg3_last = leg3;
     leg4_last = leg4;
 }
-
 // 速度补偿计算
 float calculate_speed_compensation(float v, float h, float l)
 {

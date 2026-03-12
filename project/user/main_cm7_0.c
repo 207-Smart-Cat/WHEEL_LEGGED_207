@@ -35,7 +35,14 @@ int stop = 0;
 extern float pitch1, roll1, yaw1;
 float v_buchang;
 /*腿部姿态设置*/
-float x_current, y_current=0.08;     // 用于舵机（x，y）位置的调整,务必记住应该给一个符合区间的初始值，否则舵机将不在转动
+float x_current, y_current=0.03;    
+ // 用于舵机（x，y）位置的调整,务必记住应该给一个符合区间的初始值，否则舵机将不在转动
+/*#define MIN_X -0.05
+#define MAX_X 0.05
+#define X_STEP 0.001
+
+#define MIN_Y 0.02
+#define MAX_Y 0.14*/
 extern pid_param_t engine_high; // 发动机高度PID参数（暂时我也不知道干什么的）
 int stop_flash = 0;             // 完赛标志位
 
@@ -133,7 +140,7 @@ int main(void)
     pit_ms_init(PIT_Balance, 10);
     small_driver_uart_init();           //驱动板通信初始化
     //=======================舵机初始化==========================
-    pit_ms_init(PIT_Engine,10);
+    pit_ms_init(PIT_Engine,40);
 
     interrupt_global_enable(0); // 在初始化后使能中断
 

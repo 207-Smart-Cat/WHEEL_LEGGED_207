@@ -47,6 +47,7 @@ void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
         while (*phi1 < 0.0f)   *phi1 += 360.0f;
     } else {
         *phi1 = 400.0f; // 目标不可达标志
+        printf("PHI1,ERROR");
     }
 
     // ==========================================
@@ -74,37 +75,46 @@ void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
         while (*phi4 < 0.0f)   *phi4 += 360.0f;
     } else {
         *phi4 = 400.0f; // 目标不可达标志
+        printf("PHI4,ERROR");
     }
 }
 
 
-void servo_control(float x, float y, int *leg1, int *leg2) {   //负责由目标点位计算
+void servo_control(float x, float y, int *leg1, int *leg2) {
     float phi1, phi4;
 
-    
     getJointAngles(x, y, &phi1, &phi4);
-        if(phi1==400||phi4==400)
-        {
-            
-        }
-        else
-        {
-             if((phi1>=99&&phi1<=261)&&((phi4 >= 279)||(phi4 <= 81)))
-            {
-                *leg1 = (270 - phi1) / 180 * 1000 + 250;
-                if (phi4 >= 270)
-                {
-                    *leg2 = (int)((phi4 - 270) / 180 * 1000 + 250);
-                }
-                else if(phi4 <= 90)
-                {
-                    *leg2 = (int)((90 + phi4) / 180 * 1000 + 250);
-                }
-            }
-            else
-            {
-                
-            }
-        }
- }
+    
+    // 1. 如果目标点在物理上完全无法到达 (无解)
+    if(phi1 == 400.0f || phi4 == 400.0f) {
+        // 通常是因为过长不可达，使用1200站立
+        *leg1 = 1200; // 根据你的舵机中值替换为安全的PWM值
+        *leg2 = 1200; 
+        printf("ERROR NUMBER\n");
+        return;
+    }
 
+    // 2. 对求出的角度进行强制软限幅 (保护舵机，且防止进入无赋值分支)
+    if(phi1 < 99.0f)  phi1 = 99.0f;
+    if(phi1 > 261.0f) phi1 = 261.0f;
+
+    // phi4 的合法范围是 0~81 或 279~360
+    // 如果 phi4 落在非法区间 81~279 内，将其强制拉回最近的边界
+    if(phi4 > 81.0f && phi4 < 180.0f) phi4 = 81.0f;
+    if(phi4 >= 180.0f && phi4 < 279.0f) phi4 = 279.0f;
+
+    // 3. 计算最终的舵机 PWM 值 (此时角度绝对在安全范围内)
+    *leg1 = (int)((phi1-90 ) / 180.0f * 1000.0f + 250.0f);
+    
+    if (phi4 >= 270.0f) {
+        *leg2 = (int)((phi4 - 270.0f) / 180.0f * 1000.0f + 250.0f);
+    } 
+    else if(phi4 <= 90.0f) {
+        *leg2 = (int)((90.0f + phi4) / 180.0f * 1000.0f + 250.0f);
+    } 
+    else {
+        // 兜底赋值，防止任何意料之外的数值导致乱码
+        *leg2 = 250; 
+    }
+    
+}

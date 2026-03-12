@@ -57,7 +57,7 @@ void imu_init (gpio_pin_enum pin)
         }
         gpio_toggle_level(pin); // 翻转 LED 引脚输出电平 控制 LED 亮灭 初始化出错这个灯会闪的很慢
     }
-    Kalman_init(&filter, 0.005f, 0.001f, 0.01f, 0.001f, 0.05f, 0.015f); // 初始化卡尔曼滤波器
+    Kalman_init(&filter, 0.005f, 0.001f, 0.003f, 0.001f, 0.05f, 0.05f); // 初始化卡尔曼滤波器
 }
 /*
 //姿态解算

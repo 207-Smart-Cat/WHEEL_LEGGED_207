@@ -50,15 +50,16 @@ void engine_init(int pwm1, int pwm2)
 
     // pwm_init(PWM_1, FREQ, 260);
     // pwm_init(PWM_2, FREQ, 260);
-
     // pwm_init(PWM_3, FREQ, 260);
     // pwm_init(PWM_4, FREQ, 260);
 
     pwm_init(PWM_1, FREQ, buu(pwm1));
-    pwm_init(PWM_2, FREQ, pwm2);
+    pwm_init(PWM_2, FREQ, buu(pwm2));
 
-    pwm_init(PWM_3, FREQ, buu(pwm2));
+    pwm_init(PWM_3, FREQ, pwm2);
     pwm_init(PWM_4, FREQ, pwm1);
+   // printf("PWM1~4(after buu):%d %d %d %d\n", buu(pwm1), buu(pwm2), pwm2, pwm1);
+    //printf("INIT SUCCEED!");
 }
 
 /*************************************************************************
@@ -70,17 +71,17 @@ void engine_init(int pwm1, int pwm2)
  *  修改时间：2025年1月18日
  *  备    注：//750———1250越大腿往下伸长
  *************************************************************************/
-void engine_maintain(int pwm1, int pwm2) // 记得修改
-{
-    pwm1 = auu(pwm1);
-    pwm2 = auu(pwm2);
+// void engine_maintain(int pwm1, int pwm2) // 记得修改
+// {
+//     pwm1 = auu(pwm1);
+//     pwm2 = auu(pwm2);
 
-    pwm_set_duty(PWM_1, buu(pwm1));
-    pwm_set_duty(PWM_2, pwm2);
+//     pwm_set_duty(PWM_1, pwm1);
+//     pwm_set_duty(PWM_2, buu(pwm2));
 
-    pwm_set_duty(PWM_3, buu(pwm2));
-    pwm_set_duty(PWM_4, pwm1);
-}
+//     pwm_set_duty(PWM_3, (pwm2));
+//     pwm_set_duty(PWM_4, buu(pwm1));
+// }
 
 /*************************************************************************
  *  函数名称：void engine_left_maintain(int pwm);
@@ -95,7 +96,7 @@ void engine_left_maintain(int pwm1, int pwm2)
 {
     pwm1 = auu(pwm1);
     pwm2 = auu(pwm2);
-    pwm_set_duty(PWM_1, pwm1);
+    pwm_set_duty(PWM_1, buu(pwm1));
     pwm_set_duty(PWM_2, buu(pwm2));
 }
 
@@ -113,7 +114,7 @@ void engine_right_maintain(int pwm1, int pwm2)
     pwm1 = auu(pwm1);
     pwm2 = auu(pwm2);
     pwm_set_duty(PWM_3, pwm2);
-    pwm_set_duty(PWM_4,buu( pwm1));
+    pwm_set_duty(PWM_4, pwm1);
 }
 
 /*************************************************************************

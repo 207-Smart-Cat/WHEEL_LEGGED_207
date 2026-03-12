@@ -1459,12 +1459,6 @@
             <name>$PROJ_DIR$\..\..\code\kalman_rm.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\leg_adaptive.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\leg_adaptive.h</name>
-        </file>
-        <file>
             <name>$PROJ_DIR$\..\..\code\pid.c</name>
         </file>
         <file>

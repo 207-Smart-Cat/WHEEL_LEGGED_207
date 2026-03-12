@@ -8,7 +8,6 @@
 #include "small_driver_uart_control.h"
 //#include "jump_control.h"
 //#include "image.h"
-#include"leg_adaptive.h"
 
 extern float target_velocity;//目标速度值0————400
 extern float now_velocity;//实际速度值
