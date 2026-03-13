@@ -1,5 +1,6 @@
 #include "remote.h"
 #include "kalman_rm.h"
+#include "param.h"
 extern Attitude_3D_Kalman filter; // 卡尔曼滤波器
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度

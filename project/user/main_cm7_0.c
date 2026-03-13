@@ -5,6 +5,7 @@
 #include "control.h"
 #include "wifi.h"
 #include "remote.h"
+#include "param.h"
 // **************************** 宏定义区域 ****************************
 // 中断
 #define PIT_IMU (PIT_CH0)
@@ -29,22 +30,14 @@ uint8 IPS200_flag = 0; //  屏幕显示flag（PIT中断置位）
 // int duty = 0;
 // bool dir = true;
 // 电机+舵机（运行）
-float angel_init = 0;
 int duty = 1;
 int stop = 0;
 extern float pitch1, roll1, yaw1;
 float v_buchang;
 /*腿部姿态设置*/
-float x_current, y_current=0.03;    
- // 用于舵机（x，y）位置的调整,务必记住应该给一个符合区间的初始值，否则舵机将不在转动
-/*#define MIN_X -0.05
-#define MAX_X 0.05
-#define X_STEP 0.001
-
-#define MIN_Y 0.02
-#define MAX_Y 0.14*/
-extern pid_param_t engine_high; // 发动机高度PID参数（暂时我也不知道干什么的）
-int stop_flash = 0;             // 完赛标志位
+extern float x_current, y_current;
+// 用于舵机（x，y）位置的调整,务必记住应该给一个符合区间的初始值，否则舵机将不在转动
+int stop_flash = 0; // 完赛标志位
 
 int Bridge_position = 1;     // 可能是过单边桥时候需要的（腿部自适应）
 int yanshi_biaozhiwei = 100; // 可能是过单边桥时候需要的（腿部自适应模式）
@@ -116,42 +109,47 @@ int main(void)
 {
     clock_init(SYSTEM_CLOCK_250M); // 时钟配置及系统初始化<务必保留>
     debug_init();                  // 调试串口信息初始化
-    // 此处编写用户代码 例如外设初始化代码等
 
     interrupt_global_disable(); // 初始化外设之前先关闭中断
-    //=================================GPIO初始化=======================
+
+    //GPIO初始化
     gpio_init(LED1, GPO, GPIO_HIGH, GPO_PUSH_PULL); // 初始化 LED1 输出 默认高电平 推挽输出模式
-    //=================================IMU初始化=======================
+
     imu_init(LED1);
-    pit_ms_init(PIT_IMU, 5);
-    //=================================屏幕初始化============================
+    pit_ms_init(PIT_IMU, 5); //IMU初始化
+
     //  ips200_set_dir(IPS200_PORTAIT);
     //  ips200_set_color(RGB565_WHITE, RGB565_BLACK);
     //  ips200_init(IPS200_TYPE);
-    //  pit_ms_init(PIT_IPS, 200);
-     //========================遥控器控制初始化==========================
-     Remote_Init();
-     pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
-     //=================================WIFI模块初始化======================
-    // wifi_init();
-     //pit_ms_init(PIT_WiFi, 20);
-    //=================================平衡动作初始化========================
-    Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
+    //  pit_ms_init(PIT_IPS, 200); //屏幕初始化
+
+    Remote_Init();               //遥控器控制初始化
+    pit_ms_init(PIT_Remote, 10); 
+
+    // wifi_init();//WIFI模块初始化
+    // pit_ms_init(PIT_WiFi, 20);
+
+    Balance_init(); //平衡动作初始化
     pit_ms_init(PIT_Balance, 10);
-    small_driver_uart_init();           //驱动板通信初始化
-    //=======================舵机初始化==========================
-    pit_ms_init(PIT_Engine,40);
+    small_driver_uart_init(); // 驱动板通信初始化
+
+    pit_ms_init(PIT_Engine, 10); //舵机初始化
+
+    //===============================中断优先级及使能设置============================================
 
     interrupt_global_enable(0); // 在初始化后使能中断
+    interrupt_set_priority(PIT_Balance, 1);
+    interrupt_set_priority(PIT_IMU, 0);
+    interrupt_set_priority(PIT_Engine, 2);
+    interrupt_set_priority(PIT_IPS, 7);
 
-    
     system_delay_ms(1000);
 
     while (true)
     {
         // 此处编写需要循环执行的代码
-       // screen_display_process();               //屏幕显示
-       // wifi_process_loop();                    //wifi接收数据解析
+        // screen_display_process();               //屏幕显示
+        // wifi_process_loop();                    //wifi接收数据解析
         // Motor_Control();
         system_delay_ms(1);
     }

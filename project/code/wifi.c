@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include "small_driver_uart_control.h" // 确保包含了无刷电机的头文件
 #include "imu.h"
-
+#include "param.h"
 // 宏定义：消除魔法数字，方便统一管理
 #define WIFI_RX_BUF_SIZE    256         //WiFi接收数组最大容量
 #define WIFI_MAX_RETRY      5           // 最大重试次数

@@ -1459,6 +1459,12 @@
             <name>$PROJ_DIR$\..\..\code\kalman_rm.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\param.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\param.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\pid.c</name>
         </file>
         <file>

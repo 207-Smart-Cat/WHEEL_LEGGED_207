@@ -2,7 +2,6 @@
 #define _REMOTE_H_
 
 #include "zf_common_headfile.h"
-
 // 定义遥控器通道数量 (6个)
 #define REMOTE_CHANNEL_NUM  6
 

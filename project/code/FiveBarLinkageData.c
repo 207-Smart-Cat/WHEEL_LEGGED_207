@@ -1,25 +1,12 @@
 #include <stdio.h>
 #include <math.h>
 #include "FiveBarLinkageData.h"
+#include "param.h"
 
 
-#define MIN_X -0.05
-#define MAX_X 0.05
-#define X_STEP 0.001
-
-#define MIN_Y 0.02
-#define MAX_Y 0.14
-#define Y_STEP 0.001
-#define L1  0.06
-#define L2  0.09
-#define L3  0.09
-#define L4  0.06
-#define L5  0.038
-#define PI 3.141592653589793
 #include <math.h>
 
-#define PI 3.141592653589793f
-// 假设 L1~L5 已经在外部宏定义
+// L1~L5 已经在外部宏定义
 
 void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
     // ==========================================
