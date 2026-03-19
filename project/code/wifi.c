@@ -1,34 +1,25 @@
 #include "wifi.h"
 #include <string.h>
 #include <stdio.h>
-#include "small_driver_uart_control.h" // 确保包含了无刷电机的头文件
+#include "small_driver_uart_control.h" 
 #include "imu.h"
-#include "param.h"
-// 宏定义：消除魔法数字，方便统一管理
-#define WIFI_RX_BUF_SIZE    256         //WiFi接收数组最大容量
-#define WIFI_MAX_RETRY      5           // 最大重试次数
+#include "control.h"
+#include "vofa_protocol.h"
 
-// 定义内部使用的缓冲区
+// 宏定义和缓冲区保留...
+#define WIFI_RX_BUF_SIZE    256         
+#define WIFI_MAX_RETRY      5           
 uint8 wifi_spi_receive_data[WIFI_RX_BUF_SIZE];          
 uint8 wifi_spi_receive_data_ips[WIFI_RX_BUF_SIZE];
-static uint32 data_length;                       //数据长度变量
-wifi_mode_t current_wifi_mode = WIFI_MODE_SILENT;         //当前WiFi模式变量,默认静默模式，也就是WiFi不发送任何东西
+static uint32 data_length;                       
 
-// ================= 新增：交互状态记忆变量 =================
-// 0: HEX 波形模式, 1: 纯文本模式。初始化默认为文本模式
+// ================= 这些状态变量必须保留在这里！ =================
+// 因为 vofa_protocol.c 是通过 extern 借用这几个变量的，它们的“老家”还得在 wifi.c
+wifi_mode_t current_wifi_mode = WIFI_MODE_SILENT;         
 uint8 wave_format = 1; 
+uint8 channel_show[5] = {1, 1, 1, 0, 0}; 
+volatile uint8 WIFI_Send_flag = 0;               
 
-// 5个通道的显示状态 (1: 显示, 0: 隐藏)，初始状态全显示。对应: Yaw, Pitch, Roll, Left, Right
-uint8 channel_show[5] = {1, 1, 1, 1, 1};
-
-//static uint8 test_dummy_image[100] = {0xFF}; //测试图像
-//**下面这几行用作摄像头图传，目前不使用
-//    // --- 假设这是你用于存放备份图像的数组 (参考官方例程) ---
-//    extern uint8 image_copy[MT9V03X_H][MT9V03X_W]; 
-//    extern uint8 mt9v03x_finish_flag; // 摄像头的采集完成标志位
-//
-//    // 专门给主循环用的图传触发标志位
-//    volatile uint8 trigger_image_send_in_main = 0;
 /**
  * @brief WiFi模块初始化并连接 (带超时限制)
  */
@@ -81,7 +72,7 @@ void wifi_init(void)
 
 
 /**
- * @brief WiFi数据处理轮询 (防粘包、多协议解析版)
+ * @brief WiFi数据处理轮询 (防粘包、多协议解析版 - 现已接入VOFA+)
  */
 void wifi_process_loop(void)
 {
@@ -90,120 +81,53 @@ void wifi_process_loop(void)
     
     if(data_length > 0)
     {
-        // 2. 使用 i 作为滑动指针，遍历整个接收到的缓冲区，寻找所有合法的指令包
-        for(uint32 i = 0; i < data_length; i++)
-        {
-            // ========================================================
-            // 协议 1: 模式切换 & 格式翻转 二合一指令 (帧头: 0xAA 0xEE)
-            // ========================================================
-            if((i + 2) < data_length && wifi_spi_receive_data[i] == 0xAA && wifi_spi_receive_data[i+1] == 0xEE)
-            {
-                uint8 target_mode = wifi_spi_receive_data[i+2];
-                if(target_mode <= 3) 
-                {
-                    // 如果用户发送的是 AA EE 01 (目标是波形模式)
-                    if(target_mode == WIFI_MODE_WAVE)
-                    {
-                        if(current_wifi_mode != WIFI_MODE_WAVE) 
-                        {
-                            // 情况A：从其他模式首次切入波形模式 -> 保留上次的文本格式
-                            current_wifi_mode = WIFI_MODE_WAVE;
-                            printf("\r\n >>> Enter WAVE Mode, Format: %s <<< \r\n", wave_format ? "TEXT" : "HEX");
-                        }
-                        else 
-                        {
-                            // 情况B：当前已经在波形模式了，再次收到 AA EE 01 -> 触发异或翻转格式 (1变0，0变1)
-                            wave_format ^= 1; 
-                            printf("\r\n >>> Format Toggled to: %s <<< \r\n", wave_format ? "TEXT" : "HEX");
-                        }
-                    }
-                    else
-                    {
-                        // 如果用户发送的是 AA EE 00 / 02 / 03 等其他模式，正常切换即可
-                        current_wifi_mode = (wifi_mode_t)target_mode;
-                        printf("\r\n >>> WiFi Mode Switched to: %d <<< \r\n", target_mode);
-                    }
-                }
-                i += 2; 
-                continue; 
-            }
-
-            // ========================================================
-            // 协议 1.5: 通道独立显隐切换指令 (AA FF 01 ~ 05)
-            // ========================================================
-            else if((i + 2) < data_length && wifi_spi_receive_data[i] == 0xAA && wifi_spi_receive_data[i+1] == 0xFF)
-            {
-                uint8 ch = wifi_spi_receive_data[i+2];
-                if(ch >= 1 && ch <= 5) // 确保通道号在 1 到 5 之间
-                {
-                    // 翻转对应通道的状态 (数组下标是 0 到 4)
-                    channel_show[ch - 1] ^= 1; 
-                    printf("\r\n >>> Channel %d Visibility: %d <<< \r\n", ch, channel_show[ch - 1]);
-                }
-                i += 2;
-                continue;
-            }
-            // ========================================================
-            // 协议 2: 电机控制指令 (帧头: 0xA5 + 功能字 + 数据 + 校验 = 7字节)
-            // ========================================================
-            // 确保剩余未处理的数据至少还有 7 个字节
-            else if((i + 6) < data_length && wifi_spi_receive_data[i] == 0xA5)
-            {
-                uint8 sum_check = 0;
-                
-                // 计算校验和 (Byte 0 到 Byte 5 的累加低8位)
-                for(uint8 j = 0; j < 6; j++)
-                {
-                    sum_check += wifi_spi_receive_data[i + j];
-                }
-                
-                // 验证校验和是否正确
-                if(sum_check == wifi_spi_receive_data[i + 6])
-                {
-                    uint8 cmd = wifi_spi_receive_data[i + 1]; // 提取功能字
-                    
-                    if(cmd == 0x01) // 0x01: 收到修改占空比的指令
-                    {
-                        // 拼合 16 位有符号整数
-                        int16 l_duty = (int16)((wifi_spi_receive_data[i+2] << 8) | wifi_spi_receive_data[i+3]);
-                        int16 r_duty = (int16)((wifi_spi_receive_data[i+4] << 8) | wifi_spi_receive_data[i+5]);
-                        
-                        // 调用无刷电机驱动函数
-                        small_driver_set_duty(l_duty, r_duty);
-                        
-                        printf("\r\n Motor Cmd: L=%d, R=%d", l_duty, r_duty); // 调试时可以打开看看
-                    }
-                    
-                    i += 6; // 成功解析一帧，跳过这 7 个字节
-                    continue;
-                }
-            }
-        }
+      VOFA_Protocol_Parse(wifi_spi_receive_data, data_length);
     }
 }
 /**
- * @brief WiFi 定时发送任务 (已完美适配逐飞官方库)
- * 建议在 PIT 定时器中断中调用，周期 20ms
+ * @brief WiFi 定时发送任务
+ * @note  【已重构】此函数包含大量耗时字符串操作，绝对不能放在中断中！
+ * 请在 PIT 中断(20ms)中置位 WIFI_Send_flag = 1，然后在 main 循环中调用此函数。
  */
 void wifi_report_task(void)
 {
-    switch(current_wifi_mode)
+  if(WIFI_Send_flag)
+  {
+    WIFI_Send_flag = 0;
+     switch(current_wifi_mode)
     {
         case WIFI_MODE_WAVE:
             if(wave_format == 0) // ============ HEX 模式 ============
             {
-                uint8 idx = 0; // 用来记录当前塞进去了几个有效数据
+                uint8 idx = 0; // 这个指针负责记录当前装了几个数据
                 
-                // 只有标志位为 1，才把数据塞进逐飞的结构体里
-                if(channel_show[0]) seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.yaw;
-                if(channel_show[1]) seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.pitch;
-                if(channel_show[2]) seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.roll;
-                if(channel_show[3]) seekfree_assistant_oscilloscope_data.data[idx++] = motor_value.receive_left_speed_data;
-                if(channel_show[4]) seekfree_assistant_oscilloscope_data.data[idx++] = motor_value.receive_right_speed_data;
+                // 【通道 1】：RPY 姿态角 (占用 3 根线)
+                if(channel_show[0]) 
+                {
+                    seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.yaw;
+                    seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.pitch;
+                    seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.roll;
+                }
                 
-                seekfree_assistant_oscilloscope_data.channel_num = idx;
+                // 【通道 2】：电机真实转速 (占用 2 根线)
+                if(channel_show[1]) 
+                {
+                    seekfree_assistant_oscilloscope_data.data[idx++] = motor_value.receive_left_speed_data;
+                    seekfree_assistant_oscilloscope_data.data[idx++] = motor_value.receive_right_speed_data;
+                }
                 
-                // 只有当至少有1个通道开启时，才发送 HEX 包
+                // 【通道 3】：电机底层 PWM (占用 2 根线)
+                if(channel_show[2]) 
+                {
+                    seekfree_assistant_oscilloscope_data.data[idx++] = (float)Motor_Left;
+                    seekfree_assistant_oscilloscope_data.data[idx++] = (float)Motor_Right;
+                }
+                
+                // 如果以后有通道 4，直接在下面无脑加 if(channel_show[3]){...} 即可！
+                
+                seekfree_assistant_oscilloscope_data.channel_num = idx; // 告诉底层一共要发几根线
+                
+                // 只有当至少有1根线开启时，才发送 HEX 包
                 if(idx > 0) 
                 {
                     seekfree_assistant_oscilloscope_send(&seekfree_assistant_oscilloscope_data);
@@ -214,17 +138,31 @@ void wifi_report_task(void)
             }
             else // ============ 文本 (TEXT) 模式 ============
             {
-                char text_buffer[128] = {0}; // 总的字符串盒子
-                char temp[32];               // 临时拼装的小盒子
+                char text_buffer[200] = {0}; // 准备一个大车厢
+                char temp[64];               // 准备一个小推车
                 
-                // 利用 strcat 像接火车车厢一样，把开启的通道接上去
-                if(channel_show[0]) { sprintf(temp, "Y:%.2f  ", IMU_data.filter_result.yaw);   strcat(text_buffer, temp); }
-                if(channel_show[1]) { sprintf(temp, "P:%.2f  ", IMU_data.filter_result.pitch); strcat(text_buffer, temp); }
-                if(channel_show[2]) { sprintf(temp, "R:%.2f  ", IMU_data.filter_result.roll);  strcat(text_buffer, temp); }
-                if(channel_show[3]) { sprintf(temp, "L:%d  ", motor_value.receive_left_speed_data); strcat(text_buffer, temp); }
-                if(channel_show[4]) { sprintf(temp, "R:%d  ", motor_value.receive_right_speed_data); strcat(text_buffer, temp); }
+                // 【通道 1】：拼装 RPY 姿态角
+                if(channel_show[0]) 
+                {
+                    sprintf(temp, "Y:%.2f P:%.2f R:%.2f  ", IMU_data.filter_result.yaw, IMU_data.filter_result.pitch, IMU_data.filter_result.roll);
+                    strcat(text_buffer, temp); // 把小推车挂到大车厢后面
+                }
                 
-                // 如果最终接好的火车不是空的，就加上换行符发出去
+                // 【通道 2】：拼装 电机转速
+                if(channel_show[1]) 
+                {
+                    sprintf(temp, "L_Spd:%d R_Spd:%d  ", motor_value.receive_left_speed_data, motor_value.receive_right_speed_data);
+                    strcat(text_buffer, temp);
+                }
+                
+                // 【通道 3】：拼装 电机 PWM
+                if(channel_show[2]) 
+                {
+                    sprintf(temp, "L_PWM:%d R_PWM:%d  ", Motor_Left, Motor_Right);
+                    strcat(text_buffer, temp);
+                }
+                
+                // 如果最终大车厢不是空的，加上换行符发出去
                 if(strlen(text_buffer) > 0) 
                 {
                     strcat(text_buffer, "\r\n");
@@ -253,4 +191,6 @@ void wifi_report_task(void)
         default:
             break; // 模式0：静默
     }
+  }
+    
 }

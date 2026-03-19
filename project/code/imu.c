@@ -32,14 +32,14 @@ void imu_attitude(void)
                       imu963ra_mag_x,   imu963ra_mag_y,  imu963ra_mag_z);
     Kalman_update(&IMU_data.filter_result,&filter,IMU_data.accel[0],IMU_data.accel[1],IMU_data.accel[2],IMU_data.gyro[0],IMU_data.gyro[1],IMU_data.gyro[2],IMU_data.mag[0],IMU_data.mag[1],IMU_data.mag[2]);
     /*********截断滤波****************************/
-//    if(func_abs(pitch1 - IMU_data.filter_result.pitch) <= 0.1)
-//        IMU_data.filter_result.pitch = pitch1;
-//    if(func_abs(roll1 - IMU_data.filter_result.roll) <= 0.1)
-//       IMU_data.filter_result.roll = roll1;
-//    if(func_abs(yaw1 - IMU_data.filter_result.yaw) <= 0.6)
-//        IMU_data.filter_result.yaw = yaw1;
-//    pitch1 = IMU_data.filter_result.pitch;
-//    roll1 = IMU_data.filter_result.roll;
+    if(func_abs(pitch1 - IMU_data.filter_result.pitch) <= 0.1)
+        IMU_data.filter_result.pitch = pitch1;
+    if(func_abs(roll1 - IMU_data.filter_result.roll) <= 0.1)
+       IMU_data.filter_result.roll = roll1;
+    if(func_abs(yaw1 - IMU_data.filter_result.yaw) <= 0.6)
+        IMU_data.filter_result.yaw = yaw1;
+    pitch1 = IMU_data.filter_result.pitch;
+    roll1 = IMU_data.filter_result.roll;
     yaw1 = IMU_data.filter_result.yaw;
 }
 
@@ -58,6 +58,8 @@ void imu_init (gpio_pin_enum pin)
         gpio_toggle_level(pin); // 翻转 LED 引脚输出电平 控制 LED 亮灭 初始化出错这个灯会闪的很慢
     }
     Kalman_init(&filter, 0.005f, 0.001f, 0.003f, 0.001f, 0.05f, 0.05f); // 初始化卡尔曼滤波器
+    
+    
 }
 /*
 //姿态解算

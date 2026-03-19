@@ -18,6 +18,9 @@ extern int stop_flash;//完赛标志位
 extern int bridge_high;//单边桥高低标志位
 extern int speed_up;//加速标志位
 extern pid_param_t motor_direction; // 方向PID参数
+//******************
+extern signed short int Motor_Left, Motor_Right;
+//******************
 void Balance_init(void);
 void balance_control(void);
 void leg_control(float *x, float *y) ;

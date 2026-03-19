@@ -171,6 +171,95 @@ void small_driver_uart_init(void)
 
 
 
+//**************************新增*************************************
+/*
+// ==============================================================================
+// 智能车助手新增：编码器字符串通讯支持代码
+// ==============================================================================
+
+char  encoder_rx_buffer[32];           // 字符串接收缓存区
+uint8 encoder_rx_count = 0;            // 字符串接收计数器
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介      无刷驱动 请求编码器信息 (字符串模式)
+// 返回参数      void
+//-------------------------------------------------------------------------------------------------------------------
+void small_driver_request_encoder(void)
+{
+    char *cmd = "GET-ENCODER\n";
+    uart_write_buffer(SMALL_DRIVER_UART, (uint8 *)cmd, strlen(cmd)); // 发送字符串指令
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介      无刷驱动 字符串接收回调函数 (解析 "123,456" 格式)
+// 备注信息      需要在对应的串口接收中断中调用，替换原有的 uart_control_callback
+//-------------------------------------------------------------------------------------------------------------------
+void uart_encoder_string_callback(void)
+{
+    uint8 receive_data;
+
+    // 循环读取串口接收寄存器中的所有数据
+    while(uart_query_byte(SMALL_DRIVER_UART, &receive_data))       
+    {
+        if(receive_data == '\n')                                // 遇到回车，说明一帧数据接收完毕
+        {
+            encoder_rx_buffer[encoder_rx_count] = '\0';         // 封口，变成标准 C 语言字符串
+
+            // 寻找逗号的位置
+            char *comma_ptr = strchr(encoder_rx_buffer, ',');
+            if(comma_ptr != NULL)
+            {
+                *comma_ptr = '\0';                              // 将逗号替换为结束符 '\0'，把字符串劈成两半
+                
+                // 将字符串转为数字，并存入我们结构体的新变量中
+                motor_value.receive_left_encoder_data = atoi(encoder_rx_buffer);       
+                motor_value.receive_right_encoder_data = atoi(comma_ptr + 1);          
+            }
+
+            encoder_rx_count = 0;                               // 解析完清零计数器
+            memset(encoder_rx_buffer, 0, sizeof(encoder_rx_buffer)); // 清空缓存区
+        }
+        else if(receive_data != '\r')                           // 过滤掉可能存在的 '\r' 字符
+        {
+            if(encoder_rx_count < 30)                           // 数组防溢出保护
+            {
+                encoder_rx_buffer[encoder_rx_count ++] = receive_data; // 保存有效字符
+            }
+            else
+            {
+                encoder_rx_count = 0;                           // 超长则认为是错误数据，直接丢弃
+            }
+        }
+    }
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介      无刷驱动 串口通讯初始化 (获取编码器专用版本)
+// 备注信息      在 main 函数中调用此函数，替代原有的 small_driver_uart_init
+//-------------------------------------------------------------------------------------------------------------------
+void small_driver_uart_init_encoder(void)
+{
+    uart_init(SMALL_DRIVER_UART, SMALL_DRIVER_BAUDRATE, SMALL_DRIVER_RX, SMALL_DRIVER_TX);      // 串口初始化
+    uart_rx_interrupt(SMALL_DRIVER_UART, 1);                                                    // 使能串口接收中断
+
+    small_driver_init();                                                                        // 结构体参数初始化
+    
+    // 清空编码器相关变量
+    motor_value.receive_left_encoder_data = 0;
+    motor_value.receive_right_encoder_data = 0;
+    encoder_rx_count = 0;
+    memset(encoder_rx_buffer, 0, sizeof(encoder_rx_buffer));
+
+    small_driver_set_duty(0, 0);                                                                // 设置0占空比防暴走
+    small_driver_request_encoder();                                                             // 发送请求编码器指令
+}
+//********************************************************************
+
+
+
+*/
+
+
 
 
 

@@ -36,6 +36,22 @@
 
 
 #include "zf_common_headfile.h"
+#include "wifi.h"
+#include "ipc_shared_data.h"
+#include "screen_display.h"
+#include "vofa_protocol.h"
+
+// 独立的接收回调
+void uart_rx_interrupt_handler(void)
+{
+    uint8 rx_data = 0; 
+    if(uart_query_byte(UART_0, &rx_data)) 
+    {
+        fifo_write_buffer(&uart_data_fifo, &rx_data, 1); 
+    }
+}
+
+
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
 {
@@ -86,23 +102,28 @@ void pit0_ch14_isr()                    // 定时器通道 14 周期中断服务函数
     pit_isr_flag_clear(PIT_CH14);
 	
 }
-
+//***   7_1核心使用以下定时中断   ***
 void pit0_ch15_isr()                    // 定时器通道 15 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH15);
-	
+    IPC_Pull_Status_To_CoreB();
+   // printf("%f,%f,%f \n",core_a_status.yaw,core_a_status.pitch,core_a_status.roll);
 }
 
 void pit0_ch16_isr()                    // 定时器通道 16 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH16);
+    
+    WIFI_Send_flag=1;
 	
 }
 
 void pit0_ch17_isr()                    // 定时器通道 17 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH17);
-	
+     
+    IPS200_flag=1;
+    
 }
 
 void pit0_ch18_isr()                    // 定时器通道 18 周期中断服务函数      
@@ -339,10 +360,12 @@ void uart0_isr (void)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_0), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
         
-#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
-        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
-#endif                                              				                // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
-      
+        uart_rx_interrupt_handler();
+        //printf("receive succeed\n");
+        
+//#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
+//        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
+//#endif                                              				                // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去 
         
         
     }

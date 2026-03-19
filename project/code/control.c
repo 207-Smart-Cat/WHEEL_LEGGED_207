@@ -281,7 +281,7 @@ void adjust_pid_based_on_leg_height(float *current_leg_height)
 void Balance_init()
 {
     pid_init();                                                                // 初始化PID参数
-    Kalman_init(&filter, 1.0f, 0.05f, RPITCH_ROLL, 0.05f, 0.05f, QPITCH_ROLL); // 初始化卡尔曼滤波器
+    //Kalman_init(&filter, 1.0f, 0.05f, RPITCH_ROLL, 0.05f, 0.05f, QPITCH_ROLL); // 初始化卡尔曼滤波器
     int leg1, leg2;
     servo_control(x_current, y_current, &leg1, &leg2);
 
@@ -333,7 +333,7 @@ float Balance(float Angle, float Gyro, float target)
     float Gyro_bias = 0 - Gyro;                                                // 微分控制项，用于平缓过度
     float balance = -motor_Stand.kp * Angle_bias + Gyro_bias * motor_Stand.kd; // （修改了Gyro_bias的符号）
     /*增大角度的本质在于适当减速使得车身前倾，因此为负值*/
-    printf("%lf\n", Gyro);
+    //printf("%lf\n", Gyro);
     // printf("data: %f,%f,%f\r\n", Angle_bias, Gyro_bias, balance);
     // fuzzy_pid_adjust(&motor_Stand, Angle_bias, Gyro_bias, &angle_rules, &angle_pid_limits);
 
@@ -544,7 +544,7 @@ void balance_control()
     Motor_Right = (signed short int)cuu(Motor_Right);
 
     // 设置PWM输出
-    small_driver_set_duty(Motor_Left, -Motor_Right);
+    small_driver_set_duty(-Motor_Left, -Motor_Right);
 
     // printf("\n\n\n");
 }

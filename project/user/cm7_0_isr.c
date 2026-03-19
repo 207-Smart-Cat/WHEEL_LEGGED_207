@@ -4,6 +4,9 @@
 #include "small_driver_uart_control.h"
 #include "imu.h"
 #include "wifi.h"
+#include "ipc_shared_data.h"
+#include "control.h"
+#include "remote.h"
 // 引入主函数中的定时标志位
 extern uint8 IPS200_flag;
 extern uint8 Motor_Control_flag;
@@ -11,22 +14,27 @@ extern uint8 Motor_Control_flag;
 void pit0_ch0_isr()                     // IMU读取与滤波解析，非常重要 (5ms)
 {
     pit_isr_flag_clear(PIT_CH0);
+    
+    IPC_Check_And_Apply_Params_To_Core0();
+    
     imu_attitude();
-    //printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
+    IPC_Push_Status_From_CoreA();
+
+    printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
 }
 
 
-void pit0_ch1_isr()                     //屏幕刷新中断，不重要（200ms）
+void pit0_ch1_isr()                     //
 {
     pit_isr_flag_clear(PIT_CH1);
-   // IPS200_flag = 1;
+
     
 }
 
 void pit0_ch2_isr()                     //
 {
     pit_isr_flag_clear(PIT_CH2);
-    //Motor_Control_flag = 1; // 仅置位，不执行任何耗时操作
+
 }
 
 void pit0_ch10_isr()                    // 平衡控制，非常重要（10ms） 
@@ -36,24 +44,23 @@ void pit0_ch10_isr()                    // 平衡控制，非常重要（10ms）
     
 }
 
-void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数      
+void pit0_ch11_isr()                    //
 {
     pit_isr_flag_clear(PIT_CH11);
-   // wifi_report_task();
     
 }
 
-void pit0_ch12_isr()                    // 定时器通道 12 周期中断服务函数      
+void pit0_ch12_isr()                    // 遥控器控制，重要（10ms）
 {
     Remote_control_callback();
     pit_isr_flag_clear(PIT_CH12);
     
 }
 
-void pit0_ch13_isr()                    // 定时器通道 13 周期中断服务函数      
+void pit0_ch13_isr()                    // 舵机控制，非常重要（30ms）  
 {
     extern float x_current, y_current;
-    leg_control(&x_current, &y_current);
+    //leg_control(&x_current, &y_current);
     pit_isr_flag_clear(PIT_CH13);
     
 }
@@ -316,9 +323,9 @@ void uart0_isr (void)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_0), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
         
-#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
-        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
-#endif                                              				                // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
+//#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
+//        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
+//#endif                                              				                // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
       
         
         

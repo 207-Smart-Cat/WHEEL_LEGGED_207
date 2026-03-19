@@ -27,6 +27,9 @@
 #define WIFI_SSID_TEST          "test207"               //注意zf_device_wifi_spi.h里面也有相关定义，这里已经把那里 的定义注释了，使用本文件的定义
 #define WIFI_PASSWORD_TEST      "12345678"
 
+
+
+
 // --- WIFI 工作模式枚举定义 ---
 typedef enum {
     WIFI_MODE_SILENT = 0,   // 模式0：静默待机（不发数据，省算力）
@@ -38,6 +41,8 @@ typedef enum {
 // --- 外部变量声明 ---
 // 使用 extern 暴露这个变量，这样你在 main 函数里也能随时强制修改它
 extern wifi_mode_t current_wifi_mode;
+// 外部声明WIFI发送标志位
+extern volatile uint8 WIFI_Send_flag;
 
 // --- 函数声明 ---
 void wifi_init(void);           

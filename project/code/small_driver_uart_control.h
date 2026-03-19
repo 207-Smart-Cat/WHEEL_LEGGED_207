@@ -12,6 +12,30 @@
 
 #define SMALL_DRIVER_TX                         (UART2_RX_P10_0)
 
+
+/*
+typedef struct
+{
+    uint8 send_data_buffer[7];                  // 发送缓冲数组
+
+    uint8 receive_data_buffer[7];               // 接收缓冲数组
+
+    uint8 receive_data_count;                   // 接收计数
+
+    uint8 sum_check_data;                       // 校验位
+
+    int16 receive_left_speed_data;              // 接收到的左侧电机速度数据
+
+    int16 receive_right_speed_data;             // 接收到的右侧电机速度数据
+    
+    int32 receive_left_encoder_data;            // 左侧编码器数据 (建议用int32防止溢出)
+    
+    int32 receive_right_encoder_data;           // 右侧编码器数据
+
+}small_device_value_struct;
+*/
+
+
 typedef struct
 {
     uint8 send_data_buffer[7];                  // 发送缓冲数组
@@ -39,5 +63,12 @@ void small_driver_set_duty(int16 left_duty, int16 right_duty);      // 无刷驱动 
 void small_driver_get_speed(void);                                  // 无刷驱动 获取速度信息
 
 void small_driver_uart_init(void);                                  // 无刷驱动 串口通讯初始化
+
+/*
+// 编码器字符串通讯相关函数声明
+void small_driver_request_encoder(void);
+void uart_encoder_string_callback(void);
+void small_driver_uart_init_encoder(void);
+*/
 
 #endif
