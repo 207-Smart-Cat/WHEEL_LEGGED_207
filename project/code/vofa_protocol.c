@@ -109,6 +109,43 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                     core_b_cmd.r_pr = temp_float.f_val; 
                     core_b_cmd.update_mask |= (1 << 4); 
                     break;
+                case 0x06: 
+                    core_b_cmd.speed_p = temp_float.f_val; 
+                    core_b_cmd.update_mask |= (1 << 5); 
+                    break;
+                case 0x07: 
+                    core_b_cmd.speed_i = temp_float.f_val; 
+                    core_b_cmd.update_mask |= (1 << 6); 
+                    break;
+                case 0x08: 
+                    core_b_cmd.speed_d = temp_float.f_val; 
+                    core_b_cmd.update_mask |= (1 << 7); 
+                    break;
+                
+                case 0x09: 
+                    core_b_cmd.angle_p = temp_float.f_val; 
+                    core_b_cmd.update_mask |= (1 << 8); 
+                    break;
+                case 0x0A: 
+                    core_b_cmd.angle_i = temp_float.f_val; 
+                    core_b_cmd.update_mask |= (1 << 9); 
+                    break;
+                case 0x0B: 
+                    core_b_cmd.angle_d = temp_float.f_val;
+                    core_b_cmd.update_mask |= (1 << 10); 
+                    break;
+                case 0x0C: 
+                    core_b_cmd.gyro_p  = temp_float.f_val; 
+                    core_b_cmd.update_mask |= (1 << 11); 
+                    break;
+                case 0x0D: 
+                    core_b_cmd.gyro_i  = temp_float.f_val; 
+                    core_b_cmd.update_mask |= (1 << 12); 
+                    break;
+                case 0x0E: 
+                    core_b_cmd.gyro_d  = temp_float.f_val; 
+                    core_b_cmd.update_mask |= (1 << 13); 
+                    break;
                 default: break;
             }
 

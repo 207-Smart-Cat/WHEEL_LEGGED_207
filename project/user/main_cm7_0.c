@@ -7,6 +7,7 @@
 #include "remote.h"
 #include "screen_display.h"
 #include "ipc_shared_data.h"
+#include "param.h"
 // **************************** 核间通信区域 ****************************
 // 在 CM7_0 和 CM7_1 中都需要加入这段代码
 
@@ -80,7 +81,7 @@ int main(void)
     {
         // 此处编写需要循环执行的代码
 
-        
-        system_delay_ms(1);
+      printf("P: %f \n",Speed_p);
+        system_delay_ms(100);
     }
 }

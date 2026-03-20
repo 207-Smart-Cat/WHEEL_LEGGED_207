@@ -474,11 +474,12 @@ void balance_control()
     {
         // 初始化速度PID
         PidInit(&motor_speed);
-        PidChange(&motor_speed, 0.06, 0, 0.022);
+        PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
 
         // 初始化电机角度PID
         PidInit(&motor_Stand);
-        PidChange(&motor_Stand, 6, 0, 0.4);
+        PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
+        
     }
     // 计算左右电机速度
     if (i % 5 == 0)

@@ -19,7 +19,16 @@ typedef struct {
     float q_bias;  // ID 3
     float r_yaw;   // ID 4
     float r_pr;    // ID 5
-
+    float speed_p; //ID 6
+    float speed_i; //ID 7
+    float speed_d; //ID 8
+    float angle_p; //ID 9
+    float angle_i; //ID 10
+    float angle_d; //ID 11
+    float gyro_p;  //ID 12
+    float gyro_i;  //ID 13 
+    float gyro_d;  //ID 14
+    
     // 状态控制
     uint8 update_mask;       // 掩码位：bit0~bit4 对应上述 5 个参数
     uint8 param_update_flag; // 总门铃：1-有更新，0-已处理

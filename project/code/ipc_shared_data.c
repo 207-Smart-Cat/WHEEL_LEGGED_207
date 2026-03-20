@@ -1,7 +1,7 @@
 #include "ipc_shared_data.h"
 #include "imu.h"
 #include "control.h"
-
+#include "param.h"
 // --- 1. 绝对地址内存分配 ---
 #pragma location = 0x28001000
 __no_init CoreA_Status_t core_a_status; 
@@ -24,6 +24,10 @@ void IPC_Init_Shared_Memory(void) {
     core_b_cmd.r_pr  = 0.05f;
     core_b_cmd.update_mask = 0;
     core_b_cmd.param_update_flag = 0;
+    
+    core_b_cmd.speed_p = 0.06f; core_b_cmd.speed_i = 0.0f; core_b_cmd.speed_d = 0.022f;
+    core_b_cmd.angle_p = 6.0f;  core_b_cmd.angle_i = 0.0f; core_b_cmd.angle_d = 0.4f;
+    core_b_cmd.gyro_p  = 5.0f;  core_b_cmd.gyro_i  = 0.5f; core_b_cmd.gyro_d  = 0.27f;
 
     SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -72,6 +76,18 @@ void IPC_Check_And_Apply_Params_To_Core0(void) {
         if(core_b_cmd.update_mask & (1 << 2)) filter.Qgyrobias   = core_b_cmd.q_bias;
         if(core_b_cmd.update_mask & (1 << 3)) filter.Ryaw        = core_b_cmd.r_yaw;
         if(core_b_cmd.update_mask & (1 << 4)) filter.Rpitch_roll = core_b_cmd.r_pr;
+        
+        if(core_b_cmd.update_mask & (1 << 5))  Speed_p = core_b_cmd.speed_p;
+        if(core_b_cmd.update_mask & (1 << 6))  Speed_i = core_b_cmd.speed_i;
+        if(core_b_cmd.update_mask & (1 << 7))  Speed_d = core_b_cmd.speed_d;
+        
+        if(core_b_cmd.update_mask & (1 << 8))  Angle_p = core_b_cmd.angle_p;
+        if(core_b_cmd.update_mask & (1 << 9))  Angle_i = core_b_cmd.angle_i;
+        if(core_b_cmd.update_mask & (1 << 10)) Angle_d = core_b_cmd.angle_d;
+        
+        if(core_b_cmd.update_mask & (1 << 11)) Gyro_p  = core_b_cmd.gyro_p;
+        if(core_b_cmd.update_mask & (1 << 12)) Gyro_i  = core_b_cmd.gyro_i;
+        if(core_b_cmd.update_mask & (1 << 13)) Gyro_d  = core_b_cmd.gyro_d;
 
         // 3. 清除标记并写回 SRAM
         core_b_cmd.update_mask = 0;

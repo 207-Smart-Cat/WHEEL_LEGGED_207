@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include "pid.h"
 #include "param.h"
-float target_velocity = 1000;  // 目标速度
+#include "imu.h"
+float target_velocity = 0;  // 目标速度
 float target_angle = 0;       // 目标角度
-float target_motor_Stand = 0; // 目标电机角度
+float target_motor_Stand = +7; // 目标电机角度
 
 float x_current, y_current = 0.025; // 腿高零点
 
@@ -24,3 +25,4 @@ float Gyro_p = 5, Gyro_i = 0.5, Gyro_d = 0.27; // 角速度环
 float Air_roll_p = 45, Air_roll_i = 0, Air_roll_d = 2; // 空中控制器
 
 float Direction_p = 0.044, Direction_i = 0.00086, Direction_d = 0.85; // 方向调整
+

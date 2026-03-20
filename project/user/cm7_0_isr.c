@@ -20,7 +20,7 @@ void pit0_ch0_isr()                     // IMU读取与滤波解析，非常重要 (5ms)
     imu_attitude();
     IPC_Push_Status_From_CoreA();
 
-    printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
+   // printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
 }
 
 
