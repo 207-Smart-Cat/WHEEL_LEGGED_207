@@ -12,6 +12,8 @@ float leg_error;
 
 int speed_up = 0;
 float Turn_Pwm; // 转向PWM值
+
+
 // PID参数
 extern pid_param_t motor_speed;     // 速度PID参数---------------------速度环
 extern pid_param_t motor_Stand;     // 电机角度PID参数---------------------角度环
@@ -37,6 +39,10 @@ int jump_position = 0;
 float border = 94;
 //============================================================================/
 // 腿部控制参数
+
+float temp_a,temp_b;
+
+
 
 // 模糊规则参数
 typedef struct
@@ -489,11 +495,13 @@ void balance_control()
         {
             Velocity_Angle_left = Velocity(Encoder_Left, target_velocity - v_buchang);
             Velocity_Angle_right = Velocity(-Encoder_Right, target_velocity + v_buchang); // 右侧输入务必取反
+
         }
         else
         {
             Velocity_Angle_left = Velocity(Encoder_Left, target_velocity + v_buchang);
             Velocity_Angle_right = Velocity(-Encoder_Right, target_velocity - v_buchang);
+
         }
     }
 
@@ -506,6 +514,7 @@ void balance_control()
     {
         Balance_Pwm_left = Balance(roll, IMU_data.gyro[0], Velocity_Angle_left);
         Balance_Pwm_right = Balance(roll, IMU_data.gyro[0], Velocity_Angle_right);
+
     }
     // 计算陀螺仪控制PWM值
 
@@ -521,9 +530,9 @@ void balance_control()
     else
     {
         // 计算转向PWM值
-        Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle); // 中点拟合
+       // Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle); // 中点拟合
         // //===================仅调试去除转向功能使用=================================
-        // Turn_Pwm = 0;
+         Turn_Pwm = 0;
         // //====================================================================
         if (Turn_Pwm <= 0.2) // !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
         {
@@ -569,7 +578,7 @@ void leg_control(float *x, float *y)
     else if (x_cal < -0.04f)
         x_cal = -0.04f;
 
-    *x = x_cal;
+//    *x = x_cal;
 
     // ---------- 2. 左右平衡：单边抬高 (去毛刺与平滑处理) ----------
     float angle_now = IMU_data.filter_result.pitch;

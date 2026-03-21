@@ -43,6 +43,8 @@ int Bridge_position = 1;     // 可能是过单边桥时候需要的（腿部自适应）
 int yanshi_biaozhiwei = 100; // 可能是过单边桥时候需要的（腿部自适应模式）
 int change_speed = 0;
 
+
+extern float temp_a,temp_b;
 // **************************** 封装调试部分函数区域 ****************************
 
 
@@ -60,8 +62,8 @@ int main(void)
     imu_init(LED1);
     pit_ms_init(PIT_IMU, 5);
      //========================遥控器控制初始化==========================
-    Remote_Init();
-    pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
+//    Remote_Init();
+//    pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
     //=================================平衡动作初始化========================
     Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
     pit_ms_init(PIT_Balance, 10);
@@ -80,8 +82,18 @@ int main(void)
     while (true)
     {
         // 此处编写需要循环执行的代码
-
-      printf("P: %f \n",Speed_p);
-        system_delay_ms(100);
+      extern float x_current, y_current;
+    leg_control(&x_current, &y_current);
+    
+    IPC_Push_Status_From_CoreA();
+    
+    //printf("%f,%f",temp_a,temp_b);
+    //printf("V: %d \n",motor_value.receive_left_speed_data);
+    //printf("%d,%d\n",Motor_Left,Motor_Right);
+    
+    // printf("P: %f \n",Speed_p);
+    // printf("stand: %f \n",target_motor_Stand);
+      //printf("target_v: %f \n",target_velocity);
+        system_delay_ms(30);
     }
 }

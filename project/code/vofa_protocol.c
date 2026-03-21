@@ -14,6 +14,8 @@ typedef union {
     uint8 b_val[4];
 } FloatConverter_t;
 
+
+
 /**
  * @brief 终极通用协议解析器
  */
@@ -36,7 +38,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                     if(current_wifi_mode != WIFI_MODE_WAVE) 
                     {
                         current_wifi_mode = WIFI_MODE_WAVE;
-                        printf("\r\n >>> Enter WAVE Mode <<< \r\n");
+                        LOG_Printf("\r\n >>> Enter WAVE Mode <<< \r\n");
                     }
                     else wave_format ^= 1;
                 }
@@ -65,8 +67,8 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             if(sum_check == rx_buffer[i + 5]) 
             {
                 uint8 cmd_id = rx_buffer[i + 2]; 
-                if(cmd_id == 0x01) printf("\r\n [VOFA] KILL SWITCH! \r\n");
-                else if(cmd_id == 0x02) printf("\r\n [VOFA] STAY STILL! \r\n");
+                if(cmd_id == 0x01) LOG_Printf("\r\n [VOFA] KILL SWITCH! \r\n");
+                else if(cmd_id == 0x02) LOG_Printf("\r\n [VOFA] STAY STILL! \r\n");
                 i += 5; continue;
             }
         }
@@ -77,89 +79,70 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
         // ========================================================
         else if((i + 6) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC2)
         {
-            uint8 param_id = rx_buffer[i + 2];
+            uint8 param_id = rx_buffer[i + 2]; // VOFA 下发的是 0x01 到 0x11
+            
+            // 安全检查：如果 ID 超出了我们现有的参数总数，直接丢弃
+            if (param_id == 0 || param_id > PARAM_COUNT) {
+                i += 6; continue;
+            }
+
             FloatConverter_t temp_float;
             temp_float.b_val[0] = rx_buffer[i + 3];
             temp_float.b_val[1] = rx_buffer[i + 4];
             temp_float.b_val[2] = rx_buffer[i + 5];
             temp_float.b_val[3] = rx_buffer[i + 6];
 
-            __disable_irq(); // 保护共享内存写入过程
+            // 把从 1 开始的 ID 转换为从 0 开始的数组下标
+            uint8 index = param_id - 1; 
 
-            // 根据 param_id 只填充对应的坑位，并标记掩码位
-            switch(param_id)
-            {
-                case 0x01: 
-                    core_b_cmd.q_yaw = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 0); 
-                    break;
-                case 0x02: 
-                    core_b_cmd.q_pr = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 1); 
-                    break;
-                case 0x03: 
-                    core_b_cmd.q_bias = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 2); 
-                    break;
-                case 0x04: 
-                    core_b_cmd.r_yaw = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 3); 
-                    break;
-                case 0x05: 
-                    core_b_cmd.r_pr = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 4); 
-                    break;
-                case 0x06: 
-                    core_b_cmd.speed_p = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 5); 
-                    break;
-                case 0x07: 
-                    core_b_cmd.speed_i = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 6); 
-                    break;
-                case 0x08: 
-                    core_b_cmd.speed_d = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 7); 
-                    break;
-                
-                case 0x09: 
-                    core_b_cmd.angle_p = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 8); 
-                    break;
-                case 0x0A: 
-                    core_b_cmd.angle_i = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 9); 
-                    break;
-                case 0x0B: 
-                    core_b_cmd.angle_d = temp_float.f_val;
-                    core_b_cmd.update_mask |= (1 << 10); 
-                    break;
-                case 0x0C: 
-                    core_b_cmd.gyro_p  = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 11); 
-                    break;
-                case 0x0D: 
-                    core_b_cmd.gyro_i  = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 12); 
-                    break;
-                case 0x0E: 
-                    core_b_cmd.gyro_d  = temp_float.f_val; 
-                    core_b_cmd.update_mask |= (1 << 13); 
-                    break;
-                default: break;
-            }
+            __disable_irq(); 
+            
+            // 仅仅两行代码，替代了你原来的 17 个 case！
+            core_b_cmd.params[index] = temp_float.f_val; 
+            core_b_cmd.update_mask |= (1 << index); 
 
-            // 只要有改动，就敲响门铃
             core_b_cmd.param_update_flag = 1; 
-
-            // ?? 关键：写完后立刻同步 D-Cache 到 SRAM 物理地址
             SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
-
             __enable_irq(); 
             
-            printf("[Core 1] Param %d set to %.4f (Mask: 0x%02X)\n", param_id, temp_float.f_val, core_b_cmd.update_mask);
+            // 字符串映射表
+            static const char* param_names[] = {
+                "Q_yaw", "Q_pr", "Q_bias", "R_yaw", "R_pr", 
+                "Speed_P", "Speed_I", "Speed_D",            
+                "Angle_P", "Angle_I", "Angle_D",            
+                "Gyro_P", "Gyro_I", "Gyro_D",               
+                "Target_Velocity", "Target_Angle", "Target_Motor_Stand"
+            };
+            
+            LOG_Printf("[Core 1] Param '%s' set to %.4f (Mask: 0x%02X)\r\n", 
+                   param_names[index], temp_float.f_val, core_b_cmd.update_mask);
             
             i += 6; continue;
+        }
+        // ========================================================
+        // 协议 4: 系统级指令 - 一键保存参数到 Flash (AA C3)
+        // 格式: AA C3 88 55
+        // ========================================================
+        else if((i + 3) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC3 && 
+                rx_buffer[i+2] == 0x88 && rx_buffer[i+3] == 0x55)
+        {
+            LOG_Printf("\r\n[VOFA] Received SAVE TO FLASH command!\r\n");
+            
+            SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
+            
+            if ( (core_a_status.left_pwm_duty > 1000) || (core_a_status.right_pwm_duty) > 1000) 
+            {
+                LOG_Printf("[ERROR] Motor is running! PLEASE STOP CAR FIRST!\r\n");
+            }
+            else
+            {
+                LOG_Printf("Writing real params from Core A to Flash...\r\n");
+                // 【修改这里】直接调用 ipc_shared_data 里的函数
+                IPC_Save_Params_To_Flash(); 
+                LOG_Printf("Save Complete!\r\n");
+            }
+            
+            i += 3; continue;
         }
     }
 }
@@ -187,7 +170,7 @@ void VOFA_UART_Init(void)
 void VOFA_UART_Process(void)
 {
     uint32 fifo_data_count = fifo_used(&uart_data_fifo); 
-    if(fifo_data_count >= 6) 
+    if(fifo_data_count >= 3) 
     {
         system_delay_ms(2); 
         fifo_data_count = fifo_used(&uart_data_fifo);

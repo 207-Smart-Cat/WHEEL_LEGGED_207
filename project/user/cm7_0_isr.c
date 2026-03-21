@@ -18,7 +18,7 @@ void pit0_ch0_isr()                     // IMU读取与滤波解析，非常重要 (5ms)
     IPC_Check_And_Apply_Params_To_Core0();
     
     imu_attitude();
-    IPC_Push_Status_From_CoreA();
+    
 
    // printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
 }
@@ -52,15 +52,15 @@ void pit0_ch11_isr()                    //
 
 void pit0_ch12_isr()                    // 遥控器控制，重要（10ms）
 {
-    Remote_control_callback();
+//    Remote_control_callback();
     pit_isr_flag_clear(PIT_CH12);
     
 }
 
 void pit0_ch13_isr()                    // 舵机控制，非常重要（30ms）  
 {
-    extern float x_current, y_current;
-    //leg_control(&x_current, &y_current);
+//    extern float x_current, y_current;
+//    //leg_control(&x_current, &y_current);
     pit_isr_flag_clear(PIT_CH13);
     
 }
