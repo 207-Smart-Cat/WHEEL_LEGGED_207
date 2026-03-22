@@ -5,7 +5,7 @@
 
 #define MIN_X -0.05
 #define MAX_X 0.05
-#define MIN_Y 0.02
+#define MIN_Y 0.025
 #define MAX_Y 0.14
 #define L1 0.06
 #define L2 0.09
@@ -17,8 +17,8 @@
 #define MIN_LEG_LENGTH 0.04 // 最小腿部长度
 #define MAX_LEG_LENGTH 0.1  // 最大腿部长度
 
-#define RPITCH_ROLL 0.05f //测量噪声协方差 (增大这个值。这会让滤波器在更新角度时，更少地参考当前有毛刺的加速度计读数)
-#define QPITCH_ROLL 0.05f //过程噪声协方差 (减小这个值。这会告诉滤波器更相信陀螺仪的历史惯性积分，使得输出轨迹变得非常平稳)
+#define RPITCH_ROLL 0.05f //测量噪声协方差 (增大这个值。这会让滤波器在更新角度时，更少地参考当前有毛刺的加速度计读数)0.05
+#define QPITCH_ROLL 0.05f //过程噪声协方差 (减小这个值。这会告诉滤波器更相信陀螺仪的历史惯性积分，使得输出轨迹变得非常平稳)0.05
 extern const float servo_alpha;
 
 extern float target_velocity;    // 目标速度

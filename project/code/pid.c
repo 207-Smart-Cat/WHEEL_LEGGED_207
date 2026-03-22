@@ -58,8 +58,8 @@ float PidLocCtrl(pid_param_t * pid, float error)
     /* ÀÛ»ýÎó²î */
     pid->integrator += error;
 
-    /* Îó²îÏÞ·ù */
-    constrain_float(pid->integrator, -pid->imax, pid->imax);
+    /* »ý·ÖÎó²îÏÞ·ù */
+    pid->integrator=constrain_float(pid->integrator, -pid->imax, pid->imax);
 
 
     pid->out_p = pid->kp * error;

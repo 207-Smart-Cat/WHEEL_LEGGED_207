@@ -8,6 +8,7 @@
 
 // L1~L5 已经在外部宏定义
 
+static int leg1_last , leg2_last;
 void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
     // ==========================================
     // 1. 计算左侧关节角 phi1
@@ -24,7 +25,6 @@ void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
         float psi1 = atan2(b, a);
         float alpha1 = acos(c / sqrt(a_sq_plus_b_sq));
         
-        // 这里的 + 号对应原代码的 +sqrt 逻辑 (通常代表某种"肘部"配置)
         float phi1_rad = psi1 + alpha1; 
         
         *phi1 = phi1_rad * (180.0f / PI);
@@ -33,8 +33,8 @@ void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
         while (*phi1 > 360.0f) *phi1 -= 360.0f;
         while (*phi1 < 0.0f)   *phi1 += 360.0f;
     } else {
-        *phi1 = 400.0f; // 目标不可达标志
-        printf("PHI1,ERROR");
+        *phi1 = 400.0f; // 目标不可达标志(as a marker, no impact)
+        // printf("PHI1,ERROR\n");
     }
 
     // ==========================================
@@ -62,7 +62,7 @@ void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
         while (*phi4 < 0.0f)   *phi4 += 360.0f;
     } else {
         *phi4 = 400.0f; // 目标不可达标志
-        printf("PHI4,ERROR");
+        // printf("PHI4,ERROR\n");
     }
 }
 
@@ -75,9 +75,9 @@ void servo_control(float x, float y, int *leg1, int *leg2) {
     // 1. 如果目标点在物理上完全无法到达 (无解)
     if(phi1 == 400.0f || phi4 == 400.0f) {
         // 通常是因为过长不可达，使用1200站立
-        *leg1 = 1200; // 根据你的舵机中值替换为安全的PWM值
-        *leg2 = 1200; 
-        printf("ERROR NUMBER\n");
+        *leg1 = leg1_last; // 根据你的舵机中值替换为安全的PWM值
+        *leg2 = leg2_last; 
+        printf("Overloaded!\n");
         return;
     }
 
@@ -103,5 +103,7 @@ void servo_control(float x, float y, int *leg1, int *leg2) {
         // 兜底赋值，防止任何意料之外的数值导致乱码
         *leg2 = 250; 
     }
+    leg1_last=*leg1;
+    leg2_last=*leg2;
     
 }
