@@ -13,7 +13,7 @@
 #define L4 0.06
 #define L5 0.038
 #define PI 3.141592653589793
-#define MAX_DUTY (90)       // 电机最大PWM=85%
+#define MAX_DUTY (80)       // 电机最大PWM=85%
 #define MIN_LEG_LENGTH 0.04 // 最小腿部长度
 #define MAX_LEG_LENGTH 0.1  // 最大腿部长度
 

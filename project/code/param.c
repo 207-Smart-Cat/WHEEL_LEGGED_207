@@ -2,7 +2,7 @@
 #include "pid.h"
 #include "param.h"
 #include "imu.h"
-float target_velocity = 0;    // 目标速度
+float target_velocity = 800;    // 目标速度
 float target_angle = 0;       // 目标角度（遥控专用））
 float target_motor_Stand = 0; // 目标电机角度
 
@@ -18,9 +18,9 @@ const float servo_alpha = 0.3f; //一阶平滑，越大越灵敏
 
 float Speed_p = 0.06, Speed_i = 0, Speed_d = 0.0220; // 速度环
 //              0.06              0          0.022
-float Angle_p = 6, Angle_i = 0, Angle_d = 0.4; // 角度环
+float Angle_p = 8, Angle_i = 0, Angle_d = 0.4; // 角度环
 //             6                         0.4
-float Gyro_p = 5, Gyro_i = 0.5, Gyro_d = 0.27; // 角速度环
+float Gyro_p = 10, Gyro_i = 0.5, Gyro_d = 0.27; // 角速度环
 //             5                         0.27
 float Air_roll_p = 45, Air_roll_i = 0, Air_roll_d = 2; // 空中控制器
 

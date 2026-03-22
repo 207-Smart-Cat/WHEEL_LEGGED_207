@@ -558,23 +558,22 @@ float filter_leg_control(float current_angle, float target_angle, float filter_f
     return current_angle * filter_factor + target_angle * (1 - filter_factor);
 }
 /* 腿部控制器 */
-float g_roll_int_gain = 0.004f;
-float g_roll_d_gain = 0.00000f;
 
 void leg_control(float *x, float *y)
 {
-    /*
-    // ---------- 1. 计算腿部位置：前后倾斜补偿 ----------
-    float x_cal = 0.0450 * tan((double)((Velocity_Angle_left + Velocity_Angle_right) / 2 / 180 * 3.14));
 
+    // ---------- 1. 计算腿部位置：前后倾斜补偿 ----------
+    float x_cal = -0.029 * tan((double)(IMU_data.filter_result.roll / 180 * 3.14)); //-----Actually，Velocity_Angle_left/right均为目标倾角（速度环输出）
+    printf("X_Cal: %f", x_cal);
     if (x_cal > 0.04f)
         x_cal = 0.04f;
     else if (x_cal < -0.04f)
         x_cal = -0.04f;
-
-    //    *x = x_cal;
-
-*/
+    static float x_filter_last = 0.0f;
+    float alpha = 0.4f; // 滤波系数：alpha越小越平滑，响应越慢；
+    float x_final = alpha * x_cal + (1.0f - alpha) * x_filter_last;
+    x_filter_last = x_final; // 更新历史值
+    *x = x_final;            // 将平滑后的值赋
 
     extern float leg_Kp, leg_Ki, leg_Kd;
     PidInit(&motor_leg_pid);
@@ -598,10 +597,11 @@ void leg_control(float *x, float *y)
     angle_last = angle;
 
     float pitch_error = target_pitch - angle_filtered;
-    leg_error =  PidLocCtrl(&motor_leg_pid, pitch_error); 
+    leg_error = PidLocCtrl(&motor_leg_pid, pitch_error);
 
-    float LEG_DEADZONE =2.5f;//角度低阈值限幅
-    if (fabs(pitch_error) < LEG_DEADZONE) {
+    float LEG_DEADZONE = 2.5f; // 角度低阈值限幅
+    if (fabs(pitch_error) < LEG_DEADZONE)
+    {
         leg_error = 0;
         motor_leg_pid.integrator = 0; // 处于死区时清除积分，防止由于积分积累导致的缓慢爬行
     }
@@ -630,14 +630,17 @@ void leg_control(float *x, float *y)
     float leg_target = *y;
     float left_y = max(min(leg_target - leg_error, MAX_Y), MIN_Y);
     float right_y = max(min(leg_target + leg_error, MAX_Y), MIN_Y);
-    printf("Left/Right:%lf %lf\n", left_y, right_y);
+    // printf("Left/Right:%lf %lf\n", left_y, right_y);
 
     // ---------- 5. 逆运动学解算 ----------
     int leg1, leg2, leg3, leg4;
     static int leg1_last = 0, leg2_last = 0, leg3_last = 0, leg4_last = 0;
 
-    servo_control(*x, left_y, &leg1, &leg2);  // 左腿
-    servo_control(*x, right_y, &leg3, &leg4); // 右腿
+    // servo_control(*x, left_y, &leg1, &leg2);  // 左腿
+    // servo_control(*x, right_y, &leg3, &leg4); // 右腿
+
+    servo_control(*x, *y, &leg1, &leg2); // 左腿
+    servo_control(*x, *y, &leg3, &leg4); // 右腿
 
     if (is_first_run)
     {
