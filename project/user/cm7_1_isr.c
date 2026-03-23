@@ -1,15 +1,63 @@
-
+/*********************************************************************************************************************
+* CYT4BB Opensourec Library 即（ CYT4BB 开源库）是一个基于官方 SDK 接口的第三方开源库
+* Copyright (c) 2022 SEEKFREE 逐飞科技
+*
+* 本文件是 CYT4BB 开源库的一部分
+*
+* CYT4BB 开源库 是免费软件
+* 您可以根据自由软件基金会发布的 GPL（GNU General Public License，即 GNU通用公共许可证）的条款
+* 即 GPL 的第3版（即 GPL3.0）或（您选择的）任何后来的版本，重新发布和/或修改它
+*
+* 本开源库的发布是希望它能发挥作用，但并未对其作任何的保证
+* 甚至没有隐含的适销性或适合特定用途的保证
+* 更多细节请参见 GPL
+*
+* 您应该在收到本开源库的同时收到一份 GPL 的副本
+* 如果没有，请参阅<https://www.gnu.org/licenses/>
+*
+* 额外注明：
+* 本开源库使用 GPL3.0 开源许可证协议 以上许可申明为译文版本
+* 许可申明英文版在 libraries/doc 文件夹下的 GPL3_permission_statement.txt 文件中
+* 许可证副本在 libraries 文件夹下 即该文件夹下的 LICENSE 文件
+* 欢迎各位使用并传播本程序 但修改内容时必须保留逐飞科技的版权声明（即本声明）
+*
+* 文件名称          cm7_1_isr
+* 公司名称          成都逐飞科技有限公司
+* 版本信息          查看 libraries/doc 文件夹内 version 文件 版本说明
+* 开发环境          IAR 9.40.1
+* 适用平台          CYT4BB
+* 店铺链接          https://seekfree.taobao.com/
+*
+* 修改记录
+* 日期              作者                备注
+* 2024-1-9      pudding            first version
+* 2024-5-14     pudding            新增12个pit周期中断 增加部分注释说明
+********************************************************************************************************************/
 
 
 #include "zf_common_headfile.h"
+#include "wifi.h"
+#include "ipc_shared_data.h"
+#include "screen_display.h"
+#include "vofa_protocol.h"
 
-extern uint8 pit_state;
+// 独立的接收回调
+void uart_rx_interrupt_handler(void)
+{
+    uint8 rx_data = 0; 
+    if(uart_query_byte(UART_0, &rx_data)) 
+    {
+        fifo_write_buffer(&uart_data_fifo, &rx_data, 1); 
+    }
+}
+
+
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH0);
   
-    pit_state = 1;
+    
     
 }
 
@@ -54,23 +102,28 @@ void pit0_ch14_isr()                    // 定时器通道 14 周期中断服务函数
     pit_isr_flag_clear(PIT_CH14);
 	
 }
-
+//***   7_1核心使用以下定时中断   ***
 void pit0_ch15_isr()                    // 定时器通道 15 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH15);
-	
+    IPC_Pull_Status_To_CoreB();
+   // printf("%f,%f,%f \n",core_a_status.yaw,core_a_status.pitch,core_a_status.roll);
 }
 
 void pit0_ch16_isr()                    // 定时器通道 16 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH16);
+    
+    WIFI_Send_flag=1;
 	
 }
 
 void pit0_ch17_isr()                    // 定时器通道 17 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH17);
-	
+     
+    IPS200_flag=1;
+    
 }
 
 void pit0_ch18_isr()                    // 定时器通道 18 周期中断服务函数      
@@ -94,7 +147,7 @@ void pit0_ch20_isr()                    // 定时器通道 20 周期中断服务函数
 void pit0_ch21_isr()                    // 定时器通道 21 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH21);
-	tsl1401_collect_pit_handler();
+    tsl1401_collect_pit_handler();
 }
 // **************************** PIT中断函数 ****************************
 
@@ -160,9 +213,10 @@ void gpio_5_exti_isr()                  // 外部 GPIO_5 中断服务函数
 
 }
 
+
 void gpio_6_exti_isr()                  // 外部 GPIO_6 中断服务函数     
 {
-	
+
 
 
 }
@@ -306,10 +360,12 @@ void uart0_isr (void)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_0), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
         
-#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
-        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
-#endif                                              				                // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
-      
+        uart_rx_interrupt_handler();
+        //printf("receive succeed\n");
+        
+//#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
+//        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
+//#endif                                              				                // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去 
         
         
     }

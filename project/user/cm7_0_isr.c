@@ -1,91 +1,66 @@
-/*********************************************************************************************************************
-* CYT4BB Opensourec Library 即（ CYT4BB 开源库）是一个基于官方 SDK 接口的第三方开源库
-* Copyright (c) 2022 SEEKFREE 逐飞科技
-*
-* 本文件是 CYT4BB 开源库的一部分
-*
-* CYT4BB 开源库 是免费软件
-* 您可以根据自由软件基金会发布的 GPL（GNU General Public License，即 GNU通用公共许可证）的条款
-* 即 GPL 的第3版（即 GPL3.0）或（您选择的）任何后来的版本，重新发布和/或修改它
-*
-* 本开源库的发布是希望它能发挥作用，但并未对其作任何的保证
-* 甚至没有隐含的适销性或适合特定用途的保证
-* 更多细节请参见 GPL
-*
-* 您应该在收到本开源库的同时收到一份 GPL 的副本
-* 如果没有，请参阅<https://www.gnu.org/licenses/>
-*
-* 额外注明：
-* 本开源库使用 GPL3.0 开源许可证协议 以上许可申明为译文版本
-* 许可申明英文版在 libraries/doc 文件夹下的 GPL3_permission_statement.txt 文件中
-* 许可证副本在 libraries 文件夹下 即该文件夹下的 LICENSE 文件
-* 欢迎各位使用并传播本程序 但修改内容时必须保留逐飞科技的版权声明（即本声明）
-*
-* 文件名称          cm7_0_isr
-* 公司名称          成都逐飞科技有限公司
-* 版本信息          查看 libraries/doc 文件夹内 version 文件 版本说明
-* 开发环境          IAR 9.40.1
-* 适用平台          CYT4BB
-* 店铺链接          https://seekfree.taobao.com/
-*
-* 修改记录
-* 日期              作者                备注
-* 2024-1-9      pudding            first version
-* 2024-5-14     pudding            新增12个pit周期中断 增加部分注释说明
-********************************************************************************************************************/
-
+/*
+*/
 #include "zf_common_headfile.h"
-
-// **************************** Include & define部分****************************
+#include "small_driver_uart_control.h"
 #include "imu.h"
-
-// 1. 定义全局flag（中断仅置位，主循环检测）
-extern uint8 IPS200_flag;  // 屏幕显示
+#include "wifi.h"
+#include "ipc_shared_data.h"
+#include "control.h"
+#include "remote.h"
+// 引入主函数中的定时标志位
+extern uint8 IPS200_flag;
+extern uint8 Motor_Control_flag;
 // **************************** PIT中断函数 ****************************
-void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
+void pit0_ch0_isr()                     // IMU读取与滤波解析，非常重要 (5ms)
 {
     pit_isr_flag_clear(PIT_CH0);
-  
-    imu_attitude();
-    //printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
-	
     
+    IPC_Check_And_Apply_Params_To_Core0();
+    
+    imu_attitude();
+    
+
+   // printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
 }
 
-void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
+
+void pit0_ch1_isr()                     //
 {
     pit_isr_flag_clear(PIT_CH1);
-    
-    IPS200_flag=1;
 
+    
 }
 
-void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      
+void pit0_ch2_isr()                     //
 {
     pit_isr_flag_clear(PIT_CH2);
 
 }
 
-void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务函数      
+void pit0_ch10_isr()                    // 平衡控制，非常重要（10ms） 
 {
+    balance_control();
     pit_isr_flag_clear(PIT_CH10);
     
 }
 
-void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数      
+void pit0_ch11_isr()                    //
 {
     pit_isr_flag_clear(PIT_CH11);
     
 }
 
-void pit0_ch12_isr()                    // 定时器通道 12 周期中断服务函数      
+void pit0_ch12_isr()                    // 遥控器控制，重要（10ms）
 {
+//    Remote_control_callback();
     pit_isr_flag_clear(PIT_CH12);
     
 }
 
-void pit0_ch13_isr()                    // 定时器通道 13 周期中断服务函数      
+void pit0_ch13_isr()                    // 舵机控制，非常重要（30ms）  
 {
+//    extern float x_current, y_current;
+//    //leg_control(&x_current, &y_current);
     pit_isr_flag_clear(PIT_CH13);
     
 }
@@ -348,9 +323,9 @@ void uart0_isr (void)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_0), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
         
-#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
-        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
-#endif                                              				                // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
+//#if DEBUG_UART_USE_INTERRUPT                        				                // 如果开启 debug 串口中断
+//        debug_interrupr_handler();                  				                // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
+//#endif                                              				                // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
       
         
         
@@ -364,6 +339,36 @@ void uart0_isr (void)
     }
 }
 
+
+/*
+typedef enum                   // 枚举串口发送引脚 此枚举定义不允许用户修改
+{
+    UART0_TX_P00_1,             // 串口0 发送引脚
+ 
+    UART1_TX_P04_1,             // 串口1 发送引脚
+
+    UART2_TX_P10_1,             // 串口2 发送引脚可选范围
+
+    UART3_TX_P17_2,             // 串口3 发送引脚可选范围
+
+    UART4_TX_P14_1,             // 串口4 发送引脚可选范围
+}uart_tx_pin_enum;
+
+
+typedef enum                   // 枚举串口接收引脚 此枚举定义不允许用户修改
+{
+
+    UART0_RX_P00_0,             // 串口0 接收引脚
+ 
+    UART1_RX_P04_0,             // 串口1 接收引脚
+  
+    UART2_RX_P10_0,             // 串口2 接收引脚可选范围
+
+    UART3_RX_P17_1,             // 串口3 接收引脚可选范围
+	
+    UART4_RX_P14_0,             // 串口4 接收引脚可选范围
+}uart_rx_pin_enum;
+ */
 void uart1_isr (void)
 {
     if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_1)) & CY_SCB_UART_RX_NOT_EMPTY)            // 串口1接收中断
@@ -385,20 +390,16 @@ void uart1_isr (void)
 
 void uart2_isr (void)
 {
-    if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_RX_NOT_EMPTY)            // 串口2接收中断
+    if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_RX_NOT_EMPTY)
     {
-        Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
+        Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);
 
-        gnss_uart_callback();
-        
-        
+        // 【名花有主】：电机驱动的解析函数必须放在串口 2 这里！
+        uart_control_callback();
     }
-    else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_TX_DONE)            // 串口2发送中断
+    else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_TX_DONE)
     {
-        Cy_SCB_ClearTxInterrupt(get_scb_module(UART_2), CY_SCB_UART_TX_DONE);                   // 清除接收中断标志位
-        
-        
-        
+        Cy_SCB_ClearTxInterrupt(get_scb_module(UART_2), CY_SCB_UART_TX_DONE);
     }
 }
 
@@ -420,25 +421,16 @@ void uart3_isr (void)
         
     }
 }
-
 void uart4_isr (void)
 {
-    
-    if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_RX_NOT_EMPTY)            // 串口4接收中断
+    if(Cy_SCB_GetRxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_RX_NOT_EMPTY)
     {
-        Cy_SCB_ClearRxInterrupt(get_scb_module(UART_4), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
-
-        
-        uart_receiver_handler();                                                                // 串口接收机回调函数
-        
-        
+        Cy_SCB_ClearRxInterrupt(get_scb_module(UART_4), CY_SCB_UART_RX_NOT_EMPTY);
+        uart_receiver_handler();   //无线串口接收中断函数指针，根据初始化时设置的函数进行跳转
     }
-    else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_TX_DONE)            // 串口4发送中断
+    else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_TX_DONE)
     {
-        Cy_SCB_ClearTxInterrupt(get_scb_module(UART_4), CY_SCB_UART_TX_DONE);                   // 清除接收中断标志位
-        
-        
-        
+        Cy_SCB_ClearTxInterrupt(get_scb_module(UART_4), CY_SCB_UART_TX_DONE);
     }
 }
 // **************************** 串口中断函数 ****************************

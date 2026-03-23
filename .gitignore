@@ -1,12 +1,39 @@
-# 鎺掗櫎 IAR 绶ㄨ鐢㈢敓鐨勪腑闁撴枃浠惰垏瑾胯│淇℃伅
+# ============================================================
+# 207-Smart-Cat: CYT4BB7 專案 Git 忽略清單
+# ============================================================
+
+# --- IAR 編譯輸出與本地配置 ---
 Debug/
 Release/
-*.ninja_log
+project/iar/Debug_m7_0/
+project/iar/Debug_m7_1/
+settings/
+.cyt4bb7_cm_7_0_build_cache
+
+# --- 編譯產生的中間檔案 ---
+*.o
+*.obj
 *.dep
 *.pbi
 *.pbd
 *.browse
 *.tmp
-*.o
-*.obj
-settings/
+*.o.iar_deps
+
+# --- Ninja 建構系統相關 ---
+*.ninja_log
+*.ninja_deps
+build.ninja
+
+# --- IAR 調試、映像與燒錄檔 ---
+*.pbw
+*.map
+*.sim
+*.xcl
+*.xcl.rsp
+*.hex
+*.out
+
+# --- VSCode 本地設定 ---
+iar-vsc.json
+.vscode/
