@@ -450,27 +450,47 @@ void balance_control()
     // 更新倾斜角度
     roll = IMU_data.filter_result.roll;
     i++;
-    // 跳跃更新
+    // ==============================================================
+    // 【核心修复】利用 PidChange 实时热更新 PID 参数
+    // 坚决不准在这里调用 PidInit() ！！！
+    // ==============================================================
     if (jump_stop == 1)
     {
-        // 初始化速度PID
-        PidInit(&motor_speed);
+        // 刹车/停机时，直接把 PID 系数设为 0，相当于切断输出
         PidChange(&motor_speed, 0, 0, 0);
-
-        // 初始化电机角度PID
-        PidInit(&motor_Stand);
         PidChange(&motor_Stand, 0, 0, 0);
+        PidChange(&motor_gyro,  0, 0, 0);
     }
     else
     {
-        // 初始化速度PID
-        PidInit(&motor_speed);
+        // 正常运行时，实时把全局变量（已被 VOFA+ 篡改）同步给 PID 结构体
         PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
-
-        // 初始化电机角度PID
-        PidInit(&motor_Stand);
         PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
+        
+        // 【关键】你旧代码里漏掉了角速度环的热更新，现在补上了！
+        PidChange(&motor_gyro,  Gyro_p,  Gyro_i,  Gyro_d);
     }
+//    // 跳跃更新
+//    if (jump_stop == 1)
+//    {
+//        // 初始化速度PID
+//        PidInit(&motor_speed);
+//        PidChange(&motor_speed, 0, 0, 0);
+//
+//        // 初始化电机角度PID
+//        PidInit(&motor_Stand);
+//        PidChange(&motor_Stand, 0, 0, 0);
+//    }
+//    else
+//    {
+//        // 初始化速度PID
+//        PidInit(&motor_speed);
+//        PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
+//
+//        // 初始化电机角度PID
+//        PidInit(&motor_Stand);
+//        PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
+//    }
     // 计算左右电机速度
     if (i % 5 == 0)
     {

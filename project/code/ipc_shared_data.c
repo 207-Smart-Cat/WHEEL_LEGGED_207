@@ -165,7 +165,11 @@ void IPC_Load_Params_From_Flash(void) {
     if(flash_union_buffer[0].uint32_type == 0x55AA55AA && 
        flash_union_buffer[PARAM_COUNT + 1].uint32_type == 0x11223344)
     {
+<<<<<<< HEAD
         printf("\r\n[SYS] Valid parameters found in Flash! Loading to Core A...\r\n");
+=======
+        LOG_Printf("\r\n[SYS] Valid parameters found in Flash! Loading to Core A...\r\n");
+>>>>>>> p2
         
         // 1. 极致精简：用循环把数据从 Flash 全部倒进结构体的数组里
         for(int i = 0; i < PARAM_COUNT; i++) {
@@ -173,6 +177,7 @@ void IPC_Load_Params_From_Flash(void) {
         }
 
         // 2. 经典排版：用枚举作为下标，恢复你最习惯的分组显示格式
+<<<<<<< HEAD
         printf("\r\n============= FLASH LOAD RESULT =============\r\n");
         printf(" [Filter] Q_yaw: %.4f, Q_pr: %.4f, Q_bias: %.4f\r\n", 
                core_b_cmd.params[P_Q_YAW], core_b_cmd.params[P_Q_PR], core_b_cmd.params[P_Q_BIAS]);
@@ -189,6 +194,29 @@ void IPC_Load_Params_From_Flash(void) {
         printf(" [Target] Vel: %.4f, Ang: %.4f, Stand: %.4f\r\n", 
                core_b_cmd.params[P_TARGET_VELOCITY], core_b_cmd.params[P_TARGET_ANGLE], core_b_cmd.params[P_TARGET_MOTOR_STAND]);
         printf("=============================================\r\n\r\n");
+=======
+        LOG_Printf("\r\n============= FLASH LOAD RESULT =============\r\n");
+        LOG_Printf(" [Filter] Q_yaw: %.4f, Q_pr: %.4f, Q_bias: %.4f\r\n", 
+               core_b_cmd.params[P_Q_YAW], core_b_cmd.params[P_Q_PR], core_b_cmd.params[P_Q_BIAS]);
+        LOG_Printf(" [Filter] R_yaw: %.4f, R_pr: %.4f\r\n", 
+               core_b_cmd.params[P_R_YAW], core_b_cmd.params[P_R_PR]);
+        LOG_Printf("---------------------------------------------\r\n");
+        LOG_Printf(" [Speed]  P: %.4f, I: %.4f, D: %.4f\r\n", 
+               core_b_cmd.params[P_SPEED_P], core_b_cmd.params[P_SPEED_I], core_b_cmd.params[P_SPEED_D]);
+        LOG_Printf(" [Angle]  P: %.4f, I: %.4f, D: %.4f\r\n", 
+               core_b_cmd.params[P_ANGLE_P], core_b_cmd.params[P_ANGLE_I], core_b_cmd.params[P_ANGLE_D]);
+        LOG_Printf(" [Gyro]   P: %.4f, I: %.4f, D: %.4f\r\n", 
+               core_b_cmd.params[P_GYRO_P], core_b_cmd.params[P_GYRO_I], core_b_cmd.params[P_GYRO_D]);
+        LOG_Printf("---------------------------------------------\r\n");
+        LOG_Printf(" [Target] Vel: %.4f, Ang: %.4f, Stand: %.4f\r\n", 
+               core_b_cmd.params[P_TARGET_VELOCITY], core_b_cmd.params[P_TARGET_ANGLE], core_b_cmd.params[P_TARGET_MOTOR_STAND]);
+        LOG_Printf("---------------------------------------------\r\n");
+        LOG_Printf(" [ Leg ]  Kp: %.4f, Ki: %.4f, Kd: %.4f\r\n", 
+               core_b_cmd.params[P_LEG_KP], core_b_cmd.params[P_LEG_KI], core_b_cmd.params[P_LEG_KD]);
+        LOG_Printf(" [ Pos ]  X: %.4f, Y: %.4f\r\n", 
+               core_b_cmd.params[P_X_CURRENT], core_b_cmd.params[P_Y_CURRENT]);
+        LOG_Printf("=============================================\r\n\r\n");
+>>>>>>> p2
 
         // 3. 敲响门铃，让 Core A 一次性全量更新
         core_b_cmd.update_mask = 0xFFFFFFFF; 
@@ -197,6 +225,10 @@ void IPC_Load_Params_From_Flash(void) {
     }
     else
     {
+<<<<<<< HEAD
         printf("\r\n[SYS] Flash is empty or invalid. Using default params.\r\n");
+=======
+        LOG_Printf("\r\n[SYS] Flash is empty or invalid. Using default params.\r\n");
+>>>>>>> p2
     }
 }

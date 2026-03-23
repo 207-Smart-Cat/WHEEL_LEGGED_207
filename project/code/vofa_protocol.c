@@ -111,7 +111,12 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 "Speed_P", "Speed_I", "Speed_D",            
                 "Angle_P", "Angle_I", "Angle_D",            
                 "Gyro_P", "Gyro_I", "Gyro_D",               
+<<<<<<< HEAD
                 "Target_Velocity", "Target_Angle", "Target_Motor_Stand"
+=======
+                "Target_Velocity", "Target_Angle", "Target_Motor_Stand", // <--- 加上这个逗号！
+                "Leg_Kp", "Leg_Ki", "Leg_Kd", "X_Current", "Y_Current"
+>>>>>>> p2
             };
             
             LOG_Printf("[Core 1] Param '%s' set to %.4f (Mask: 0x%02X)\r\n", 
@@ -130,7 +135,11 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             
             SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
             
+<<<<<<< HEAD
             if ( (core_a_status.left_pwm_duty > 1000) || (core_a_status.right_pwm_duty) > 1000) 
+=======
+            if ( abs(core_a_status.left_pwm_duty) > 1000 || abs(core_a_status.right_pwm_duty) > 1000 )
+>>>>>>> p2
             {
                 LOG_Printf("[ERROR] Motor is running! PLEASE STOP CAR FIRST!\r\n");
             }
@@ -144,6 +153,100 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             
             i += 3; continue;
         }
+<<<<<<< HEAD
+=======
+        // ========================================================
+        // 协议 5: 批量下发所有参数 (AA C4)
+        // 格式: AA C4 [22个float (88字节)] [1字节校验和]
+        // ========================================================
+        else if((i + 2 + PARAM_COUNT * 4 + 1) <= data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC4)
+        {
+            // 1. 计算校验和 (仅校验 88 字节的数据区)
+            uint8 sum_check = 0;
+            for(int j = 0; j < PARAM_COUNT * 4; j++) {
+                sum_check += rx_buffer[i + 2 + j];
+            }
+            
+            // 2. 校验通过，执行批量更新
+            if(sum_check == rx_buffer[i + 2 + PARAM_COUNT * 4])
+            {
+                LOG_Printf("\r\n[VOFA] Received BULK PARAM UPDATE (AA C4)!\r\n");
+                
+                __disable_irq(); 
+                // 神级操作：利用内存拷贝，一行代码直接把 88 字节的数据灌入 Core B 的参数数组中
+                memcpy(core_b_cmd.params, &rx_buffer[i + 2], PARAM_COUNT * sizeof(float));
+                
+                // 触发全量更新掩码 (0xFFFFFFFF 表示所有位都是 1)
+                core_b_cmd.update_mask = 0xFFFFFFFF; 
+                core_b_cmd.param_update_flag = 1; 
+                
+                SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+                __enable_irq(); 
+                
+                LOG_Printf("[VOFA] All 22 Parameters Updated Successfully!\r\n");
+            }
+            else
+            {
+                LOG_Printf("[ERROR] Bulk Update Checksum Failed!\r\n");
+            }
+            
+            i += (2 + PARAM_COUNT * 4 + 1); // 跳过这 91 个字节
+            continue;
+        }
+
+        // ========================================================
+        // 协议 6: 上位机请求读取当前参数 (AA C5)
+        // 格式: AA C5 88 55
+        // ========================================================
+        else if((i + 3) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC5 && 
+                rx_buffer[i+2] == 0x88 && rx_buffer[i+3] == 0x55)
+        {
+            LOG_Printf("\r\n[VOFA] Received PARAM REQUEST (AA C5)! Sending...\r\n");
+            
+            // 1. 获取最新真值
+            IPC_Pull_Status_To_CoreB(); 
+            
+            // 2. 构建二进制返回包 (AA C4)
+            uint8 tx_buf[128]; // 91字节足够放下，开128保底
+            tx_buf[0] = 0xAA;
+            tx_buf[1] = 0xC4;
+            
+            // 拷贝 88 字节的 float 数组
+            memcpy(&tx_buf[2], core_a_status.act_params, PARAM_COUNT * sizeof(float));
+            
+            // 计算校验和
+            uint8 tx_sum = 0;
+            for(int j = 0; j < PARAM_COUNT * 4; j++) {
+                tx_sum += tx_buf[2 + j];
+            }
+            tx_buf[2 + PARAM_COUNT * 4] = tx_sum;
+            
+            // 发送给电脑（为了以后兼容你自己的上位机，这步保留）
+            wifi_spi_send_buffer(tx_buf, 3 + PARAM_COUNT * 4);
+            #if (WIFI_PROTOCOL_MODE == 1)
+            wifi_spi_udp_send_now(); 
+            #endif
+            
+            // 3. 打印给人类看的清单
+            LOG_Printf("\r\n============= CURRENT PARAMS =============\r\n");
+            LOG_Printf(" Ang_P: %.4f | Ang_D: %.4f \r\n", core_a_status.act_params[P_ANGLE_P], core_a_status.act_params[P_ANGLE_D]);
+            LOG_Printf(" Spd_P: %.4f | Spd_I: %.4f | Spd_D: %.4f\r\n", core_a_status.act_params[P_SPEED_P], core_a_status.act_params[P_SPEED_I], core_a_status.act_params[P_SPEED_D]);
+            LOG_Printf(" Gyr_P: %.4f | Gyr_I: %.4f | Gyr_D: %.4f\r\n", core_a_status.act_params[P_GYRO_P], core_a_status.act_params[P_GYRO_I], core_a_status.act_params[P_GYRO_D]);
+            LOG_Printf("=============================================\r\n");
+
+            // 4. 【核心新增】打印 VOFA+ 可以直接复制粘贴的 HEX 覆盖指令
+            LOG_Printf("\r\n>>> VOFA+ COPY & PASTE COMMAND (AA C4) <<<\r\n");
+            
+            // 因为 print 太长可能会超出单片机缓存，这里用一个简单的 for 循环挨个打印 HEX
+            for(int k = 0; k < (3 + PARAM_COUNT * 4); k++) 
+            {
+                LOG_Printf("%02X ", tx_buf[k]);
+            }
+            LOG_Printf("\r\n>>> END OF COMMAND <<<\r\n\r\n");
+            
+            i += 3; continue;
+        }
+>>>>>>> p2
     }
 }
 

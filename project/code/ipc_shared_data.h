@@ -25,6 +25,14 @@ typedef enum {
     P_TARGET_ANGLE,
     P_TARGET_MOTOR_STAND,
     
+<<<<<<< HEAD
+=======
+    P_LEG_KP,
+    P_LEG_KI,
+    P_LEG_KD,
+    P_X_CURRENT,
+    P_Y_CURRENT,
+>>>>>>> p2
     // 如果你要新增参数，直接在这里加！比如 P_JUMP_POWER,
     
     PARAM_COUNT // 这个枚举的终极妙用：它会自动等于参数的总个数！
@@ -66,7 +74,11 @@ void IPC_Pull_Status_To_CoreB(void);
 void IPC_Check_And_Apply_Params_To_Core0(void); // Core 0 专用更新函数
 
 
+<<<<<<< HEAD
 // 【新增】Flash 参数固化与读取接口
+=======
+// Flash 参数固化与读取接口
+>>>>>>> p2
 void IPC_Save_Params_To_Flash(void);
 void IPC_Load_Params_From_Flash(void);
 

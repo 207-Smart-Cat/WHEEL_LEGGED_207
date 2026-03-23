@@ -120,6 +120,7 @@ int32_t Remote_GetChannelData(uint8_t ch_index) // 通道序号，用于外部访问
     }
 }
 
+<<<<<<< HEAD
 void Remote_control_callback(void) // 起到遥控器数据和代码变量之间的桥连作用
 {
     Remote_Update();
@@ -128,3 +129,33 @@ void Remote_control_callback(void) // 起到遥控器数据和代码变量之间的桥连作用
     target_angle = IMU_data.filter_result.yaw + (Remote_GetChannelData(1) - 888) / 332.0/5.0; // 处理转弯
     target_velocity = (Remote_GetChannelData(2) - 1000) / 689.0 * 800.0; // 处理速度
 }
+=======
+void Remote_control_callback(void)
+{
+    Remote_Update(); // 获取最新状态
+    
+    // 只有在遥控器正常连接的情况下，才允许遥控器抢占控制权
+    if (Remote_GetStatus() == REMOTE_CONNECTED)
+    {
+        // 【核心修改】：利用 CH5 拨杆作为权限开关
+        // 数值阈值(1000)请根据你的遥控器实际通道值域进行修改
+        // 通常三段开关的值域可能是 300(上), 1000(中), 1700(下)
+        if (Remote_GetChannelData(5) > 1000) 
+        {
+            // --- 遥控驾驶模式 ---
+            // 摇杆生效，覆盖 target_angle 和 target_velocity
+            target_angle = IMU_data.filter_result.yaw + (Remote_GetChannelData(1) - 888) / 332.0/5.0;
+            target_velocity = (Remote_GetChannelData(2) - 1000) / 689.0 * 800.0;
+        }
+        else
+        {
+            // --- VOFA+ 调参模式 ---
+            // 此时拨杆处于另一侧，遥控器主动放弃控制权
+            // 什么都不做，保留 IPC 和 VOFA+ 写入的 target_velocity 和 target_angle
+        }
+    }
+    // 如果遥控器处于断开状态 (REMOTE_DISCONNECTED)
+    // 同样什么都不做，让小车保持 VOFA+ 设定的目标值或安全停止
+}
+
+>>>>>>> p2
