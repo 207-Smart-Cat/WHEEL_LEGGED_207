@@ -424,28 +424,16 @@ float Turn_target(float target_angle)
 }
 
 // 转向控制计算
-float Turn(float gyro, float target_angle)
+float Turn(float gyro, float target_angle)    // Gyro传入的是当前的角度
 {
-    // Gyro传入的是当前的角度
-    static float previous_error = 0.0; // 上一次误差
-    float error = gyro - target_angle; // 当前误差
-    if (fabs(error) < 3)
+    target_angle = Turn_target(target_angle);//防止本身越界
+    float error = Turn_gyro(target_angle, gyro);
+    if (fabs(error) < 3)  //要求严格，防止长距离大幅偏移
     { // 低通截断，避免毛刺影响
         return 0;
     }
-    float derivative = error - previous_error; // 微分项
-    previous_error = error;                    // 更新误差
-
-    // 计算控制输出
-    float control_output = -motor_direction.kp * error - error * func_abs(error) * motor_direction.ki - motor_direction.kd * derivative;
-    // 限制输出范围
-    if (control_output > 2000)
-        control_output = 2000;
-    if (control_output < -2000)
-        control_output = -2000;
-
-    // 动态调整PID参数
-
+    float control_output = -PidLocCtrl(&motor_direction, error);
+    control_output = constrain_float(control_output, -2000, 2000);
     return control_output; // 返回控制输出
 }
 
@@ -523,24 +511,28 @@ void balance_control()
     else
     {
         // 计算转向PWM值
-        // Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle); // 中点拟合
+        Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
+        printf("Turn_pwm %f\n",Turn_Pwm);
+        Turn_Pwm=0;
         // //===================仅调试去除转向功能使用=================================
-        Turn_Pwm = 0;
+        // Turn_Pwm = 0;
         // //====================================================================
-        if (Turn_Pwm <= 0.2) // !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
-        {
-            speed_up = 1;
-        }
-        else if (Turn_Pwm <= 2)
-        {
-            speed_up = 2;
-        }
-        else
-        {
-            speed_up = 0;
-        }
-        Motor_Left = (signed short int)Gyro_Pwm_left * (1 + Turn_Pwm) - (signed short int)(imu963ra_gyro_z / 2);
-        Motor_Right = (signed short int)Gyro_Pwm_right * (1 - Turn_Pwm) + (signed short int)(imu963ra_gyro_z / 2);
+        // if (Turn_Pwm <= 0.2) // !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
+        // {
+        //     speed_up = 1;
+        // }
+        // else if (Turn_Pwm <= 2)
+        // {
+        //     speed_up = 2;
+        // }
+        // else
+        // {
+        //     speed_up = 0;
+        // }
+        // Motor_Left = (signed short int)Gyro_Pwm_left * (1 + Turn_Pwm) - (signed short int)(imu963ra_gyro_z / 2);
+        // Motor_Right = (signed short int)Gyro_Pwm_right * (1 - Turn_Pwm) + (signed short int)(imu963ra_gyro_z / 2);
+        Motor_Left = (signed short int)Gyro_Pwm_left * (1 + Turn_Pwm);
+        Motor_Right = (signed short int)Gyro_Pwm_right * (1 - Turn_Pwm);
     }
     // 限制PWM输出范围
     Motor_Left = -(signed short int)cuu(Motor_Left);
