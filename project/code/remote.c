@@ -120,16 +120,6 @@ int32_t Remote_GetChannelData(uint8_t ch_index) // 通道序号，用于外部访问
     }
 }
 
-<<<<<<< HEAD
-void Remote_control_callback(void) // 起到遥控器数据和代码变量之间的桥连作用
-{
-    Remote_Update();
-    // target_angle = IMU_data.filter_result.yaw + (Remote_GetChannelData(1) - 888) / 332.0; // 处理转弯
-    //    target_velocity = (Remote_GetChannelData(2) - 1000) / 689.0 * 2500.0;                 // 处理速度
-    target_angle = IMU_data.filter_result.yaw + (Remote_GetChannelData(1) - 888) / 332.0/5.0; // 处理转弯
-    target_velocity = (Remote_GetChannelData(2) - 1000) / 689.0 * 800.0; // 处理速度
-}
-=======
 void Remote_control_callback(void)
 {
     Remote_Update(); // 获取最新状态
@@ -158,4 +148,3 @@ void Remote_control_callback(void)
     // 同样什么都不做，让小车保持 VOFA+ 设定的目标值或安全停止
 }
 
->>>>>>> p2

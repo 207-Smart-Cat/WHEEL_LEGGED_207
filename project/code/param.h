@@ -38,8 +38,5 @@ extern float Angle_p,Angle_i,Angle_d;
 extern float Gyro_p,Gyro_i,Gyro_d;
 extern float Air_roll_p,Air_roll_i,Air_roll_d;
 extern float Direction_p,Direction_i,Direction_d;
-<<<<<<< HEAD
-=======
 extern float leg_Kp,leg_Ki,leg_Kd;
->>>>>>> p2
 #endif // PARAMS_H

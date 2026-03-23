@@ -111,12 +111,8 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 "Speed_P", "Speed_I", "Speed_D",            
                 "Angle_P", "Angle_I", "Angle_D",            
                 "Gyro_P", "Gyro_I", "Gyro_D",               
-<<<<<<< HEAD
-                "Target_Velocity", "Target_Angle", "Target_Motor_Stand"
-=======
                 "Target_Velocity", "Target_Angle", "Target_Motor_Stand", // <--- 加上这个逗号！
                 "Leg_Kp", "Leg_Ki", "Leg_Kd", "X_Current", "Y_Current"
->>>>>>> p2
             };
             
             LOG_Printf("[Core 1] Param '%s' set to %.4f (Mask: 0x%02X)\r\n", 
@@ -135,11 +131,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             
             SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
             
-<<<<<<< HEAD
-            if ( (core_a_status.left_pwm_duty > 1000) || (core_a_status.right_pwm_duty) > 1000) 
-=======
             if ( abs(core_a_status.left_pwm_duty) > 1000 || abs(core_a_status.right_pwm_duty) > 1000 )
->>>>>>> p2
             {
                 LOG_Printf("[ERROR] Motor is running! PLEASE STOP CAR FIRST!\r\n");
             }
@@ -153,8 +145,6 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             
             i += 3; continue;
         }
-<<<<<<< HEAD
-=======
         // ========================================================
         // 协议 5: 批量下发所有参数 (AA C4)
         // 格式: AA C4 [22个float (88字节)] [1字节校验和]
@@ -246,7 +236,6 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             
             i += 3; continue;
         }
->>>>>>> p2
     }
 }
 

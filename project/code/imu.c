@@ -6,7 +6,6 @@ float now_velocity_x = 0, now_velocity_y = 0, now_velocity_z = 0;
 int add_ms = 0;
 Attitude_3D_Kalman filter;
 IMU_t IMU_data;
-
 void imu_get(void)
 {
     imu963ra_get_acc();  // 获取 IMU963RA 的加速度测量数值

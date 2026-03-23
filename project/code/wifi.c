@@ -219,16 +219,16 @@ void LOG_Printf(const char *format, ...)
     va_end(args);
 
     // 1. 物理串口：只要调用就必定发送 (单片机无法感知串口线是否拔出，盲发最安全)
-    printf("%s", log_buf); 
+    //printf("%s", log_buf); 
 
     // 2. WiFi 通道：只有底层握手成功才发送，避免 SPI 阻塞
-    if (wifi_is_connected == 1)
-    {
-        wifi_spi_send_buffer((uint8*)log_buf, strlen(log_buf));
-        
-        #if (WIFI_PROTOCOL_MODE == 1)
-        // 如果用的是 UDP，触发立即推送
-        wifi_spi_udp_send_now(); 
-        #endif
-    }
+//    if (wifi_is_connected == 1)
+//    {
+//        wifi_spi_send_buffer((uint8*)log_buf, strlen(log_buf));
+//        
+//        #if (WIFI_PROTOCOL_MODE == 1)
+//        // 如果用的是 UDP，触发立即推送
+//        wifi_spi_udp_send_now(); 
+//        #endif
+//    }
 }
