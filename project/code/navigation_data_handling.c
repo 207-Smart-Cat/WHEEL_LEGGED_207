@@ -14,8 +14,6 @@
 
 #include "navigation_action.h"
 
-#include "ipc_shared_data.h"
-
 
 
 //====================================================±äÁ¿ÉùÃ÷=======================================================
@@ -62,18 +60,18 @@ RobotState_t robot_pose;                                  // È«¾ÖÊµÊ±Î»×Ë£¬¹©Íâ²
 
 Navi_Sensor_Data_t       raw_data  ,filter_data;                        // Ô­Ê¼Ô¤´¦ÀíÊı¾İ    £¬»ù´¡ÂË²¨+´¦ÀíºóÊı¾İ
 
-
-// ÔÚÎÄ¼şÉÏ·½µÄÈ«¾Ö±äÁ¿ÇøÌí¼Ó£º
-float nav_q_x = 0.001f;
-float nav_q_y = 0.001f;
-float nav_q_v = 0.01f;
-float nav_q_bias_ax = 0.002f;
-float nav_r_v_normal = 0.01f;
-float nav_r_v_slip = 10.0f;
-
 static KalmanFilter_Struct nav_ekf;      // 5½×µ¼º½ EKF ½á¹¹Ìå
 
 static LowPassFilter_Struct   lpf_v_left,  lpf_v_right, lpf_ax, lpf_w;
+// ÔÚÎÄ¼şÉÏ·½µÄÈ«¾Ö±äÁ¿ÇøÌí¼Ó£º
+#if USE_WIFI_TUNE
+float nav_q_x = 0.001f;
+float nav_q_y = 0.001f;
+float nav_q_v = 0.1f;
+float nav_q_bias_ax = 0.0001f;
+float nav_r_v_normal = 0.1f;
+float nav_r_v_slip = 10.0f;
+#endif
 
 #if NAVI_USE_LOCAL_FRAME
 static float initial_yaw_offset = 0.0f;  // ¼ÇÂ¼¿ª»ú/ÖØÖÃÊ±µÄ¾ø¶Ôº½Ïò½Ç×÷ÎªÁãµãÆ«ÖÃ
@@ -215,9 +213,7 @@ void navi_parse_data(void) {
     
 
     Navi_Remove_Gravity(&filter_data.accel[0], &filter_data.accel[1], &filter_data.accel[2]);
-//    filter_data.accel[0] = raw_data.accel[0] * GRAVITY;
-//    filter_data.accel[1] = raw_data.accel[1] * GRAVITY;
-//    filter_data.accel[2] = raw_data.accel[2] * GRAVITY;
+
     filter_data.accel[0] = low_pass_filter_update(&lpf_ax, filter_data.accel[0]);
 
     
@@ -430,17 +426,10 @@ void navi_ekf_update(void) {
 
     navi_parse_data();
     
-#if USE_WIFI_TUNE             //¸üĞÂWiFiµ÷½ÚµÄ²ÎÊı
-    mat_set(&nav_ekf.Q, 0, 0, NAV_Q_X);
-    mat_set(&nav_ekf.Q, 1, 1, NAV_Q_Y);
-    mat_set(&nav_ekf.Q, 2, 2, NAV_Q_V);
-    mat_set(&nav_ekf.Q, 3, 3, NAV_Q_BIAS_AX);
-#endif    
-    
     Navi_Slip_Detection();
     
-    action_fsm.is_airborne_expect = 0;
-
+    action_fsm.is_airborne_expect=0;
+    
     uint8_t airborne_flag = (uint8_t)is_airborne() || action_fsm.is_airborne_expect;                 //»ñÈ¡controlÀïÃæµÄÌÚ¿Õ±êÖ¾  !!!ºóÒ»¸ö±êÖ¾Î»¿ÉÓÃÓÚÉèÖÃÌÚ¿ÕÊ±µÄ¿ÕÖĞ¼ÓËÙ¶È¼ÆÀ´Ô¤²âÎ»ÖÃµÄ×¼È·ĞÔ
                                                                                                                      //Ö»ÒªĞ¡³µ´¦ÓÚ¶¯×÷Á´µÄ FSM_JUMP_AIRBORNE ×´Ì¬£¬²»¹ÜÄãÓÃÊÖ¾ÙµÃ¶àÆ½ÎÈ£¬ÏµÍ³¶¼»áÇ¿ÖÆ·ÅĞĞ¼ÓËÙ¶ÈÊäÈë£¬±£Ö¤¿ÕÖĞÌøÔ¾ÍÆËãµÄ¾ø¶Ô´¥·¢¡£
 
@@ -452,46 +441,57 @@ void navi_ekf_update(void) {
     float a_input = filter_data.accel[0];
     // Èç¹û±àÂëÆ÷ËÙ¶È¼«Ğ¡£¬ÇÒ½ÇËÙ¶È±ä»¯Ò²²»´ó£¨ËµÃ÷ÕæÍ£×¡ÁË£¬²»ÊÇÔÚÌÚ¿Õ´ò»¬£©
     if (fabsf(v_obs_mps) < 0.01f && fabsf(filter_data.unbiased_gyro[2]) < 0.1f && !airborne_flag) {
-//        a_input = 0.0f;  // ±©Á¦ÇĞ¶Ï£º¾²Ö¹Ê±ÎïÀíÉÏ²»¿ÉÄÜÓĞ¼ÓËÙ¶È£¬Ö±½ÓÆşËÀ¼ÙÊı¾İÊäÈë
+        a_input = 0.0f;  // ±©Á¦ÇĞ¶Ï£º¾²Ö¹Ê±ÎïÀíÉÏ²»¿ÉÄÜÓĞ¼ÓËÙ¶È£¬Ö±½ÓÆşËÀ¼ÙÊı¾İÊäÈë
         
-//        // ¼¼ÇÉ£ºÔÚ¾²Ö¹Ê±ÁÙÊ±Ç¿ĞĞ¸ø R ¸³¼«Ğ¡Öµ£¬Ç¿ÖÆ½«Îó²îÑ¹½ø bias_ax Àï
-//        mat_set(&nav_ekf.R, 0, 0, 0.0001f); 
+        // ¼¼ÇÉ£ºÔÚ¾²Ö¹Ê±ÁÙÊ±Ç¿ĞĞ¸ø R ¸³¼«Ğ¡Öµ£¬Ç¿ÖÆ½«Îó²îÑ¹½ø bias_ax Àï
+        mat_set(&nav_ekf.R, 0, 0, 0.0001f); 
     }
 
-   // 3.Ö´ĞĞÔ¤²â (°Ñ a_input ËÍ½øÈ¥£¬¶ø²»ÊÇÔ­Ê¼µÄ accel)
-    navi_update_F_B_U(a_input,  filter_data.yaw);    
     
+    
+    // ¡¾½öĞÂÔöÕâ¼¸ĞĞ¡¿£ºÊµÊ±°Ñ×îĞÂµÄ Q ¾ØÕóÖµË¢Èë¡£Èç¹û¹Ø±Õµ÷²Îºê£¬Õâ¼¸ĞĞ´úÂë»áÔÚ±àÒëÊ±×Ô¶¯ÏûÊ§¡£
+#if USE_WIFI_TUNE
+    mat_set(&nav_ekf.Q, 0, 0, NAV_Q_X);
+    mat_set(&nav_ekf.Q, 1, 1, NAV_Q_Y);
+    mat_set(&nav_ekf.Q, 2, 2, NAV_Q_V);
+    mat_set(&nav_ekf.Q, 3, 3, NAV_Q_BIAS_AX);
+#endif
+
+    
+   // 3.Ö´ĞĞÔ¤²â
 // ==============================================================================
 // ÌÚ¿Õ×´Ì¬ÏÂµÄµ¼º½¡°¶ÏÁ÷ÍÆËã¡±²ßÂÔÑ¡Ôñ
 // ³¡¾°±³¾°£ºÆğÌøÌÚ¿ÕÊ±£¬³µÂÖ¿Õ×ª»òÍ£×ª£¬±àÂëÆ÷Êı¾İÍêÈ«Ê§Ğ§£¨±ØĞëÇĞ¶Ï¹Û²â£©¡£
 // ==============================================================================
     if (airborne_flag) {
-        // ·½°¸ A£º»ùÓÚ IMU ¼ÓËÙ¶È¶ş´Î»ı·ÖµÄÎïÀíÍÆËã£¨¸ß¾«¶Èµ«Ò×ÊÜÈÅ£©
-        // Ô­Àí£ºÍêÈ«ĞÅÈÎ¿ÕÖĞµÄ IMU ¼ÓËÙ¶È£¬Í¨¹ıÔË¶¯Ñ§¹«Ê½½øĞĞ»ı·Ö£¬¼ÆËãÕæÊµµÄÅ×ÎïÏß·ÉĞĞ¾àÀë¡£
-        // ÊÊÓÃ³¡¾°£ºĞ¡³µÆğÌø×ËÌ¬¼«ÆäÆ½ÎÈ£¬¿ÕÖĞ Pitch/Roll ½Ç¶È²»·¢Éú¾çÁÒ·­¹ö¡£
-        // È±µã£ºÈç¹û¿ÕÖĞ×ËÌ¬¾çÁÒ±ä»¯£¬µ¼ÖÂÖØÁ¦¿Û³ı´íÂÒ£¬»á²úÉú¾Ş´óµÄĞé¼Ù¼ÓËÙ¶È£¬Ê¹×ø±ê·ÉÆÂ£¨·è¿ñÆ«ÒÆ£©¡£
-        Matrix Q_backup = nav_ekf.Q;
-
-         mat_zero(&nav_ekf.Q); // ÌÚ¿Õ²»Ôö¼Ó²»È·¶¨¶È
-
-        kalman_filter_predict(&nav_ekf);
-
-        nav_ekf.Q = Q_backup;
-
-        v_obs_mps = mat_get(&nav_ekf.X, 2, 0); // ÌÚ¿ÕÊ±ÓÃÉÏÒ»Ê±¿ÌÍÆËãÖµ×÷Îª¹Û²â
+//        // ·½°¸ A£º»ùÓÚ IMU ¼ÓËÙ¶È¶ş´Î»ı·ÖµÄÎïÀíÍÆËã£¨¸ß¾«¶Èµ«Ò×ÊÜÈÅ£©
+//        // Ô­Àí£ºÍêÈ«ĞÅÈÎ¿ÕÖĞµÄ IMU ¼ÓËÙ¶È£¬Í¨¹ıÔË¶¯Ñ§¹«Ê½½øĞĞ»ı·Ö£¬¼ÆËãÕæÊµµÄÅ×ÎïÏß·ÉĞĞ¾àÀë¡£
+//        // ÊÊÓÃ³¡¾°£ºĞ¡³µÆğÌø×ËÌ¬¼«ÆäÆ½ÎÈ£¬¿ÕÖĞ Pitch/Roll ½Ç¶È²»·¢Éú¾çÁÒ·­¹ö¡£
+//        // È±µã£ºÈç¹û¿ÕÖĞ×ËÌ¬¾çÁÒ±ä»¯£¬µ¼ÖÂÖØÁ¦¿Û³ı´íÂÒ£¬»á²úÉú¾Ş´óµÄĞé¼Ù¼ÓËÙ¶È£¬Ê¹×ø±ê·ÉÆÂ£¨·è¿ñÆ«ÒÆ£©¡£
+//        navi_update_F_B_U(a_input,  filter_data.yaw);
+//      
+//        Matrix Q_backup = nav_ekf.Q;
+//
+//         mat_zero(&nav_ekf.Q); // ÌÚ¿Õ²»Ôö¼Ó²»È·¶¨¶È
+//
+//        kalman_filter_predict(&nav_ekf);
+//
+//        nav_ekf.Q = Q_backup;
+//
+//        v_obs_mps = mat_get(&nav_ekf.X, 2, 0); // ÌÚ¿ÕÊ±ÓÃÉÏÒ»Ê±¿ÌÍÆËãÖµ×÷Îª¹Û²â
       
       // ·½°¸ B£º¿ÕÖĞºãËÙÍÆËã£¨¸üÎÈ¶¨£©   Êµ²âÖĞÌøÔ¾µ¼ÖÂ X/Y ×ø±ê·è¿ñÆ«ÒÆÊ±Ê¹ÓÃ¡£¶ÔÓÚÌøÌ¨¿ç¶È²»´ó£¨<1Ãë£©µÄ±ÈÈüÏîÄ¿¼«ÆäÓĞĞ§¡£
       
       // Å×Æú¿ÕÖĞµÄ IMU ¼ÓËÙ¶È£¬¼ÙÉèĞ¡³µÒÔÆğÌøË²¼äµÄËÙ¶ÈÔÈËÙ·É¹ıÕâ¶Î¾àÀë
       
-//      navi_update_F_B_U(0.0f, filter_data.yaw);               // Ç¿ĞĞ°Ñ´«Èë EKF Ô¤²âµÄ¾»¼ÓËÙ¶È U ÉèÎª 0£¬ÈÃĞ¡³µ±£³ÖÆğÌøÇ°µÄÏßËÙ¶È V »¬ĞĞ
-//      
-//      kalman_filter_predict(&nav_ekf);
-//      
-//      v_obs_mps = mat_get(&nav_ekf.X, 2, 0);
+      navi_update_F_B_U(0.0f, filter_data.yaw);               // Ç¿ĞĞ°Ñ´«Èë EKF Ô¤²âµÄ¾»¼ÓËÙ¶È U ÉèÎª 0£¬ÈÃĞ¡³µ±£³ÖÆğÌøÇ°µÄÏßËÙ¶È V »¬ĞĞ
+      
+      kalman_filter_predict(&nav_ekf);
+      
+      v_obs_mps = mat_get(&nav_ekf.X, 2, 0);
 
     } else {
-
+        navi_update_F_B_U(a_input,  filter_data.yaw);
         kalman_filter_predict(&nav_ekf);
 
     }
@@ -501,18 +501,16 @@ void navi_ekf_update(void) {
 
 
 #if USE_WIFI_TUNE
-    // µ÷²ÎÄ£Ê½£º¶ÁÈ¡ VOFA ÏÂ·¢µÄ¿É±ä²ÎÊı
-    if (robot_pose.slip_level == 1) {
-        mat_set(&nav_ekf.R, 0, 0, NAV_R_V_SLIP);   // ÂÖ×Ó´ò»¬Ê±£¬Ê¹ÓÃ¾Ş´óµÄ¹Û²âÔëÉù
-    } else {
-        mat_set(&nav_ekf.R, 0, 0, NAV_R_V_NORMAL); // Õı³£ĞĞÊ»Ê±£¬Ê¹ÓÃÕı³£µÄ¹Û²âÔëÉù
-    }
+   mat_set(&nav_ekf.R, 0, 0, NAV_R_V_NORMAL);
 #else
-    // ¹Ì»¯Ä£Ê½£º¶ÁÈ¡ºê¶¨Òå³£Á¿
     if (robot_pose.slip_level == 1) {
-        mat_set(&nav_ekf.R, 0, 0, NAV_R_V_SLIP); 
+
+        mat_set(&nav_ekf.R, 0, 0, NAV_R_V_SLIP); // ´ò»¬Ê±Ôö´óÏßËÙ¶È¹Û²âÔëÉù
+
     } else {
+
         mat_set(&nav_ekf.R, 0, 0, NAV_R_V_NORMAL);
+
     }   
 #endif
     
@@ -523,7 +521,6 @@ void navi_ekf_update(void) {
     kalman_filter_update(&nav_ekf, obs_z);
     
     // ¸üĞÂÍê³Éºó£¬Ç¿ĞĞÓÃÔ¤²âÖµ¸²¸Çµô±»ËÙ¶È²Ğ²î´øÆ«µÄ XY ×ø±ê£¡
-    // ÕâµÈ¼ÛÓÚÔÚÓ¦ÓÃ²ãÕ¶¶ÏÁËÎ»ÖÃÓëËÙ¶ÈµÄĞ­·½²îÁªÏµ£¬±£»¤µ×²ã¿â²»±»ĞŞ¸Ä
     mat_set(&nav_ekf.X, 0, 0, pure_pred_x);
     mat_set(&nav_ekf.X, 1, 0, pure_pred_y);
 
@@ -535,9 +532,8 @@ void navi_ekf_update(void) {
 
     robot_pose.v   = mat_get(&nav_ekf.X, 2, 0);
     
-      robot_pose.bias_ax =  mat_get(&nav_ekf.X, 3, 0);
-
-    
+    robot_pose.bias_ax =  mat_get(&nav_ekf.X, 3, 0);
+ 
 
     // Yaw ºÍ ½ÇËÙ¶È w Ö±½Ó²ÉÓÃ IMU ¸ß¾«¶ÈÊı¾İ
 
@@ -545,9 +541,9 @@ void navi_ekf_update(void) {
 
     robot_pose.w   = filter_data.unbiased_gyro[2]; 
 
-    robot_pose.is_valid = 1;
     
-//    printf("%f,%f,%f,%f,%f ,%f\n",NAV_Q_X,NAV_Q_Y,NAV_Q_V,NAV_Q_BIAS_AX,NAV_R_V_NORMAL,NAV_R_V_SLIP);
+
+    robot_pose.is_valid = 1;
 
 }
 

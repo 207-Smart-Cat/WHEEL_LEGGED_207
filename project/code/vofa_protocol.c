@@ -99,7 +99,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             
             // 仅仅两行代码，替代了你原来的 17 个 case！
             core_b_cmd.params[index] = temp_float.f_val; 
-            core_b_cmd.update_mask |= (1ULL << index);
+            core_b_cmd.update_mask |= (1 << index); 
 
             core_b_cmd.param_update_flag = 1; 
             SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -116,8 +116,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 "Air_Roll_P", "Air_Roll_I", "Air_Roll_D",
                 "Direction_P", "Direction_I", "Direction_D",
                 "Nav_Q_X", "Nav_Q_Y", "Nav_Q_V", 
-                "Nav_Q_Bias_Ax", "Nav_R_V_Normal", "Nav_R_V_Slip",
-                "Mag_Offset_X", "Mag_Offset_Y", "Mag_Scale_X", "Mag_Scale_Y"
+                "Nav_Q_Bias_Ax", "Nav_R_V_Normal", "Nav_R_V_Slip"
             };
             
             LOG_Printf("[Core 1] Param '%s' set to %.4f (Mask: 0x%02X)\r\n", 
@@ -172,7 +171,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 memcpy(core_b_cmd.params, &rx_buffer[i + 2], PARAM_COUNT * sizeof(float));
                 
                 // 触发全量更新掩码 (0xFFFFFFFF 表示所有位都是 1)
-                core_b_cmd.update_mask = 0xFFFFFFFFFFFFFFFFULL; 
+                core_b_cmd.update_mask = 0xFFFFFFFF; 
                 core_b_cmd.param_update_flag = 1; 
                 
                 SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -202,7 +201,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             IPC_Pull_Status_To_CoreB(); 
             
             // 2. 构建二进制返回包 (AA C4)
-            uint8 tx_buf[200]; // 扩容到 200，保底足够放下 155 字节的数据
+            uint8 tx_buf[128]; // 91字节足够放下，开128保底
             tx_buf[0] = 0xAA;
             tx_buf[1] = 0xC4;
             
@@ -250,12 +249,6 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                    F_S(core_a_status.act_params[P_DIR_P]), F_I(core_a_status.act_params[P_DIR_P]), F_D(core_a_status.act_params[P_DIR_P]),
                    F_S(core_a_status.act_params[P_DIR_I]), F_I(core_a_status.act_params[P_DIR_I]), F_D(core_a_status.act_params[P_DIR_I]),
                    F_S(core_a_status.act_params[P_DIR_D]), F_I(core_a_status.act_params[P_DIR_D]), F_D(core_a_status.act_params[P_DIR_D]));
-            LOG_Printf(" Mag_Off: X %s%d.%04d | Y %s%d.%04d \r\n", 
-                   F_S(core_a_status.act_params[P_MAG_OFFSET_X]), F_I(core_a_status.act_params[P_MAG_OFFSET_X]), F_D(core_a_status.act_params[P_MAG_OFFSET_X]),
-                   F_S(core_a_status.act_params[P_MAG_OFFSET_Y]), F_I(core_a_status.act_params[P_MAG_OFFSET_Y]), F_D(core_a_status.act_params[P_MAG_OFFSET_Y]));
-            LOG_Printf(" Mag_Scl: X %s%d.%04d | Y %s%d.%04d \r\n", 
-                   F_S(core_a_status.act_params[P_MAG_SCALE_X]), F_I(core_a_status.act_params[P_MAG_SCALE_X]), F_D(core_a_status.act_params[P_MAG_SCALE_X]),
-                   F_S(core_a_status.act_params[P_MAG_SCALE_Y]), F_I(core_a_status.act_params[P_MAG_SCALE_Y]), F_D(core_a_status.act_params[P_MAG_SCALE_Y]));
             LOG_Printf("=============================================\r\n");
 
             // 4. 分 4 段安全拼合打印 139 字节的数据 (防丢包/溢出)
@@ -299,8 +292,8 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
 #define UART_TX_PIN     (DEBUG_UART_TX_PIN)
 #define UART_RX_PIN     (DEBUG_UART_RX_PIN)
 
-static uint8 uart_get_data[256]; 
-static uint8 fifo_get_data[256];
+static uint8 uart_get_data[128]; 
+static uint8 fifo_get_data[128]; 
 fifo_struct uart_data_fifo;
 
 void VOFA_UART_Init(void)

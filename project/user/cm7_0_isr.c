@@ -7,6 +7,7 @@
 #include "ipc_shared_data.h"
 #include "control.h"
 #include "remote.h"
+#include "navigation_data_handling.h"
 // 引入主函数中的定时标志位
 extern uint8 IPS200_flag;
 extern uint8 Motor_Control_flag;
@@ -46,9 +47,7 @@ void pit0_ch10_isr() // 平衡控制，非常重要（10ms）
   test_pit10_cnt++; // 每次进中断，计数器加 1
   
     balance_control();
-    if (IMU_ready) {
-        navi_ekf_update(); 
-    }
+    navi_ekf_update(); 
     pit_isr_flag_clear(PIT_CH10);
 }
 

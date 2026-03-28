@@ -91,23 +91,36 @@ uint8 kalman_filter_init(KalmanFilter_Struct *kf, int state_dim, int obs_dim,int
     mat_init(&kf->Z, obs_dim, 1);
     mat_init(&kf->K, state_dim, obs_dim);   // K卡尔曼增益 [n*m]
 
-    // 3. 初始化临时矩阵（避免重复初始化）
-    mat_init(&kf->temp_X, state_dim, 1);         // X状态量矩阵 [n*1] 
-    mat_init(&kf->temp1, state_dim, state_dim);
-    mat_init(&kf->temp2, state_dim, obs_dim);
-    mat_init(&kf->temp3, obs_dim, obs_dim);
-    mat_init(&kf->temp4, obs_dim, 1); 
+    // 3. 初始化临时矩阵
+    // --- 预测阶段临时矩阵 ---
+    mat_init(&kf->temp_FX, state_dim, 1);
+    mat_init(&kf->temp_BU, state_dim, 1);
+    mat_init(&kf->temp_FP, state_dim, state_dim);
+    
+    // --- 更新阶段临时矩阵 ---
+    mat_init(&kf->temp_PHT, state_dim, obs_dim);
+    mat_init(&kf->temp_HPHT, obs_dim, obs_dim);
     mat_init(&kf->temp_inv, obs_dim, obs_dim);
-
+    mat_init(&kf->temp_HX, obs_dim, 1);
+    mat_init(&kf->temp_KZ, state_dim, 1);
+    mat_init(&kf->temp_KH, state_dim, state_dim);
+    mat_init(&kf->temp_IKH, state_dim, state_dim);
 
     // 4. 默认参数（用户可后续修改）
     kf->state_dim = state_dim;
     kf->obs_dim = obs_dim;
+    kf->ctrl_dim = ctrl_dim;
+    
     mat_eye(&kf->F); // 转移矩阵默认单位矩阵
     mat_eye(&kf->P); // 协方差矩阵默认单位矩阵
-    mat_scale(&kf->Q, &kf->Q, 0.01f);      //默认Q/R缩小100倍（减少噪声影响）
-    mat_scale(&kf->R, &kf->R, 0.01f); 
     mat_eye(&kf->B); // 默认单位矩阵，用户后续修改
+    
+    //在协方差矩阵中，数值代表的是方差（标准差的平方）.设定为 0.01，标准差0.1,更符合平时真实噪声水平。
+    mat_eye(&kf->Q);
+    mat_scale(&kf->Q, &kf->Q, 0.01f); 
+    mat_eye(&kf->R);
+    mat_scale(&kf->R, &kf->R, 0.01f);
+    
     return 1; // 初始化成功
 }
 
@@ -124,7 +137,7 @@ uint8 kalman_filter_init(KalmanFilter_Struct *kf, int state_dim, int obs_dim,int
 void kalman_filter_predict(KalmanFilter_Struct *kf) {
     if(kf == NULL) return;
     int n = kf->state_dim;
-    int p = kf->B.cols; 
+    int p = kf->ctrl_dim;
 
     // 维度校验（调用你的mat_get/行列数）
     if(kf->F.rows != n || kf->F.cols != n || 
@@ -134,29 +147,25 @@ void kalman_filter_predict(KalmanFilter_Struct *kf) {
     }
 
     // 1. 状态预测：X' = F*X + B*U
-    // 步骤1：计算 F*X（调用你的mat_mul）
-    mat_mul(&kf->temp_X, &kf->F, &kf->X);
+    // 步骤1：计算 F*X
+    mat_mul(&kf->temp_FX, &kf->F, &kf->X);
     
     // 步骤2：计算 B*U
-    Matrix B_U;
-    mat_init(&B_U, n, 1);
-    mat_mul(&B_U, &kf->B, &kf->U);
+    mat_mul(&kf->temp_BU, &kf->B, &kf->U);
     
-    // 步骤3：X' = F*X + B*U（调用你的mat_add）
-    mat_add(&kf->temp_X, &kf->temp_X, &B_U);
+    // 步骤3：X' = F*X + B*U
+    mat_add(&kf->X, &kf->temp_FX, &kf->temp_BU);
     
-    // 逐元素更新X（调用你的mat_set/mat_get）
-    for(int i=0; i<n; i++) {
-        mat_set(&kf->X, i, 0, mat_get(&kf->temp_X, i, 0));
-    }
-
     // 2. 协方差预测：P' = F*P*F^T + Q
-    // 步骤1：temp1 = F * P
-    mat_mul(&kf->temp1, &kf->F, &kf->P);
-    // 步骤2：计算F的转置（调用你的mat_trans）
+    // 步骤1：计算 F * P
+    mat_mul(&kf->temp_FP, &kf->F, &kf->P);
+    
+    // 步骤2：计算F的转置
     mat_trans(&kf->F_T, &kf->F);
-    // 步骤3：P = temp1 * F^T
-    mat_mul(&kf->P, &kf->temp1, &kf->F_T);
+    
+    // 步骤3：计算 (F*P) * F^T
+    mat_mul(&kf->P, &kf->temp_FP, &kf->F_T);
+    
     // 步骤4：加上过程噪声 Q
     mat_add(&kf->P, &kf->P, &kf->Q);
 }
@@ -167,7 +176,6 @@ void kalman_filter_predict(KalmanFilter_Struct *kf) {
 //-------------------------------------------------------------------------------------------------------------------
 // 函数简介      卡尔曼更新阶段（核心公式：K = P'*H^T*(H*P'*H^T + R)^-1；X = X' + K*(Z-H*X')；P = (I-K*H)*P'）  
 // 参数说明     obs_data 观测值数据        
-// 返回参数      
 //-------------------------------------------------------------------------------------------------------------------
 // 卡尔曼更新阶段（核心公式：K = P'*H^T*(H*P'*H^T + R)^-1；X = X' + K*(Z-H*X')；P = (I-K*H)*P'）
 void kalman_filter_update(KalmanFilter_Struct *kf, float *obs_data) {
@@ -186,59 +194,55 @@ void kalman_filter_update(KalmanFilter_Struct *kf, float *obs_data) {
         mat_set(&kf->Z, i, 0, obs_data[i]);
     }
 
-    // 2. 计算 H*P*H^T + R
-    // 步骤1：temp2 = P * H^T
+    // 2. 计算 (H*P*H^T + R) 的逆矩阵
     mat_trans(&kf->H_T, &kf->H);
-    mat_mul(&kf->temp2, &kf->P, &kf->H_T);
+    mat_mul(&kf->temp_PHT, &kf->P, &kf->H_T);               // P * H^T
     
-    // 步骤2：temp3 = H * temp2
-    mat_mul(&kf->temp3, &kf->H, &kf->temp2);
-    
-    // 步骤3：temp3 = temp3 + R
-    mat_add(&kf->temp3, &kf->temp3, &kf->R);
+    mat_mul(&kf->temp_HPHT, &kf->H, &kf->temp_PHT);         // H * (P * H^T)
+    mat_add(&kf->temp_HPHT, &kf->temp_HPHT, &kf->R);        // H*P*H^T + R
 
-    // 3. 求temp3的逆（调用新增的mat_inv）
-    if(!mat_inv(&kf->temp_inv, &kf->temp3)) {
-        return; // 矩阵不可逆，更新失败
+    if(!mat_inv(&kf->temp_inv, &kf->temp_HPHT)) {
+        return; // 矩阵奇异，不可逆，直接退出更新
     }
 
-    // 4. 计算卡尔曼增益：K = P*H^T * temp_inv
-    mat_mul(&kf->K, &kf->temp2, &kf->temp_inv);
+    // 3. 计算增益：K = (P*H^T) * (H*P*H^T + R)^-1
+    mat_mul(&kf->K, &kf->temp_PHT, &kf->temp_inv);
+    
+    // 4. 计算预测的观测值：H * X
+    mat_mul(&kf->temp_HX, &kf->H, &kf->X);
 
-    // 5. 计算观测残差：residual = Z - H*X
-    mat_mul(&kf->temp4, &kf->H, &kf->X);
+    // 5. 计算残差：residual = Z - H*X (巧妙借用 temp_HX 来存残差，节约内存)
     for(int i=0; i<m; i++) {
-        float val = mat_get(&kf->Z, i, 0) - mat_get(&kf->temp4, i, 0);
-        mat_set(&kf->temp4, i, 0, val);
+        float residual = mat_get(&kf->Z, i, 0) - mat_get(&kf->temp_HX, i, 0);
+        mat_set(&kf->temp_HX, i, 0, residual);
     }
 
-    // 6. 更新状态：X = X' + K*residual
-    mat_mul(&kf->temp_X, &kf->K, &kf->temp4);
-    mat_add(&kf->X, &kf->X, &kf->temp_X);
-
-    // 7. 更新协方差：P = (I - K*H) * P
-    // 步骤1：计算 K*H（复用temp1）
-    mat_mul(&kf->temp1, &kf->K, &kf->H);
+    // 6. 更新状态：X = X + K * residual
+    mat_mul(&kf->temp_KZ, &kf->K, &kf->temp_HX);
+    mat_add(&kf->X, &kf->X, &kf->temp_KZ);
     
-    // 步骤2：计算 I - K*H（复用temp_inv作为单位矩阵）
-    mat_eye(&kf->F_T);                //复用 n*n 的 F_T 作为临时单位矩阵 ,减小矩阵内存消耗
+    // 7. 更新协方差：P = (I - K*H) * P
+    mat_mul(&kf->temp_KH, &kf->K, &kf->H);                  // K * H
+    
+    // 构造 I - K*H
+    mat_eye(&kf->temp_IKH);                                 // 置为单位矩阵 I
     for(int i=0; i<n; i++) {
         for(int j=0; j<n; j++) {
-            float val = mat_get(&kf->temp_inv, i, j) - mat_get(&kf->temp1, i, j);
-            mat_set(&kf->temp_inv, i, j, val);
+            float val = mat_get(&kf->temp_IKH, i, j) - mat_get(&kf->temp_KH, i, j);
+            mat_set(&kf->temp_IKH, i, j, val);
         }
     }
+    // 计算 (I-K*H) * P (借用同样是[n*n]维度的 temp_FP 存放临时结果)
+    mat_mul(&kf->temp_FP, &kf->temp_IKH, &kf->P); 
     
-    // 步骤3：更新P = (I-KH) * P
-    mat_mul(&kf->temp1, &kf->F_T, &kf->P);
-    
-    // 逐元素拷贝P矩阵（避免指针重叠）
-    for(int i=0; i<n; i++) {
+    // 逐元素拷贝回 P 矩阵（避免指针重叠导致运算错误）
+    for(int i=0; i<n; i++) {    
         for(int j=0; j<n; j++) {
-            mat_set(&kf->P, i, j, mat_get(&kf->temp1, i, j));
+            mat_set(&kf->P, i, j, mat_get(&kf->temp_FP, i, j));
         }
     }
 }
+
 
 
 //---------------------------------------------------一阶低通滤波-----------------------------------------------------------------------------------

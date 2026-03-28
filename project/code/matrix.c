@@ -110,6 +110,8 @@ void mat_mul(Matrix *C, Matrix *A, Matrix *B)
 
 void mat_trans(Matrix *B, Matrix *A)
 {
+    B->rows = A->cols; 
+    B->cols = A->rows;  
     for(int i=0; i<A->rows; i++)
         for(int j=0; j<A->cols; j++)
             B->data[j][i] = A->data[i][j];

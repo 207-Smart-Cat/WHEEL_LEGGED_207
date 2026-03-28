@@ -17,6 +17,7 @@
 // 卡尔曼滤波结构体（支持1-4阶，状态量维度n=1~4）
 typedef struct {               //n：状态量     m：测量量
     float Abtastzeit_s;         //滤波器积分用的采样时间 [s]
+    // ================= 核心状态与系统矩阵 =================
     Matrix X;      // 状态矩阵 [n*1]：
     Matrix B;      // 控制矩阵 [n*p]（p为控制量维度，通常1）
     Matrix U;      // 控制量矩阵 [p*1]（如加速度、油门PWM）
@@ -24,19 +25,39 @@ typedef struct {               //n：状态量     m：测量量
     Matrix F_T;
     Matrix H;      // 观测矩阵 [m*n]（m为观测维度，通常1~2）  ，  将状态空间转换为测量空间
     Matrix H_T;
+    
+    // ================= 协方差与增益矩阵 =================
     Matrix P;      // 状态协方差矩阵 [n*n]
     Matrix Q;      // 过程噪声协方差矩阵 [n*n]（对角矩阵）
     Matrix R;      // 观测噪声协方差矩阵 [m*m]（对角矩阵）
     Matrix Z;      //观测矩阵Z [m*1]
     Matrix K;      // 卡尔曼增益矩阵 [n*m]
-    Matrix temp_X; //矩阵X更新时临时变量                                       ------------------矩阵的运算不能直接计算后赋值，矩阵每个计算都包含几个数，
-    Matrix temp1;  // 临时矩阵 [n*n]（减少内存申请）                                           若赋值则前一个数被覆盖后对后一个数计算结果会产生影响
+    
+    // ================= 临时运算矩阵 =================                    ------------------矩阵的运算不能直接计算后赋值，矩阵每个计算都包含几个数， 若赋值则前一个数被覆盖后对后一个数计算结果会产生影响
+// --- 1. 预测阶段 (Predict) 中间变量 ---
+    Matrix temp_FX;     // 存放 F * X [n*1]
+    Matrix temp_BU;     // 存放 B * U [n*1]
+    Matrix temp_FP;     // 存放 F * P [n*n]
+
+    // --- 2. 更新阶段 (Update) 中间变量 ---
+    Matrix temp_PHT;    // 存放 P * H^T [n*m]
+    Matrix temp_HPHT;   // 存放 H * (P * H^T) [m*m]
+    Matrix temp_inv;    // 存放 (H * P * H^T + R) 的逆矩阵 [m*m]
+    Matrix temp_HX;     // 存放 H * X (预测的观测值) [m*1]
+    Matrix temp_KZ;     // 存放 K * (Z - H*X) (状态更新的增量) [n*1]
+    Matrix temp_KH;     // 存放 K * H [n*n]
+    Matrix temp_IKH;    // 存放 I - K*H [n*n]
+    
+    Matrix temp_X; //矩阵X更新时临时变量                                     
+    Matrix temp1;  // 临时矩阵 [n*n]（减少内存申请）                                    
     Matrix temp2;  // 临时矩阵 [n*m]
     Matrix temp3;  // 临时矩阵 [m*m]
     Matrix temp4;  // 临时矩阵 [m*1]    
-    Matrix temp_inv;
+    
+    
     int state_dim; // 状态维度，滤波状态量个数  
     int obs_dim;   // 观测维度，传感器实际测量的值个数  
+    int ctrl_dim;  // 控制维度 p   
 } KalmanFilter_Struct;
 
 

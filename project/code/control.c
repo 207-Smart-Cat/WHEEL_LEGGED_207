@@ -398,30 +398,28 @@ int cuu(int c)
 float Turn_gyro(float target_angle, float gyro)
 {
     // 1. 计算原始误差
-    float error = target_angle - gyro;
+    float error = Turn_target(target_angle - gyro);
 
     // 2. 将误差归一化到 [-180, 180] 之间
     // 这样可以确保小车永远旋转角度差绝对值小于 180 的那个方向
-    while (error > 180)  error -= 360;
-    while (error < -180) error += 360;
-
+    
     return error; // 返回给 PID 作为 Input
 }
 
 // 转向目标角度计算,划分到合适区间（-180~+180）
 float Turn_target(float target_angle)
 {
-    if (target_angle >= 180)
+    while(target_angle >= 180)
         target_angle = target_angle - 360;
-    else if (target_angle <= -180)
+    while (target_angle <= -180)
         target_angle = 360 + target_angle;
-    return -target_angle;
+    return target_angle;
 }
 
 // 转向控制计算
 float Turn(float gyro, float target_angle) // Gyro传入的是当前的角度
 {
-    target_angle = Turn_target(target_angle); // 防止本身越界
+    target_angle = -Turn_target(target_angle); // 防止本身越界
     float error = Turn_gyro(target_angle, gyro);
     if (fabs(error) < 1.5)
     { // 低通截断，避免毛刺影响

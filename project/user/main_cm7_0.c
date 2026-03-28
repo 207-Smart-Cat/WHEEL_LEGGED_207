@@ -84,8 +84,7 @@ int main(void)
     Navi_Tracking_Init();
 
     // 修改：将 PIT_Balance 从 3ms 改为 10ms 以匹配 ENCODER_DT (0.01f)
-    // 注意：如果是平衡控制强制要求 3ms，则需修改导航的 ENCODER_DT 为 0.03f 并在 3ms 中断分频调用
-    pit_ms_init(PIT_Balance, 10); 
+    pit_ms_init(PIT_Balance, 3); 
      jump_stop = 1; // 在 control.c 中，jump_stop=1 会让 PID 参数全置 0
     interrupt_global_enable(0);
     

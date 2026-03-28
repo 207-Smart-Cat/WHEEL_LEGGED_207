@@ -7,7 +7,6 @@
 #include "control.h"
 #include "vofa_protocol.h"
 #include "ipc_shared_data.h"
-#include "navigation_data_handling.h"
 
 // 宏定义和缓冲区
 #define WIFI_RX_BUF_SIZE    256         
@@ -215,16 +214,6 @@ void wifi_report_task(void)
                         seekfree_assistant_oscilloscope_data.data[idx++] = (float)Motor_Right;
                     }
                     
-                    if(channel_show[3]) 
-                    {
-                        // 把导航核心坐标和推算速度送入波形图
-                        seekfree_assistant_oscilloscope_data.data[idx++] = robot_pose.x;
-                        seekfree_assistant_oscilloscope_data.data[idx++] = robot_pose.y;
-                        seekfree_assistant_oscilloscope_data.data[idx++] = robot_pose.yaw;
-                        seekfree_assistant_oscilloscope_data.data[idx++] = robot_pose.v;
-                        seekfree_assistant_oscilloscope_data.data[idx++] = robot_pose.w;
-                        
-                    }
                     seekfree_assistant_oscilloscope_data.channel_num = idx; 
                     if(idx > 0) 
                     {
@@ -252,11 +241,6 @@ void wifi_report_task(void)
                     if(channel_show[2]) 
                     {
                         sprintf(temp, "L_PWM:%d R_PWM:%d  ", Motor_Left, Motor_Right);
-                        strcat(text_buffer, temp);
-                    }
-                    if(channel_show[3])
-                    {
-                        sprintf(temp, "x:%.3f y:%.3f yaw:%.2f v:%.3f w:%.3f ", robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w);
                         strcat(text_buffer, temp);
                     }
                     

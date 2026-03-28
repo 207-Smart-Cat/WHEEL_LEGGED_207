@@ -31,5 +31,6 @@ void pid_high_init();
 float leg_sensor_filter(float new_val, bool is_first_run);
 float max(float a, float b);
 float min(float a, float b);
+float Turn_target(float target_angle);
 
 #endif /* CODE_ENGINE_H_ */

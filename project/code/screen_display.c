@@ -166,30 +166,31 @@ void show_page_2(void)
     sprintf(temp_str, "Rp:%-5.3f", p[P_R_PR]);              ips200_show_string(c1, 300, temp_str); // 最底下一行
 }
 
-// ================= 页面 3：导航与磁力计专页 ==============
+// ================= 页面 3：导航卡尔曼滤波专页 ==============
 void show_page_3(void)
 {
     // ==========================================
-    // 【静态绘制区】复刻 Page 2 样式，增加下半部分
+    // 【静态绘制区】完全复刻 Page 2 的侧边栏与网格样式
     // ==========================================
     if (force_ui_refresh)
     {
-        ips200_show_string(25, 10, "--- Nav & Mag Params ---");
+        ips200_show_string(25, 10, "--- Navigation Params ---");
         
         // --- 绘制水平分割线 ---
         ips200_draw_line(0, 32, 239, 32, RGB565_SKYBLUE);   // 标题底线
         ips200_draw_line(38, 55, 239, 55, RGB565_SKYBLUE);  // 表头底线
         
-        // --- 绘制垂直侧边栏分割线 (拉长到 300) ---
-        ips200_draw_line(38, 32, 38, 300, RGB565_SKYBLUE);  
+        // --- 绘制垂直侧边栏分割线 ---
+        ips200_draw_line(38, 32, 38, 195, RGB565_SKYBLUE);  // 延伸到参数结束处
 
         // --- 表头提示 ---
         ips200_show_string(45, 37, "Parameter Name");
         ips200_show_string(155, 37, "Value");
 
-        // --- [上半区] 导航卡尔曼滤波 ---
+        // --- 左侧固定分类标签 (沿用 Page 2 的 22 像素行距) ---
         ips200_show_string(4, 60,  "Nav"); 
         
+        // 为了美观，给每行画一个小短线或者直接标注变量名
         ips200_show_string(42, 60,  "Q_X:");
         ips200_show_string(42, 82,  "Q_Y:");
         ips200_show_string(42, 104, "Q_V:");
@@ -197,19 +198,8 @@ void show_page_3(void)
         ips200_show_string(42, 148, "R_Norm:");
         ips200_show_string(42, 170, "R_Slip:");
 
-        // 区块横向分割线
-        ips200_draw_line(38, 195, 239, 195, RGB565_SKYBLUE);
-
-        // --- [下半区] 磁力计校准 ---
-        ips200_show_string(4, 210, "Mag"); 
-        
-        ips200_show_string(42, 210, "Off_X:");
-        ips200_show_string(42, 232, "Off_Y:");
-        ips200_show_string(42, 254, "Scl_X:");
-        ips200_show_string(42, 276, "Scl_Y:");
-
         // 封底线
-        ips200_draw_line(0, 300, 239, 300, RGB565_SKYBLUE);
+        ips200_draw_line(0, 195, 239, 195, RGB565_SKYBLUE);
     }
 
     // ==========================================
@@ -217,21 +207,15 @@ void show_page_3(void)
     // ==========================================
     char temp_str[20];
     float *p = core_b_cmd.params; 
-    uint16_t val_x = 145; // 数值起始 X 坐标
+    uint16_t val_x = 145; // 数值起始 X 坐标，避开变量名
 
-    // 1. 导航参数 (保留 5 位小数)
+    // 针对导航参数，统一保留 5 位小数，左对齐
     sprintf(temp_str, "%-8.5f", p[P_NAV_Q_X]);       ips200_show_string(val_x, 60,  temp_str);
     sprintf(temp_str, "%-8.5f", p[P_NAV_Q_Y]);       ips200_show_string(val_x, 82,  temp_str);
     sprintf(temp_str, "%-8.5f", p[P_NAV_Q_V]);       ips200_show_string(val_x, 104, temp_str);
     sprintf(temp_str, "%-8.5f", p[P_NAV_Q_BIAS_AX]); ips200_show_string(val_x, 126, temp_str);
     sprintf(temp_str, "%-8.5f", p[P_NAV_R_V_NORMAL]);ips200_show_string(val_x, 148, temp_str);
     sprintf(temp_str, "%-8.5f", p[P_NAV_R_V_SLIP]);  ips200_show_string(val_x, 170, temp_str);
-
-    // 2. 磁力计参数 (保留 3 位小数，给整数部分留足空间)
-    sprintf(temp_str, "%-8.3f", p[P_MAG_OFFSET_X]);  ips200_show_string(val_x, 210, temp_str);
-    sprintf(temp_str, "%-8.3f", p[P_MAG_OFFSET_Y]);  ips200_show_string(val_x, 232, temp_str);
-    sprintf(temp_str, "%-8.3f", p[P_MAG_SCALE_X]);   ips200_show_string(val_x, 254, temp_str);
-    sprintf(temp_str, "%-8.3f", p[P_MAG_SCALE_Y]);   ips200_show_string(val_x, 276, temp_str);
 }
 
 // ================= 主控：屏幕刷新与按键检测 ==============

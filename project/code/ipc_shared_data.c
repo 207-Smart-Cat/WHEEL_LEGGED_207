@@ -4,7 +4,6 @@
 #include "control.h"
 #include "param.h"
 #include "navigation_data_handling.h"
-#include "kalman_rm.h"
 // --- 1. 绝对地址内存分配 ---
 #pragma location = 0x28001000
 __no_init CoreA_Status_t core_a_status; 
@@ -53,12 +52,7 @@ float* const param_map[PARAM_COUNT] = {
     &nav_q_v,              // 30
     &nav_q_bias_ax,        // 31
     &nav_r_v_normal,       // 32
-    &nav_r_v_slip,          // 33
-      
-    &mag_offset_x,         // 34
-    &mag_offset_y,         // 35
-    &mag_scale_x,          // 36
-    &mag_scale_y           // 37
+    &nav_r_v_slip          // 33
 };
 
 // --- 初始化函数 ---
@@ -100,14 +94,9 @@ void IPC_Init_Shared_Memory(void) {
     core_b_cmd.params[P_NAV_Q_X] = 0.001f;
     core_b_cmd.params[P_NAV_Q_Y] = 0.001f;
     core_b_cmd.params[P_NAV_Q_V] = 0.01f;
-    core_b_cmd.params[P_NAV_Q_BIAS_AX] = 0.002f;
+    core_b_cmd.params[P_NAV_Q_BIAS_AX] = 0.1f;
     core_b_cmd.params[P_NAV_R_V_NORMAL] = 0.01f;
     core_b_cmd.params[P_NAV_R_V_SLIP] = 10.0f;
-    
-    core_b_cmd.params[P_MAG_OFFSET_X] = -0.080f;
-    core_b_cmd.params[P_MAG_OFFSET_Y] = 0.040f;
-    core_b_cmd.params[P_MAG_SCALE_X]  = 1.0f;
-    core_b_cmd.params[P_MAG_SCALE_Y]  = 1.05f;
 
     core_b_cmd.update_mask = 0;
     core_b_cmd.param_update_flag = 0;
@@ -161,9 +150,9 @@ void IPC_Check_And_Apply_Params_To_Core0(void) {
     
     if(core_b_cmd.param_update_flag == 1) {
         for(int i = 0; i < PARAM_COUNT; i++) {
-            // 【关键修改：把 1 改成 1ULL】
-            if(core_b_cmd.update_mask & (1ULL << i)) {
-                *(param_map[i]) = core_b_cmd.params[i]; 
+            // 检查对应位是否被置 1
+            if(core_b_cmd.update_mask & (1 << i)) {
+                *(param_map[i]) = core_b_cmd.params[i]; // 直接把值写到底层变量内存里！
             }
         }
         core_b_cmd.update_mask = 0;
@@ -296,18 +285,10 @@ void IPC_Load_Params_From_Flash(void) {
                F_S(core_b_cmd.params[P_NAV_R_V_NORMAL]), F_I(core_b_cmd.params[P_NAV_R_V_NORMAL]), F_D5(core_b_cmd.params[P_NAV_R_V_NORMAL]),
                F_S(core_b_cmd.params[P_NAV_R_V_SLIP]), F_I(core_b_cmd.params[P_NAV_R_V_SLIP]), F_D5(core_b_cmd.params[P_NAV_R_V_SLIP]));
         
-        LOG_Printf(" [ Mag ]  off_x: %s%d.%04d, off_y: %s%d.%04d\r\n", 
-               F_S(core_b_cmd.params[P_MAG_OFFSET_X]), F_I(core_b_cmd.params[P_MAG_OFFSET_X]), F_D(core_b_cmd.params[P_MAG_OFFSET_X]),
-               F_S(core_b_cmd.params[P_MAG_OFFSET_Y]), F_I(core_b_cmd.params[P_MAG_OFFSET_Y]), F_D(core_b_cmd.params[P_MAG_OFFSET_Y]));
-               
-        LOG_Printf(" [ Mag ]  scl_x: %s%d.%04d, scl_y: %s%d.%04d\r\n", 
-               F_S(core_b_cmd.params[P_MAG_SCALE_X]), F_I(core_b_cmd.params[P_MAG_SCALE_X]), F_D(core_b_cmd.params[P_MAG_SCALE_X]),
-               F_S(core_b_cmd.params[P_MAG_SCALE_Y]), F_I(core_b_cmd.params[P_MAG_SCALE_Y]), F_D(core_b_cmd.params[P_MAG_SCALE_Y]));
-        
         LOG_Printf("=============================================\r\n\r\n");
 
         // 3. 敲响门铃，让 Core A 一次性全量更新
-        core_b_cmd.update_mask = 0xFFFFFFFFFFFFFFFFULL; // 【关键修改：64个1】
+        core_b_cmd.update_mask = 0xFFFFFFFF; 
         core_b_cmd.param_update_flag = 1;
         SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     }
