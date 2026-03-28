@@ -12,6 +12,10 @@ extern uint8 IPS200_flag;
 extern uint8 Motor_Control_flag;
 extern bool IMU_ready;
 int cnt;
+
+volatile uint32_t test_pit10_cnt = 0;
+
+
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr() // IMU读取与滤波解析，非常重要 (5ms)
 {
@@ -39,6 +43,8 @@ void pit0_ch2_isr() //
 
 void pit0_ch10_isr() // 平衡控制，非常重要（10ms）
 {
+  test_pit10_cnt++; // 每次进中断，计数器加 1
+  
     balance_control();
     if (IMU_ready) {
         navi_ekf_update(); 

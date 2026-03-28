@@ -9,6 +9,8 @@
 #include "ipc_shared_data.h"
 #include "param.h"
 #include "navigation_data_handling.h"
+#include "navigation_tracking.h"
+
 // **************************** 核间通信区域 ****************************
 // 在 CM7_0 和 CM7_1 中都需要加入这段代码
 
@@ -50,6 +52,7 @@ extern RobotState_t robot_pose;
 extern bool IMU_ready;
 extern int jump_stop;
 
+extern uint32_t test_pit10_cnt;
 
 // **************************** 封装调试部分函数区域 ****************************
 // ================= 主函数 =================
@@ -65,13 +68,11 @@ int main(void)
   //=================================IMU初始化=======================
   imu_init(LED1);
   pit_ms_init(PIT_IMU, 5);
- //imu_mag_calibration_routine();
   //========================遥控器控制初始化==========================
   //    Remote_Init();
   //    pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
   //=================================平衡动作初始化========================
   Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
-  pit_ms_init(PIT_Balance, 3);
   small_driver_uart_init(); // 驱动板通信初始化
   //=================================舵机初始化======================
   pit_ms_init(PIT_Engine, 30); // 舵机初始化
@@ -110,7 +111,7 @@ int main(void)
     leg_control(&x_current, &y_current);
 
     IPC_Push_Status_From_CoreA();
-    //printf("nav.x:%f\n",robot_pose.y);
+    printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);    
    // printf("Target Angle:%f\n",target_angle);
     // printf("%f,%f",temp_a,temp_b);
     // printf("V: %d \n",motor_value.receive_left_speed_data);
@@ -119,7 +120,8 @@ int main(void)
     // printf("P: %f \n",Speed_p);
     // printf("stand: %f \n",target_motor_Stand);
     // printf("target_v: %f \n",target_velocity);
-    printf("%.3f, %.3f\r\n", IMU_data.mag[0], IMU_data.mag[1]);
+//    printf("cnt: %d \n",test_pit10_cnt);
+    
     system_delay_ms(20);
   }
 }

@@ -69,6 +69,7 @@
     #define NAV_Q_BIAS_AX       nav_q_bias_ax
     #define NAV_R_V_NORMAL      nav_r_v_normal
     #define NAV_R_V_SLIP        nav_r_v_slip
+    
 #else
 
 // Q 矩阵：过程噪声 (越小越信任预测模型，即编码器)
@@ -137,8 +138,6 @@ typedef struct {
     float  v;               // 线速度 (m/s)
 
     float  w;               // 角速度 (°/s)
-    
-    float  bias_ax;         //加速度零偏
 
     uint8_t slip_level;     // 打滑状态 (0:正常, 1:轻微, 2:严重)
 
@@ -183,7 +182,6 @@ typedef struct {
 
 //全局变量声明
 extern RobotState_t robot_pose;                                  // 全局实时位姿，供外部只读访问
-extern Navi_Sensor_Data_t filter_data;
 
 //=================================================声明  基础函数================================================
 

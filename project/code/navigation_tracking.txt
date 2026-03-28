@@ -1,0 +1,2 @@
+void uart_control_callback(void):
+    回调函数可放在uart4中断中。    

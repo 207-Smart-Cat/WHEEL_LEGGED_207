@@ -221,7 +221,7 @@ void kalman_filter_update(KalmanFilter_Struct *kf, float *obs_data) {
     mat_mul(&kf->temp1, &kf->K, &kf->H);
     
     // 步骤2：计算 I - K*H（复用temp_inv作为单位矩阵）
-    mat_eye(&kf->F_T);                //复用 n*n 的 F_T 作为临时单位矩阵 ,减小矩阵内存消耗
+    mat_eye(&kf->temp_inv); 
     for(int i=0; i<n; i++) {
         for(int j=0; j<n; j++) {
             float val = mat_get(&kf->temp_inv, i, j) - mat_get(&kf->temp1, i, j);
@@ -230,7 +230,7 @@ void kalman_filter_update(KalmanFilter_Struct *kf, float *obs_data) {
     }
     
     // 步骤3：更新P = (I-KH) * P
-    mat_mul(&kf->temp1, &kf->F_T, &kf->P);
+    mat_mul(&kf->temp1, &kf->temp_inv, &kf->P);
     
     // 逐元素拷贝P矩阵（避免指针重叠）
     for(int i=0; i<n; i++) {

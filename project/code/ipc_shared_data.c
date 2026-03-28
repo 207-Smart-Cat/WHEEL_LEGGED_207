@@ -99,10 +99,10 @@ void IPC_Init_Shared_Memory(void) {
     
     core_b_cmd.params[P_NAV_Q_X] = 0.001f;
     core_b_cmd.params[P_NAV_Q_Y] = 0.001f;
-    core_b_cmd.params[P_NAV_Q_V] = 0.001f;
-    core_b_cmd.params[P_NAV_Q_BIAS_AX] = 0.001f;
-    core_b_cmd.params[P_NAV_R_V_NORMAL] = 0.001f;
-    core_b_cmd.params[P_NAV_R_V_SLIP] = 0.001f;
+    core_b_cmd.params[P_NAV_Q_V] = 0.01f;
+    core_b_cmd.params[P_NAV_Q_BIAS_AX] = 0.002f;
+    core_b_cmd.params[P_NAV_R_V_NORMAL] = 0.01f;
+    core_b_cmd.params[P_NAV_R_V_SLIP] = 10.0f;
     
     core_b_cmd.params[P_MAG_OFFSET_X] = -0.080f;
     core_b_cmd.params[P_MAG_OFFSET_Y] = 0.040f;

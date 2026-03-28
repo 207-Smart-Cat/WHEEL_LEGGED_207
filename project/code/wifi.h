@@ -22,7 +22,8 @@
 // 通用端口与WIFI设置
 #define WIFI_TARGET_PORT        "8086"
 #define WIFI_LOCAL_PORT         "6666"
-#define WIFI_SSID_TEST          "test207"       
+//#define WIFI_SSID_TEST          "test207"       
+#define WIFI_SSID_TEST          "zhangtao"       
 #define WIFI_PASSWORD_TEST      "12345678"
 
 // --- WIFI 工作模式枚举定义 ---
