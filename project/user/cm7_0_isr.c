@@ -40,6 +40,9 @@ void pit0_ch2_isr() //
 void pit0_ch10_isr() // 平衡控制，非常重要（10ms）
 {
     balance_control();
+    if (IMU_ready) {
+        navi_ekf_update(); 
+    }
     pit_isr_flag_clear(PIT_CH10);
 }
 

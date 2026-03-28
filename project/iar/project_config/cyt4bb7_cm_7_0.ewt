@@ -1441,6 +1441,12 @@
             <name>$PROJ_DIR$\..\..\code\engine.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\filter_function.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\filter_function.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\FiveBarLinkageData.c</name>
         </file>
         <file>
@@ -1463,6 +1469,30 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\kalman_rm.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\matrix.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\matrix.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_action.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_action.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_data_handling.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_data_handling.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_tracking.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_tracking.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\param.c</name>

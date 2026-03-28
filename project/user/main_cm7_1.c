@@ -34,12 +34,12 @@ int main(void)
     //=================================屏幕初始化============================
     screen_display_init();
     pit_ms_init(PIT_IPS, 50);
-     //=================================WIFI模块初始化======================
-//     wifi_init();
-//     pit_ms_init(PIT_WiFi, 20);
+    // =================================WIFI模块初始化======================
+     wifi_init();
+     pit_ms_init(PIT_WiFi, 20);
     //=================================共享缓存以及Flash部分模块初始化===============
-//    pit_ms_init(PIT_IPC, 5);
-//    IPC_Load_Params_From_Flash();
+    pit_ms_init(PIT_IPC, 5);
+    IPC_Load_Params_From_Flash();
     //=================================串口调参初始化======================
     VOFA_UART_Init();
     
@@ -50,8 +50,9 @@ int main(void)
     {
         // 此处编写需要循环执行的代码
        screen_display_process();               //屏幕显示
-//        wifi_process_loop();                    //wifi接收数据解析
-//        wifi_report_task();
+        wifi_process_loop();                    //wifi接收数据解析
+        wifi_report_task();
+        wifi_auto_reconnect_task();
         VOFA_UART_Process();
 
         system_delay_ms(1);

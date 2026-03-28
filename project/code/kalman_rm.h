@@ -10,6 +10,11 @@
 extern "C" {
 #endif
 
+// 新增：向全工程暴露地磁计校准参数
+extern float mag_offset_x;
+extern float mag_offset_y;
+extern float mag_scale_x;
+extern float mag_scale_y;
 
 typedef struct
 {

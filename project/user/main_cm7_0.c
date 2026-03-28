@@ -8,6 +8,7 @@
 #include "screen_display.h"
 #include "ipc_shared_data.h"
 #include "param.h"
+#include "navigation_data_handling.h"
 // **************************** 核间通信区域 ****************************
 // 在 CM7_0 和 CM7_1 中都需要加入这段代码
 
@@ -41,10 +42,16 @@ int stop_flash = 0; // 完赛标志位
 int Bridge_position = 1;     // 可能是过单边桥时候需要的（腿部自适应）
 int yanshi_biaozhiwei = 100; // 可能是过单边桥时候需要的（腿部自适应模式）
 int change_speed = 0;
-
 extern float temp_a, temp_b;
-// **************************** 封装调试部分函数区域 ****************************
 
+
+// 外部变量引入
+extern RobotState_t robot_pose;
+extern bool IMU_ready;
+extern int jump_stop;
+
+
+// **************************** 封装调试部分函数区域 ****************************
 // ================= 主函数 =================
 int main(void)
 {
@@ -58,6 +65,7 @@ int main(void)
   //=================================IMU初始化=======================
   imu_init(LED1);
   pit_ms_init(PIT_IMU, 5);
+ //imu_mag_calibration_routine();
   //========================遥控器控制初始化==========================
   //    Remote_Init();
   //    pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
@@ -70,9 +78,30 @@ int main(void)
                                //=================================双核通信初始化======================
   IPC_Init_Shared_Memory();
 
+  // === 1. 导航系统初始化 ===
+    navi_data_init();
+    Navi_Tracking_Init();
+
+    // 修改：将 PIT_Balance 从 3ms 改为 10ms 以匹配 ENCODER_DT (0.01f)
+    // 注意：如果是平衡控制强制要求 3ms，则需修改导航的 ENCODER_DT 为 0.03f 并在 3ms 中断分频调用
+    pit_ms_init(PIT_Balance, 10); 
+     jump_stop = 1; // 在 control.c 中，jump_stop=1 会让 PID 参数全置 0
+    interrupt_global_enable(0);
+    
+    system_delay_ms(1000); // 额外等待1秒，确保卡尔曼完全静止收敛
+    
+    // === 3. 重置导航原点 (0,0) ===
+    Navi_Data_Set_Origin();
+    
+    // === 4. 切断电机动力，开启纯推车模式 ===
+   
+    
+    
+
   interrupt_global_enable(0); // 在初始化后使能中断
 
   system_delay_ms(1000);
+  
 
   while (true)
   {
@@ -81,7 +110,8 @@ int main(void)
     leg_control(&x_current, &y_current);
 
     IPC_Push_Status_From_CoreA();
-
+    //printf("nav.x:%f\n",robot_pose.y);
+   // printf("Target Angle:%f\n",target_angle);
     // printf("%f,%f",temp_a,temp_b);
     // printf("V: %d \n",motor_value.receive_left_speed_data);
     // printf("%d,%d\n",Motor_Left,Motor_Right);
@@ -89,6 +119,7 @@ int main(void)
     // printf("P: %f \n",Speed_p);
     // printf("stand: %f \n",target_motor_Stand);
     // printf("target_v: %f \n",target_velocity);
+    printf("%.3f, %.3f\r\n", IMU_data.mag[0], IMU_data.mag[1]);
     system_delay_ms(20);
   }
 }

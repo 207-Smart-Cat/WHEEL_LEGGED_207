@@ -5,18 +5,48 @@ extern IMU_t IMU_data;
 //鏉ユ簮鏈煡锛屽痉璇唬鐮侊紝浣嗘槸闂涓嶅ぇ
 // 互补滤波定义
 
-void cal(int16 imu963ra_acc_x,  int16 imu963ra_acc_y, int16 imu963ra_acc_z,int16 imu963ra_gyro_x, int16 imu963ra_gyro_y,int16 imu963ra_gyro_z,
-        int16 imu963ra_mag_x,  int16 imu963ra_mag_y,  int16 imu963ra_mag_z)
+//void cal(int16 imu963ra_acc_x,  int16 imu963ra_acc_y, int16 imu963ra_acc_z,int16 imu963ra_gyro_x, int16 imu963ra_gyro_y,int16 imu963ra_gyro_z,
+//        int16 imu963ra_mag_x,  int16 imu963ra_mag_y,  int16 imu963ra_mag_z)
+//{
+//     IMU_data.accel[0] = imu963ra_acc_transition(imu963ra_acc_x);
+//     IMU_data.accel[1] = imu963ra_acc_transition(imu963ra_acc_y);
+//     IMU_data.accel[2] = imu963ra_acc_transition(imu963ra_acc_z);
+//     IMU_data.gyro[0] = imu963ra_gyro_transition(imu963ra_gyro_x);
+//     IMU_data.gyro[1] = imu963ra_gyro_transition(imu963ra_gyro_y);
+//     IMU_data.gyro[2] = imu963ra_gyro_transition(imu963ra_gyro_z);
+//     IMU_data.mag[0] = imu963ra_mag_transition(imu963ra_mag_x);
+//     IMU_data.mag[1] = imu963ra_mag_transition(imu963ra_mag_y);
+//     IMU_data.mag[2] = imu963ra_mag_transition(imu963ra_mag_z);
+//}
+
+float mag_offset_x = -0.080f;
+float mag_offset_y =  0.040f;
+float mag_scale_x  =  1.000f;
+float mag_scale_y  =  1.050f;
+
+void cal(int16 imu963ra_acc_x,  int16 imu963ra_acc_y, int16 imu963ra_acc_z,
+         int16 imu963ra_gyro_x, int16 imu963ra_gyro_y,int16 imu963ra_gyro_z,
+         int16 imu963ra_mag_x,  int16 imu963ra_mag_y,  int16 imu963ra_mag_z)
 {
+     // 1. 加速度和角速度物理量转换
      IMU_data.accel[0] = imu963ra_acc_transition(imu963ra_acc_x);
      IMU_data.accel[1] = imu963ra_acc_transition(imu963ra_acc_y);
      IMU_data.accel[2] = imu963ra_acc_transition(imu963ra_acc_z);
+     
      IMU_data.gyro[0] = imu963ra_gyro_transition(imu963ra_gyro_x);
      IMU_data.gyro[1] = imu963ra_gyro_transition(imu963ra_gyro_y);
      IMU_data.gyro[2] = imu963ra_gyro_transition(imu963ra_gyro_z);
-     IMU_data.mag[0] = imu963ra_mag_transition(imu963ra_mag_x);
-     IMU_data.mag[1] = imu963ra_mag_transition(imu963ra_mag_y);
-     IMU_data.mag[2] = imu963ra_mag_transition(imu963ra_mag_z);
+
+     // 2. 提取磁力计原始物理值
+     float raw_mag_x = imu963ra_mag_transition(imu963ra_mag_x);
+     float raw_mag_y = imu963ra_mag_transition(imu963ra_mag_y);
+     float raw_mag_z = imu963ra_mag_transition(imu963ra_mag_z);
+
+     // 3. 应用硬磁和软磁校准（使用全局变量，不再写死）
+     IMU_data.mag[0] = (raw_mag_x - mag_offset_x) * mag_scale_x;
+     IMU_data.mag[1] = (raw_mag_y - mag_offset_y) * mag_scale_y;
+     IMU_data.mag[2] = raw_mag_z;
+     
 }
 void Kalman_init(Attitude_3D_Kalman* filter,float Abtastzeit_s, float Qyaw, float Qpitch_roll, float Qgyrobias, float Ryaw, float Rpitch_roll)
 {
@@ -158,3 +188,6 @@ void Kalman_update(Attitude_3D_t* result, Attitude_3D_Kalman* filter, float Acc_
     Attitude_3D_t return_Data = {filter->yaw, filter->pitch, filter->roll, Gyro_X-filter->xbias, Gyro_Y-filter->ybias, Gyro_Z-filter->zbias};
     *result = return_Data;
 }
+
+
+

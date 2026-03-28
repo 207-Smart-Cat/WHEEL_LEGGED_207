@@ -30,7 +30,25 @@ typedef enum {
     P_LEG_KD,
     P_X_CURRENT,
     P_Y_CURRENT,
-    // 如果你要新增参数，直接在这里加！比如 P_JUMP_POWER,
+    
+    P_AIR_ROLL_P,
+    P_AIR_ROLL_I,
+    P_AIR_ROLL_D,
+    P_DIR_P,
+    P_DIR_I,
+    P_DIR_D,
+    
+    P_NAV_Q_X,
+    P_NAV_Q_Y,
+    P_NAV_Q_V,
+    P_NAV_Q_BIAS_AX,
+    P_NAV_R_V_NORMAL,
+    P_NAV_R_V_SLIP,
+    
+    P_MAG_OFFSET_X,
+    P_MAG_OFFSET_Y,
+    P_MAG_SCALE_X,
+    P_MAG_SCALE_Y,
     
     PARAM_COUNT // 这个枚举的终极妙用：它会自动等于参数的总个数！
 } ParamID_e;
@@ -42,7 +60,7 @@ typedef struct {
     int16 left_wheel_speed, right_wheel_speed;
     int16 left_pwm_duty, right_pwm_duty;
     
-    
+    float nav_x,nav_y,nav_v,nav_w;
     uint32 heartbeat;
     
     // 【优化】用数组统一管理真实的参数！
@@ -53,13 +71,11 @@ typedef struct {
 // Core B (Core 1) 指令与调参结构体
 // ==========================================================
 typedef struct {
-    // 【优化】用数组统一管理期望的参数！
     float params[PARAM_COUNT]; 
     
-    uint32 update_mask;      
+    uint64_t update_mask;    // 【必须升级为 64 位！】
     uint8 param_update_flag; 
 } CoreB_Command_t;
-
 // 绝对地址声明
 extern __no_init CoreA_Status_t core_a_status;
 extern __no_init CoreB_Command_t core_b_cmd;

@@ -99,7 +99,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             
             // 仅仅两行代码，替代了你原来的 17 个 case！
             core_b_cmd.params[index] = temp_float.f_val; 
-            core_b_cmd.update_mask |= (1 << index); 
+            core_b_cmd.update_mask |= (1ULL << index);
 
             core_b_cmd.param_update_flag = 1; 
             SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -112,7 +112,12 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 "Angle_P", "Angle_I", "Angle_D",            
                 "Gyro_P", "Gyro_I", "Gyro_D",               
                 "Target_Velocity", "Target_Angle", "Target_Motor_Stand", // <--- 加上这个逗号！
-                "Leg_Kp", "Leg_Ki", "Leg_Kd", "X_Current", "Y_Current"
+                "Leg_Kp", "Leg_Ki", "Leg_Kd", "X_Current", "Y_Current",
+                "Air_Roll_P", "Air_Roll_I", "Air_Roll_D",
+                "Direction_P", "Direction_I", "Direction_D",
+                "Nav_Q_X", "Nav_Q_Y", "Nav_Q_V", 
+                "Nav_Q_Bias_Ax", "Nav_R_V_Normal", "Nav_R_V_Slip",
+                "Mag_Offset_X", "Mag_Offset_Y", "Mag_Scale_X", "Mag_Scale_Y"
             };
             
             LOG_Printf("[Core 1] Param '%s' set to %.4f (Mask: 0x%02X)\r\n", 
@@ -167,7 +172,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 memcpy(core_b_cmd.params, &rx_buffer[i + 2], PARAM_COUNT * sizeof(float));
                 
                 // 触发全量更新掩码 (0xFFFFFFFF 表示所有位都是 1)
-                core_b_cmd.update_mask = 0xFFFFFFFF; 
+                core_b_cmd.update_mask = 0xFFFFFFFFFFFFFFFFULL; 
                 core_b_cmd.param_update_flag = 1; 
                 
                 SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -197,7 +202,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             IPC_Pull_Status_To_CoreB(); 
             
             // 2. 构建二进制返回包 (AA C4)
-            uint8 tx_buf[128]; // 91字节足够放下，开128保底
+            uint8 tx_buf[200]; // 扩容到 200，保底足够放下 155 字节的数据
             tx_buf[0] = 0xAA;
             tx_buf[1] = 0xC4;
             
@@ -217,22 +222,69 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             wifi_spi_udp_send_now(); 
             #endif
             
-            // 3. 打印给人类看的清单
+// 3. 打印给人类看的清单（采用防对齐 Bug 宏）
+            #define F_S(f) ((f) < 0 ? "-" : "")
+            #define F_I(f) (int)((f) < 0 ? -(f) : (f))
+            #define F_D(f) (int)((((f) < 0 ? -(f) : (f)) - (int)((f) < 0 ? -(f) : (f))) * 10000)
+
             LOG_Printf("\r\n============= CURRENT PARAMS =============\r\n");
-            LOG_Printf(" Ang_P: %.4f | Ang_D: %.4f \r\n", core_a_status.act_params[P_ANGLE_P], core_a_status.act_params[P_ANGLE_D]);
-            LOG_Printf(" Spd_P: %.4f | Spd_I: %.4f | Spd_D: %.4f\r\n", core_a_status.act_params[P_SPEED_P], core_a_status.act_params[P_SPEED_I], core_a_status.act_params[P_SPEED_D]);
-            LOG_Printf(" Gyr_P: %.4f | Gyr_I: %.4f | Gyr_D: %.4f\r\n", core_a_status.act_params[P_GYRO_P], core_a_status.act_params[P_GYRO_I], core_a_status.act_params[P_GYRO_D]);
+            LOG_Printf(" Ang_P: %s%d.%04d | Ang_D: %s%d.%04d \r\n", 
+                   F_S(core_a_status.act_params[P_ANGLE_P]), F_I(core_a_status.act_params[P_ANGLE_P]), F_D(core_a_status.act_params[P_ANGLE_P]),
+                   F_S(core_a_status.act_params[P_ANGLE_D]), F_I(core_a_status.act_params[P_ANGLE_D]), F_D(core_a_status.act_params[P_ANGLE_D]));
+                   
+            LOG_Printf(" Spd_P: %s%d.%04d | Spd_I: %s%d.%04d | Spd_D: %s%d.%04d\r\n", 
+                   F_S(core_a_status.act_params[P_SPEED_P]), F_I(core_a_status.act_params[P_SPEED_P]), F_D(core_a_status.act_params[P_SPEED_P]),
+                   F_S(core_a_status.act_params[P_SPEED_I]), F_I(core_a_status.act_params[P_SPEED_I]), F_D(core_a_status.act_params[P_SPEED_I]),
+                   F_S(core_a_status.act_params[P_SPEED_D]), F_I(core_a_status.act_params[P_SPEED_D]), F_D(core_a_status.act_params[P_SPEED_D]));
+                   
+            LOG_Printf(" Gyr_P: %s%d.%04d | Gyr_I: %s%d.%04d | Gyr_D: %s%d.%04d\r\n", 
+                   F_S(core_a_status.act_params[P_GYRO_P]), F_I(core_a_status.act_params[P_GYRO_P]), F_D(core_a_status.act_params[P_GYRO_P]),
+                   F_S(core_a_status.act_params[P_GYRO_I]), F_I(core_a_status.act_params[P_GYRO_I]), F_D(core_a_status.act_params[P_GYRO_I]),
+                   F_S(core_a_status.act_params[P_GYRO_D]), F_I(core_a_status.act_params[P_GYRO_D]), F_D(core_a_status.act_params[P_GYRO_D]));
+            LOG_Printf(" Air_P: %s%d.%04d | Air_I: %s%d.%04d | Air_D: %s%d.%04d\r\n", 
+                   F_S(core_a_status.act_params[P_AIR_ROLL_P]), F_I(core_a_status.act_params[P_AIR_ROLL_P]), F_D(core_a_status.act_params[P_AIR_ROLL_P]),
+                   F_S(core_a_status.act_params[P_AIR_ROLL_I]), F_I(core_a_status.act_params[P_AIR_ROLL_I]), F_D(core_a_status.act_params[P_AIR_ROLL_I]),
+                   F_S(core_a_status.act_params[P_AIR_ROLL_D]), F_I(core_a_status.act_params[P_AIR_ROLL_D]), F_D(core_a_status.act_params[P_AIR_ROLL_D]));
+                   
+            LOG_Printf(" Dir_P: %s%d.%04d | Dir_I: %s%d.%04d | Dir_D: %s%d.%04d\r\n", 
+                   F_S(core_a_status.act_params[P_DIR_P]), F_I(core_a_status.act_params[P_DIR_P]), F_D(core_a_status.act_params[P_DIR_P]),
+                   F_S(core_a_status.act_params[P_DIR_I]), F_I(core_a_status.act_params[P_DIR_I]), F_D(core_a_status.act_params[P_DIR_I]),
+                   F_S(core_a_status.act_params[P_DIR_D]), F_I(core_a_status.act_params[P_DIR_D]), F_D(core_a_status.act_params[P_DIR_D]));
+            LOG_Printf(" Mag_Off: X %s%d.%04d | Y %s%d.%04d \r\n", 
+                   F_S(core_a_status.act_params[P_MAG_OFFSET_X]), F_I(core_a_status.act_params[P_MAG_OFFSET_X]), F_D(core_a_status.act_params[P_MAG_OFFSET_X]),
+                   F_S(core_a_status.act_params[P_MAG_OFFSET_Y]), F_I(core_a_status.act_params[P_MAG_OFFSET_Y]), F_D(core_a_status.act_params[P_MAG_OFFSET_Y]));
+            LOG_Printf(" Mag_Scl: X %s%d.%04d | Y %s%d.%04d \r\n", 
+                   F_S(core_a_status.act_params[P_MAG_SCALE_X]), F_I(core_a_status.act_params[P_MAG_SCALE_X]), F_D(core_a_status.act_params[P_MAG_SCALE_X]),
+                   F_S(core_a_status.act_params[P_MAG_SCALE_Y]), F_I(core_a_status.act_params[P_MAG_SCALE_Y]), F_D(core_a_status.act_params[P_MAG_SCALE_Y]));
             LOG_Printf("=============================================\r\n");
 
-            // 4. 【核心新增】打印 VOFA+ 可以直接复制粘贴的 HEX 覆盖指令
+            // 4. 分 4 段安全拼合打印 139 字节的数据 (防丢包/溢出)
             LOG_Printf("\r\n>>> VOFA+ COPY & PASTE COMMAND (AA C4) <<<\r\n");
             
-            // 因为 print 太长可能会超出单片机缓存，这里用一个简单的 for 循环挨个打印 HEX
-            for(int k = 0; k < (3 + PARAM_COUNT * 4); k++) 
-            {
-                LOG_Printf("%02X ", tx_buf[k]);
-            }
-            LOG_Printf("\r\n>>> END OF COMMAND <<<\r\n\r\n");
+            char hex_str[160]; 
+            int total_len = 3 + PARAM_COUNT * 4; // 现在总长为 139 字节
+            
+            // 第 1 段：0 ~ 39 字节
+            memset(hex_str, 0, sizeof(hex_str));
+            for(int k = 0; k < 40; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
+            LOG_Printf("%s", hex_str);
+            
+            // 第 2 段：40 ~ 79 字节
+            memset(hex_str, 0, sizeof(hex_str));
+            for(int k = 40; k < 80; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
+            LOG_Printf("%s", hex_str);
+            
+            // 第 3 段：80 ~ 119 字节
+            memset(hex_str, 0, sizeof(hex_str));
+            for(int k = 80; k < 120; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
+            LOG_Printf("%s", hex_str);
+            
+            // 第 4 段：120 ~ 末尾
+            memset(hex_str, 0, sizeof(hex_str));
+            for(int k = 120; k < total_len; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
+            LOG_Printf("%s\r\n", hex_str);
+            
+            LOG_Printf(">>> END OF COMMAND <<<\r\n\r\n");
             
             i += 3; continue;
         }
@@ -247,8 +299,8 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
 #define UART_TX_PIN     (DEBUG_UART_TX_PIN)
 #define UART_RX_PIN     (DEBUG_UART_RX_PIN)
 
-static uint8 uart_get_data[128]; 
-static uint8 fifo_get_data[128]; 
+static uint8 uart_get_data[256]; 
+static uint8 fifo_get_data[256];
 fifo_struct uart_data_fifo;
 
 void VOFA_UART_Init(void)

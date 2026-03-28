@@ -2,6 +2,7 @@
 #include "FiveBarLinkageData.h"
 #include "kalman_rm.h"
 #include "param.h"
+#include "wifi.h"
 // 全局变量
 extern float target_velocity;      // 目标速度
 extern float target_angle;         // 目标角度
@@ -396,23 +397,15 @@ int cuu(int c)
 // 最小转向角
 float Turn_gyro(float target_angle, float gyro)
 {
-    int y = 0;
-    if (target_angle >= 0)
-    {
-        y = target_angle - 180;
-        if (gyro <= y && gyro >= -180)
-            gyro = 360 + gyro;
-        gyro = gyro - target_angle;
-    }
-    else
-    {
-        y = target_angle + 180;
-        if (gyro <= 180 && gyro >= y)
-            gyro = gyro - 360;
-        gyro = gyro - target_angle;
-    }
-    return gyro;
-    /*它是转向 PID 控制器的输入。该函数解决了角度在180° 附近跳转时的“环绕问题”，确保小车总是向着目标方向转动更小的弧度，而不是为了转过一个微小的角度而绕一个大圈 */
+    // 1. 计算原始误差
+    float error = target_angle - gyro;
+
+    // 2. 将误差归一化到 [-180, 180] 之间
+    // 这样可以确保小车永远旋转角度差绝对值小于 180 的那个方向
+    while (error > 180)  error -= 360;
+    while (error < -180) error += 360;
+
+    return error; // 返回给 PID 作为 Input
 }
 
 // 转向目标角度计算,划分到合适区间（-180~+180）
@@ -422,7 +415,7 @@ float Turn_target(float target_angle)
         target_angle = target_angle - 360;
     else if (target_angle <= -180)
         target_angle = 360 + target_angle;
-    return target_angle;
+    return -target_angle;
 }
 
 // 转向控制计算
@@ -437,6 +430,9 @@ float Turn(float gyro, float target_angle) // Gyro传入的是当前的角度
     float control_output = +PidLocCtrl(&motor_direction, error);
     control_output = constrain_float(control_output, -2000, 2000);
     return control_output; // 返回控制输出
+    
+      //printf("%f\n",control_output);
+
 }
 
 // 平衡控制主函数
@@ -478,6 +474,7 @@ void balance_control()
 
         // 【关键】你旧代码里漏掉了角速度环的热更新，现在补上了！
         PidChange(&motor_gyro, Gyro_p, Gyro_i, Gyro_d);
+        PidChange(&motor_direction, Direction_p, Direction_i, Direction_d); 
     }
     //    // 跳跃更新
     //    if (jump_stop == 1)
@@ -541,8 +538,8 @@ void balance_control()
     {
         // 计算转向PWM值
         Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
-        printf("Turn_pwm %f\n\n", Turn_Pwm);
-        Turn_Pwm = 0;
+       //printf("Turn_pwm %f\n\n", Turn_Pwm);
+        //Turn_Pwm = 0;
         // //===================仅调试去除转向功能使用=================================
         // Turn_Pwm = 0;
         // //====================================================================
