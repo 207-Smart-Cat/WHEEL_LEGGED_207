@@ -63,6 +63,9 @@ int main(void)
   // 此处编写用户代码 例如外设初始化代码等
 
   interrupt_global_disable(); // 初始化外设之前先关闭中断
+    //=================================双核通信初始化======================
+  IPC_Init_Shared_Memory();
+  IPC_Check_And_Apply_Params_To_Core0();
   //=================================GPIO初始化=======================
   gpio_init(LED1, GPO, GPIO_HIGH, GPO_PUSH_PULL); // 初始化 LED1 输出 默认高电平 推挽输出模式
   //=================================IMU初始化=======================
@@ -76,24 +79,23 @@ int main(void)
   small_driver_uart_init(); // 驱动板通信初始化
   //=================================舵机初始化======================
   pit_ms_init(PIT_Engine, 30); // 舵机初始化
-                               //=================================双核通信初始化======================
-  IPC_Init_Shared_Memory();
 
-  // === 1. 导航系统初始化 ===
-    navi_data_init();
-    Navi_Tracking_Init();
-
-    // 修改：将 PIT_Balance 从 3ms 改为 10ms 以匹配 ENCODER_DT (0.01f)
-    pit_ms_init(PIT_Balance, 3); 
-     jump_stop = 1; // 在 control.c 中，jump_stop=1 会让 PID 参数全置 0
+//  // === 1. 导航系统初始化 ===
+//    navi_data_init();
+//    Navi_Tracking_Init();
+//
+//    // 修改：将 PIT_Balance 从 3ms 改为 10ms 以匹配 ENCODER_DT (0.01f)
+//    // 注意：如果是平衡控制强制要求 3ms，则需修改导航的 ENCODER_DT 为 0.03f 并在 3ms 中断分频调用
+    pit_ms_init(PIT_Balance, 10); 
+////    jump_stop = 1; // 在 control.c 中，jump_stop=1 会让 PID 参数全置 0
     interrupt_global_enable(0);
-    
+//    
     system_delay_ms(1000); // 额外等待1秒，确保卡尔曼完全静止收敛
-    
-    // === 3. 重置导航原点 (0,0) ===
-    Navi_Data_Set_Origin();
-    
-    // === 4. 切断电机动力，开启纯推车模式 ===
+//    
+//    // === 3. 重置导航原点 (0,0) ===
+//    Navi_Data_Set_Origin();
+//    
+//    // === 4. 切断电机动力，开启纯推车模式 ===
    
     
     
@@ -110,7 +112,7 @@ int main(void)
     leg_control(&x_current, &y_current);
 
     IPC_Push_Status_From_CoreA();
-    printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);    
+    //printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);    
    // printf("Target Angle:%f\n",target_angle);
     // printf("%f,%f",temp_a,temp_b);
     // printf("V: %d \n",motor_value.receive_left_speed_data);

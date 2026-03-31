@@ -63,16 +63,22 @@ Navi_Sensor_Data_t       raw_data  ,filter_data;                        // Ô­Ê¼Ô
 static KalmanFilter_Struct nav_ekf;      // 5½×µ¼º½ EKF ½á¹¹Ìå
 
 static LowPassFilter_Struct   lpf_v_left,  lpf_v_right, lpf_ax, lpf_w;
+
 // ÔÚÎÄ¼şÉÏ·½µÄÈ«¾Ö±äÁ¿ÇøÌí¼Ó£º
 #if USE_WIFI_TUNE
-float nav_q_x = 0.001f;
-float nav_q_y = 0.001f;
-float nav_q_v = 0.1f;
-float nav_q_bias_ax = 0.0001f;
-float nav_r_v_normal = 0.1f;
-float nav_r_v_slip = 10.0f;
-#endif
+    // É¾³ıÁË·ÏÆúµÄ nav_q_x ºÍ nav_q_y£¬¼ÓÈëÁË w Ïà¹ØµÄµ÷²Î±äÁ¿
+      float nav_q_v = 0.1f;
+      float nav_q_w = 0.1f;
+      float nav_q_bias_ax = 0.0001f;
+      float nav_q_bias_w = 0.0001f;
 
+      float nav_r_v_normal = 0.1f;
+      float nav_r_v_slip = 10.0f;
+      float nav_r_w_normal = 0.1f;
+      float nav_r_w_slip = 10.0f;
+      float nav_r_gyro = 0.01f;
+#endif
+    
 #if NAVI_USE_LOCAL_FRAME
 static float initial_yaw_offset = 0.0f;  // ¼ÇÂ¼¿ª»ú/ÖØÖÃÊ±µÄ¾ø¶Ôº½Ïò½Ç×÷ÎªÁãµãÆ«ÖÃ
 #endif
@@ -226,7 +232,7 @@ void navi_parse_data(void) {
 
     memcpy(filter_data.unbiased_gyro,raw_data.unbiased_gyro,sizeof(raw_data.unbiased_gyro));    
     
-    filter_data.unbiased_gyro[2] = low_pass_filter_update(&lpf_w, raw_data.unbiased_gyro[2] - 0.1);           //£¡£¡£¡ÕâÀï0.1ÊÇ¾²ÖÃÊ±ÍÓÂİÒÇµÄĞ¡ÁãÆ«
+    filter_data.unbiased_gyro[2] = low_pass_filter_update(&lpf_w, raw_data.unbiased_gyro[2]);        
 
 }
 
@@ -241,29 +247,8 @@ void navi_parse_data(void) {
  */
 
 void Navi_Data_Set_Origin(void) {
-
-    // 1. ÖØÖÃ EKF ÄÚ²¿×´Ì¬ÏòÁ¿ [x, y, v, bias_ax]^T
-
-    mat_set(&nav_ekf.X, 0, 0, 0.0f); // x = 0
-
-    mat_set(&nav_ekf.X, 1, 0, 0.0f); // y = 0
-
-    // ËÙ¶È v ºÍÆ«ÖÃÏî bias_ax ½¨Òé±£Áô£¬ÒÔÎ¬³ÖÂË²¨Æ÷ÊÕÁ²
-
-
-
-    // 2. ÖØÖÃĞ­·½²î¾ØÕó P£¬¸æËßÂË²¨Æ÷¡°ÎÒÏÖÔÚ·Ç³£È·¶¨ÎÒÔÚÔ­µã¡±
-
-    mat_eye(&nav_ekf.P);
-
-    mat_scale(&nav_ekf.P, &nav_ekf.P, 0.1f); // ½µµÍ³õÊ¼²»È·¶¨¶È         £¿£¿£¿£¿£¿£¿
-
-
-
-    // 3. Í¬²½µ½È«¾Ö×´Ì¬½á¹¹Ìå
-
     robot_pose.x = 0;
-
+    
     robot_pose.y = 0;
     
     // ¡¾ĞÂÔö¡¿£ºËø¶¨µ±Ç°³µÍ·³¯Ïò£¬×÷ÎªÏà¶Ô×ø±êÏµµÄ 0 ¶È²Î¿¼
@@ -294,49 +279,36 @@ void navi_ekf_config(void) {
 
     // ºËĞÄĞŞ¸Ä£º4½××´Ì¬£¬1½×¹Û²â(½öÏßËÙ¶È)£¬1½×¿ØÖÆ(½ö¾»¼ÓËÙ¶È)
 
-    kalman_filter_init(&nav_ekf, 4, 1, 1);
+    kalman_filter_init(&nav_ekf, 4, 3, 1);
 
     nav_ekf.Abtastzeit_s = ENCODER_DT;
 
-    
-
-    // 1. Q ¾ØÕó (4x4)
-
+// 1. Q ¾ØÕó (4x4)
     mat_zero(&nav_ekf.Q);
+    mat_set(&nav_ekf.Q, 0, 0, NAV_Q_V);
+    mat_set(&nav_ekf.Q, 1, 1, NAV_Q_W);
+    mat_set(&nav_ekf.Q, 2, 2, NAV_Q_BIAS_AX);
+    mat_set(&nav_ekf.Q, 3, 3, NAV_Q_BIAS_W);
 
-    mat_set(&nav_ekf.Q, 0, 0, NAV_Q_X);   // x ÔëÉù
-
-    mat_set(&nav_ekf.Q, 1, 1, NAV_Q_Y);   // y ÔëÉù
-
-    mat_set(&nav_ekf.Q, 2, 2, NAV_Q_V);   // v ÔëÉù
-
-    mat_set(&nav_ekf.Q, 3, 3, NAV_Q_BIAS_AX);   // ÁãÆ«ÓÎ×ßÔëÉù (¼«Ğ¡Öµ£¬ÒòÎªÁãÆ«±ä»¯ºÜÂı)
-
-
-
-    // 2. R ¾ØÕó (1x1) - Ö»ÓĞ±àÂëÆ÷ÏßËÙ¶È¹Û²â
-
+    // 2. R ¾ØÕó (3x3)
     mat_zero(&nav_ekf.R);
-
     mat_set(&nav_ekf.R, 0, 0, NAV_R_V_NORMAL); 
+    mat_set(&nav_ekf.R, 1, 1, NAV_R_W_NORMAL);
+    mat_set(&nav_ekf.R, 2, 2, NAV_R_GYRO);
 
 
 
-    // 3. H ¾ØÕó (1x4) - ½öÌáÈ¡×´Ì¬Á¿ v (Ë÷Òı2)
-
+    // 3. H ¾ØÕó (3x4) ¶ÔÓ¦ [v, w, bias_ax, bias_w]
     mat_zero(&nav_ekf.H);
-
-    mat_set(&nav_ekf.H, 0, 2, 1.0f); 
-
+    mat_set(&nav_ekf.H, 0, 0, 1.0f); // ¹Û²â1: v_enc = v
+    mat_set(&nav_ekf.H, 1, 1, 1.0f); // ¹Û²â2: w_enc = w
+    mat_set(&nav_ekf.H, 2, 1, 1.0f); // ¹Û²â3: gyro  = w + bias_w
+    mat_set(&nav_ekf.H, 2, 3, 1.0f);
     
-
     // 4. ³õÊ¼»¯
-
     mat_eye(&nav_ekf.P);
-
     mat_zero(&nav_ekf.X);
-
-    mat_set(&nav_ekf.X, 2, 0, RPM_TO_M_COEFF(now_velocity)); // ³õÊ¼»¯ËÙ¶È(m/s)
+    mat_set(&nav_ekf.X, 0, 0, RPM_TO_M_COEFF(now_velocity)); // ³õÊ¼»¯ËÙ¶È(m/s)
 
 }
 
@@ -354,60 +326,20 @@ void navi_ekf_config(void) {
 
 // ´«Èë²ÎÊı¹æ·¶£ºa_pure(m/s^2), yaw_cur(¶È)
 
-void navi_update_F_B_U(float a_pure_mps2, float yaw_cur_deg) {
+void navi_update_F_B_U(float a_pure_mps2) {
 
     float dt = nav_ekf.Abtastzeit_s;
 
-    float dt2_half = 0.5f * dt * dt; // 1/2 * dt^2
-
-    float yaw_rad = ANGLE_TO_RAD(yaw_cur_deg); // Ç¿ÖÆ×ª»¯Îª»¡¶È
-
-
-
-    float cos_y = cosf(yaw_rad);
-
-    float sin_y = sinf(yaw_rad);
-
-
-
-    // 1. ¸üĞÂ F ¾ØÕó (4x4)
+    // 1. ¸üĞÂ F ¾ØÕó (4x4)    
 
     mat_eye(&nav_ekf.F); // ¶Ô½ÇÏßÖÃ 1
-
-    
-
-    // ¶Ô v µÄÆ«µ¼
-
-    mat_set(&nav_ekf.F, 0, 2, cos_y * dt);
-
-    mat_set(&nav_ekf.F, 1, 2, sin_y * dt);
-
-    
-
-    // ¶Ô b_ax µÄÆ«µ¼ (×¢ÒâÊÇ¸ººÅ)
-
-    mat_set(&nav_ekf.F, 0, 3, -cos_y * dt2_half);
-
-    mat_set(&nav_ekf.F, 1, 3, -sin_y * dt2_half);
-
-    mat_set(&nav_ekf.F, 2, 3, -dt);
-
-
+    mat_set(&nav_ekf.F, 0, 2, -dt); // v_k = v_{k-1} - bias_ax * dt
 
     // 2. ¸üĞÂ B ¾ØÕó (4x1)
-
     mat_zero(&nav_ekf.B);
-
-    mat_set(&nav_ekf.B, 0, 0, cos_y * dt2_half);
-
-    mat_set(&nav_ekf.B, 1, 0, sin_y * dt2_half);
-
-    mat_set(&nav_ekf.B, 2, 0, dt);
-
-
+    mat_set(&nav_ekf.B, 0, 0, dt);   // v_k += a_x * dt
 
     // 3. ¸üĞÂ U ¾ØÕó (1x1)
-
     mat_set(&nav_ekf.U, 0, 0, a_pure_mps2);
 
 }
@@ -433,115 +365,94 @@ void navi_ekf_update(void) {
     uint8_t airborne_flag = (uint8_t)is_airborne() || action_fsm.is_airborne_expect;                 //»ñÈ¡controlÀïÃæµÄÌÚ¿Õ±êÖ¾  !!!ºóÒ»¸ö±êÖ¾Î»¿ÉÓÃÓÚÉèÖÃÌÚ¿ÕÊ±µÄ¿ÕÖĞ¼ÓËÙ¶È¼ÆÀ´Ô¤²âÎ»ÖÃµÄ×¼È·ĞÔ
                                                                                                                      //Ö»ÒªĞ¡³µ´¦ÓÚ¶¯×÷Á´µÄ FSM_JUMP_AIRBORNE ×´Ì¬£¬²»¹ÜÄãÓÃÊÖ¾ÙµÃ¶àÆ½ÎÈ£¬ÏµÍ³¶¼»áÇ¿ÖÆ·ÅĞĞ¼ÓËÙ¶ÈÊäÈë£¬±£Ö¤¿ÕÖĞÌøÔ¾ÍÆËãµÄ¾ø¶Ô´¥·¢¡£
 
-    // ¹Û²âÖµ Z (±àÂëÆ÷ËÙ¶È)      RPM -> ×ª»»ÎªÏßËÙ¶È m/s
+    // ¹Û²âÖµ Z (±àÂëÆ÷ËÙ¶È)
     float v_obs_mps = RPM_TO_M_COEFF(now_velocity); 
     
+    // ±àÂëÆ÷¼ÆËã½ÇËÙ¶È (¼ÙÉèË³Ê±ÕëÎªÕı£º×óÂÖ¿ìÔòÏòÓÒ×ª)
+    float w_obs_enc = (filter_data.left_mps - filter_data.right_mps) / WHEEL_DISRANCE;
     
-    // ======== ĞÂÔöºËĞÄ·À»¤£ºÁãËÙÔ¼Êø (ZUPT) ========
+    // È¡³öÍêÈ«Ô­Ê¼µÄ gyro_z£¬²»ÒªÈË¹¤¼õ 0.1£¬ÈÃ¿¨¶ûÂüÈ¥ËãËüµÄÕæÊµÁãÆ«£¡
+    float gyro_z_obs = raw_data.unbiased_gyro[2]; 
     float a_input = filter_data.accel[0];
-    // Èç¹û±àÂëÆ÷ËÙ¶È¼«Ğ¡£¬ÇÒ½ÇËÙ¶È±ä»¯Ò²²»´ó£¨ËµÃ÷ÕæÍ£×¡ÁË£¬²»ÊÇÔÚÌÚ¿Õ´ò»¬£©
-    if (fabsf(v_obs_mps) < 0.01f && fabsf(filter_data.unbiased_gyro[2]) < 0.1f && !airborne_flag) {
-        a_input = 0.0f;  // ±©Á¦ÇĞ¶Ï£º¾²Ö¹Ê±ÎïÀíÉÏ²»¿ÉÄÜÓĞ¼ÓËÙ¶È£¬Ö±½ÓÆşËÀ¼ÙÊı¾İÊäÈë
-        
-        // ¼¼ÇÉ£ºÔÚ¾²Ö¹Ê±ÁÙÊ±Ç¿ĞĞ¸ø R ¸³¼«Ğ¡Öµ£¬Ç¿ÖÆ½«Îó²îÑ¹½ø bias_ax Àï
-        mat_set(&nav_ekf.R, 0, 0, 0.0001f); 
+    
+    // ======== 2. ¶¯Ì¬µ÷Õû R ¾ØÕóÓë ZUPT ========
+    float current_R_v = NAV_R_V_NORMAL; 
+    float current_R_w = NAV_R_W_NORMAL;
+    
+    if (robot_pose.slip_level == 1) {
+        current_R_v = NAV_R_V_SLIP; 
+        current_R_w = NAV_R_W_SLIP; 
     }
 
+    // ÁãËÙÔ¼Êø(ZUPT)£º¾²Ö¹Ê±¸²¸ÇÒ»ÇĞ
+    if (fabsf(v_obs_mps) < 0.01f && fabsf(w_obs_enc) < 0.05f && !airborne_flag) {
+        a_input = 0.0f;  
+        current_R_v = 0.0001f; 
+        current_R_w = 0.0001f; 
+        w_obs_enc = 0.0f;     // ¾²Ö¹Ê±Ç¿ÖÆ±àÂëÆ÷½ÇËÙ¶ÈÎª0
+    }
     
-    
-    // ¡¾½öĞÂÔöÕâ¼¸ĞĞ¡¿£ºÊµÊ±°Ñ×îĞÂµÄ Q ¾ØÕóÖµË¢Èë¡£Èç¹û¹Ø±Õµ÷²Îºê£¬Õâ¼¸ĞĞ´úÂë»áÔÚ±àÒëÊ±×Ô¶¯ÏûÊ§¡£
+    mat_set(&nav_ekf.R, 0, 0, current_R_v);
+    mat_set(&nav_ekf.R, 1, 1, current_R_w);
+    mat_set(&nav_ekf.R, 2, 2, NAV_R_GYRO);
+// ======== WiFi ¶¯Ì¬ÊµÊ±¸üĞÂ Q ¾ØÕó ========
 #if USE_WIFI_TUNE
-    mat_set(&nav_ekf.Q, 0, 0, NAV_Q_X);
-    mat_set(&nav_ekf.Q, 1, 1, NAV_Q_Y);
-    mat_set(&nav_ekf.Q, 2, 2, NAV_Q_V);
-    mat_set(&nav_ekf.Q, 3, 3, NAV_Q_BIAS_AX);
-#endif
-
+    mat_set(&nav_ekf.Q, 0, 0, NAV_Q_V);           // ÏßËÙ¶ÈÔ¤²âÔëÉù
+    mat_set(&nav_ekf.Q, 1, 1, NAV_Q_W);           // ½ÇËÙ¶ÈÔ¤²âÔëÉù
+    mat_set(&nav_ekf.Q, 2, 2, NAV_Q_BIAS_AX);     // ¼ÓËÙ¶ÈÁãÆ«Ô¤²âÔëÉù
+    mat_set(&nav_ekf.Q, 3, 3, NAV_Q_BIAS_W);      // ÍÓÂİÒÇÁãÆ«Ô¤²âÔëÉù
+#endif  
     
    // 3.Ö´ĞĞÔ¤²â
 // ==============================================================================
 // ÌÚ¿Õ×´Ì¬ÏÂµÄµ¼º½¡°¶ÏÁ÷ÍÆËã¡±²ßÂÔÑ¡Ôñ
 // ³¡¾°±³¾°£ºÆğÌøÌÚ¿ÕÊ±£¬³µÂÖ¿Õ×ª»òÍ£×ª£¬±àÂëÆ÷Êı¾İÍêÈ«Ê§Ğ§£¨±ØĞëÇĞ¶Ï¹Û²â£©¡£
 // ==============================================================================
-    if (airborne_flag) {
-//        // ·½°¸ A£º»ùÓÚ IMU ¼ÓËÙ¶È¶ş´Î»ı·ÖµÄÎïÀíÍÆËã£¨¸ß¾«¶Èµ«Ò×ÊÜÈÅ£©
-//        // Ô­Àí£ºÍêÈ«ĞÅÈÎ¿ÕÖĞµÄ IMU ¼ÓËÙ¶È£¬Í¨¹ıÔË¶¯Ñ§¹«Ê½½øĞĞ»ı·Ö£¬¼ÆËãÕæÊµµÄÅ×ÎïÏß·ÉĞĞ¾àÀë¡£
-//        // ÊÊÓÃ³¡¾°£ºĞ¡³µÆğÌø×ËÌ¬¼«ÆäÆ½ÎÈ£¬¿ÕÖĞ Pitch/Roll ½Ç¶È²»·¢Éú¾çÁÒ·­¹ö¡£
-//        // È±µã£ºÈç¹û¿ÕÖĞ×ËÌ¬¾çÁÒ±ä»¯£¬µ¼ÖÂÖØÁ¦¿Û³ı´íÂÒ£¬»á²úÉú¾Ş´óµÄĞé¼Ù¼ÓËÙ¶È£¬Ê¹×ø±ê·ÉÆÂ£¨·è¿ñÆ«ÒÆ£©¡£
-//        navi_update_F_B_U(a_input,  filter_data.yaw);
-//      
-//        Matrix Q_backup = nav_ekf.Q;
-//
-//         mat_zero(&nav_ekf.Q); // ÌÚ¿Õ²»Ôö¼Ó²»È·¶¨¶È
-//
-//        kalman_filter_predict(&nav_ekf);
-//
-//        nav_ekf.Q = Q_backup;
-//
-//        v_obs_mps = mat_get(&nav_ekf.X, 2, 0); // ÌÚ¿ÕÊ±ÓÃÉÏÒ»Ê±¿ÌÍÆËãÖµ×÷Îª¹Û²â
+    if (airborne_flag) {     
+        // ¿ÕÖĞË®Æ½¼ÓËÙ¶ÈÎª0   £¬ÒÔÆğÌøË²¼äËÙ¶È×÷ÎªË®Æ½¼ÓËÙ¶È      
+        navi_update_F_B_U(0.0f); 
       
-      // ·½°¸ B£º¿ÕÖĞºãËÙÍÆËã£¨¸üÎÈ¶¨£©   Êµ²âÖĞÌøÔ¾µ¼ÖÂ X/Y ×ø±ê·è¿ñÆ«ÒÆÊ±Ê¹ÓÃ¡£¶ÔÓÚÌøÌ¨¿ç¶È²»´ó£¨<1Ãë£©µÄ±ÈÈüÏîÄ¿¼«ÆäÓĞĞ§¡£
-      
-      // Å×Æú¿ÕÖĞµÄ IMU ¼ÓËÙ¶È£¬¼ÙÉèĞ¡³µÒÔÆğÌøË²¼äµÄËÙ¶ÈÔÈËÙ·É¹ıÕâ¶Î¾àÀë
-      
-      navi_update_F_B_U(0.0f, filter_data.yaw);               // Ç¿ĞĞ°Ñ´«Èë EKF Ô¤²âµÄ¾»¼ÓËÙ¶È U ÉèÎª 0£¬ÈÃĞ¡³µ±£³ÖÆğÌøÇ°µÄÏßËÙ¶È V »¬ĞĞ
-      
-      kalman_filter_predict(&nav_ekf);
-      
-      v_obs_mps = mat_get(&nav_ekf.X, 2, 0);
-
-    } else {
-        navi_update_F_B_U(a_input,  filter_data.yaw);
         kalman_filter_predict(&nav_ekf);
-
-    }
-
-    // 4. Ö´ĞĞ¸üĞÂ
-    float obs_z[1] = { v_obs_mps }; // ¹Û²âÏòÁ¿ÏÖÔÚÖ»ÓĞ 1 Î¬
-
-
-#if USE_WIFI_TUNE
-   mat_set(&nav_ekf.R, 0, 0, NAV_R_V_NORMAL);
-#else
-    if (robot_pose.slip_level == 1) {
-
-        mat_set(&nav_ekf.R, 0, 0, NAV_R_V_SLIP); // ´ò»¬Ê±Ôö´óÏßËÙ¶È¹Û²âÔëÉù
+      
+        // ¡¾±ØĞëĞŞ¸Ä¡¿£º¿ÕÖĞ±Õ»··ÀÆ¯ÒÆ£¬Ç¿ÖÆ½« 3 ¸ö¹Û²âÖµÈ«²¿µÈÓÚ¿¨¶ûÂüÔ¤²âÖµ£¬ÈÃ²Ğ²îÎª0
+        v_obs_mps  = mat_get(&nav_ekf.X, 0, 0);  // v ÊÇË÷Òı 0
+        w_obs_enc  = mat_get(&nav_ekf.X, 1, 0);  // w ÊÇË÷Òı 1
+        // ÍÓÂİÒÇµÄÔ¤²â¹Û²âÖµ = ÕæÊµµÄ½ÇËÙ¶È w + ÍÓÂİÒÇÁãÆ« bias_w
+        gyro_z_obs = mat_get(&nav_ekf.X, 1, 0) + mat_get(&nav_ekf.X, 3, 0);
 
     } else {
-
-        mat_set(&nav_ekf.R, 0, 0, NAV_R_V_NORMAL);
-
-    }   
-#endif
+        navi_update_F_B_U(a_input);
+        
+        kalman_filter_predict(&nav_ekf);
+    }
     
-    // ÔÚ¸üĞÂÖ®Ç°£¬ÌáÇ°°ÑÍêÃÀË³»¬µÄ´¿Ô¤²â XY ×ø±ê¡°±¸·İ¡±ÏÂÀ´
-    float pure_pred_x = mat_get(&nav_ekf.X, 0, 0);
-    float pure_pred_y = mat_get(&nav_ekf.X, 1, 0);
     
+
+
+    
+
+
+    // ======== 4. Ö´ĞĞ¸üĞÂ ========
+    float obs_z[3] = { v_obs_mps, w_obs_enc, gyro_z_obs };
     kalman_filter_update(&nav_ekf, obs_z);
     
-    // ¸üĞÂÍê³Éºó£¬Ç¿ĞĞÓÃÔ¤²âÖµ¸²¸Çµô±»ËÙ¶È²Ğ²î´øÆ«µÄ XY ×ø±ê£¡
-    mat_set(&nav_ekf.X, 0, 0, pure_pred_x);
-    mat_set(&nav_ekf.X, 1, 0, pure_pred_y);
+    // ======== 5. Íâ²¿½İÁªÍÆËãº½¼£ (Dead Reckoning) ========
+    float opt_v = mat_get(&nav_ekf.X, 0, 0);
+    float opt_w = mat_get(&nav_ekf.X, 1, 0);
+    float dt = ENCODER_DT;
+    float yaw_rad = ANGLE_TO_RAD(filter_data.yaw);
 
-    // 5. ½á¹ûĞ´»Ø (×¢ÒâÏÖÔÚ½ÇËÙ¶È w Ö±½ÓÈ¡×Ô IMU)
+    // ´¿ÔË¶¯Ñ§»ı·Ö£¬ÍêÃÀË³»¬
+    robot_pose.x += opt_v * cosf(yaw_rad) * dt;
+    robot_pose.y += opt_v * sinf(yaw_rad) * dt;
 
-    robot_pose.x   = mat_get(&nav_ekf.X, 0, 0);
-
-    robot_pose.y   = mat_get(&nav_ekf.X, 1, 0);
-
-    robot_pose.v   = mat_get(&nav_ekf.X, 2, 0);
+    // ======== 6. ½á¹ûĞ´»ØÈ«¾Ö×´Ì¬ ========
+    robot_pose.v       = opt_v;
+    robot_pose.w       = opt_w;    // ´ËÊ±µÄ opt_w ÈÚºÏÁË IMU ºÍ±àÂëÆ÷
+    robot_pose.bias_ax = mat_get(&nav_ekf.X, 2, 0);
+    robot_pose.bias_w  = mat_get(&nav_ekf.X, 3, 0); // ¿ÉÒÔÍ¨¹ı´®¿Ú´òÓ¡Õâ¸öÖµ£¬¿´¿´ËüÓĞ¶à×¼
     
-    robot_pose.bias_ax =  mat_get(&nav_ekf.X, 3, 0);
- 
-
-    // Yaw ºÍ ½ÇËÙ¶È w Ö±½Ó²ÉÓÃ IMU ¸ß¾«¶ÈÊı¾İ
-
-    robot_pose.yaw = navi_limit_angle180( filter_data.yaw); 
-
-    robot_pose.w   = filter_data.unbiased_gyro[2]; 
-
-    
+    robot_pose.yaw     = navi_limit_angle180(filter_data.yaw);
 
     robot_pose.is_valid = 1;
 

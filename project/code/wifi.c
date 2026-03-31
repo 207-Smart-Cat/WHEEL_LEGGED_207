@@ -7,6 +7,7 @@
 #include "control.h"
 #include "vofa_protocol.h"
 #include "ipc_shared_data.h"
+#include "navigation_data_handling.h"
 
 // 宏定义和缓冲区
 #define WIFI_RX_BUF_SIZE    256         
@@ -148,10 +149,10 @@ void wifi_auto_reconnect_task(void)
             // 坚决不读 Flash，而是把刚调好的参数同步给 VOFA+
             // ========================================================
             IPC_Pull_Status_To_CoreB(); 
-            uint8 tx_buf[128]; 
+            uint8 tx_buf[200]; // 【修复：扩容到 200 字节防止溢出死机！】
             tx_buf[0] = 0xAA;
             tx_buf[1] = 0xC4;
-            // 拷贝 88 字节的 float 数组
+            // 拷贝 float 数组
             memcpy(&tx_buf[2], core_a_status.act_params, PARAM_COUNT * sizeof(float));
             
             // 计算校验和
@@ -214,6 +215,27 @@ void wifi_report_task(void)
                         seekfree_assistant_oscilloscope_data.data[idx++] = (float)Motor_Right;
                     }
                     
+                    if(channel_show[3]) 
+                    {
+                        // 【修复：通过 IPC 状态机安全读取导航数据】
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.nav_x;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.nav_y;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.yaw; // 用姿态融合的Yaw
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.nav_v;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.nav_w;
+                    }
+
+                    if(channel_show[4]) 
+                    {
+                        // 【新增：通过 IPC 状态机安全读取串级 PID 输出】
+                        // 你可以根据需要随时在这里增删你想看的变量
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.pid_out_speed_l;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.pid_out_angle_l;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.pid_out_gyro_l;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.pid_out_turn;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.pid_out_leg;
+                    }
+
                     seekfree_assistant_oscilloscope_data.channel_num = idx; 
                     if(idx > 0) 
                     {
@@ -233,6 +255,7 @@ void wifi_report_task(void)
                         sprintf(temp, "Y:%.2f P:%.2f R:%.2f  ", IMU_data.filter_result.yaw, IMU_data.filter_result.pitch, IMU_data.filter_result.roll);
                         strcat(text_buffer, temp); 
                     }
+                    // ... channel 1 和 2 保持你的原样 ...
                     if(channel_show[1]) 
                     {
                         sprintf(temp, "L_Spd:%d R_Spd:%d  ", motor_value.receive_left_speed_data, motor_value.receive_right_speed_data);
@@ -241,6 +264,24 @@ void wifi_report_task(void)
                     if(channel_show[2]) 
                     {
                         sprintf(temp, "L_PWM:%d R_PWM:%d  ", Motor_Left, Motor_Right);
+                        strcat(text_buffer, temp);
+                    }
+
+                    if(channel_show[3])
+                    {
+                        // 【修复：安全读取导航文本】
+                        sprintf(temp, "x:%.3f y:%.3f yaw:%.2f v:%.3f w:%.3f ", 
+                                core_a_status.nav_x, core_a_status.nav_y, core_a_status.yaw, 
+                                core_a_status.nav_v, core_a_status.nav_w);
+                        strcat(text_buffer, temp);
+                    }
+
+                    if(channel_show[4])
+                    {
+                        // 【新增：安全读取 PID 文本】
+                        sprintf(temp, "SpdL:%.1f AngL:%.1f GyrL:%.1f Turn:%.1f ", 
+                                core_a_status.pid_out_speed_l, core_a_status.pid_out_angle_l, 
+                                core_a_status.pid_out_gyro_l, core_a_status.pid_out_turn);
                         strcat(text_buffer, temp);
                     }
                     

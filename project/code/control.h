@@ -20,6 +20,8 @@ extern int speed_up;                      // 加速标志位
 extern pid_param_t motor_direction;       // 方向PID参数
 //******************
 extern signed short int Motor_Left, Motor_Right;
+extern float out_speed_l, out_speed_r, out_angle_l, out_angle_r, out_gyro_l, out_gyro_r;
+extern float Turn_Pwm, leg_error;
 //******************
 void Balance_init(void);
 void balance_control(void);
@@ -31,6 +33,5 @@ void pid_high_init();
 float leg_sensor_filter(float new_val, bool is_first_run);
 float max(float a, float b);
 float min(float a, float b);
-float Turn_target(float target_angle);
 
 #endif /* CODE_ENGINE_H_ */

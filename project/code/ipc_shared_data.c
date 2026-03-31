@@ -4,6 +4,8 @@
 #include "control.h"
 #include "param.h"
 #include "navigation_data_handling.h"
+#include "kalman_rm.h"
+#include "wifi.h"
 // --- 1. 绝对地址内存分配 ---
 #pragma location = 0x28001000
 __no_init CoreA_Status_t core_a_status; 
@@ -47,12 +49,21 @@ float* const param_map[PARAM_COUNT] = {
     &Direction_i,          // 26
     &Direction_d,           // 27
       
-    &nav_q_x,              // 28
-    &nav_q_y,              // 29
-    &nav_q_v,              // 30
-    &nav_q_bias_ax,        // 31
+    &nav_q_v,              // 28
+    &nav_q_w,              // 29
+    &nav_q_bias_ax,        // 30
+    &nav_q_bias_w,         // 31
     &nav_r_v_normal,       // 32
-    &nav_r_v_slip          // 33
+    &nav_r_v_slip,         // 33
+    &nav_r_w_normal,       // 34
+    &nav_r_w_slip,         // 35
+    &nav_r_gyro,           // 36
+      
+    // --- 你的 4 个磁力计参数 ---
+    &mag_offset_x,         // 37
+    &mag_offset_y,         // 38
+    &mag_scale_x,          // 39
+    &mag_scale_y           // 40
 };
 
 // --- 初始化函数 ---
@@ -60,46 +71,60 @@ void IPC_Init_Shared_Memory(void) {
     memset(&core_a_status, 0, sizeof(CoreA_Status_t));
     memset(&core_b_cmd, 0, sizeof(CoreB_Command_t));
     
-    // 【修改点】使用枚举下标给数组赋初值
-    core_b_cmd.params[P_Q_YAW]  = 0.001f;
-    core_b_cmd.params[P_Q_PR]   = 0.003f;
-    core_b_cmd.params[P_Q_BIAS] = 0.001f;
-    core_b_cmd.params[P_R_YAW]  = 0.05f;
-    core_b_cmd.params[P_R_PR]   = 0.05f;
+    // 【完美替换】直接从 param.c 读取基准初始配置
+    core_b_cmd.params[P_Q_YAW]  = Q_yaw_init;
+    core_b_cmd.params[P_Q_PR]   = Q_pr_init;
+    core_b_cmd.params[P_Q_BIAS] = Q_bias_init;
+    core_b_cmd.params[P_R_YAW]  = R_yaw_init;
+    core_b_cmd.params[P_R_PR]   = R_pr_init;
     
-    core_b_cmd.params[P_SPEED_P] = 0.06f; 
-    core_b_cmd.params[P_SPEED_I] = 0.0f; 
-    core_b_cmd.params[P_SPEED_D] = 0.022f;
+    core_b_cmd.params[P_SPEED_P] = Speed_p_init; 
+    core_b_cmd.params[P_SPEED_I] = Speed_i_init; 
+    core_b_cmd.params[P_SPEED_D] = Speed_d_init;
     
-    core_b_cmd.params[P_ANGLE_P] = 6.0f;  
-    core_b_cmd.params[P_ANGLE_I] = 0.0f; 
-    core_b_cmd.params[P_ANGLE_D] = 0.4f;
+    core_b_cmd.params[P_ANGLE_P] = Angle_p_init;  
+    core_b_cmd.params[P_ANGLE_I] = Angle_i_init; 
+    core_b_cmd.params[P_ANGLE_D] = Angle_d_init;
     
-    core_b_cmd.params[P_GYRO_P]  = 5.0f;  
-    core_b_cmd.params[P_GYRO_I]  = 0.5f; 
-    core_b_cmd.params[P_GYRO_D]  = 0.27f;
+    core_b_cmd.params[P_GYRO_P]  = Gyro_p_init;  
+    core_b_cmd.params[P_GYRO_I]  = Gyro_i_init; 
+    core_b_cmd.params[P_GYRO_D]  = Gyro_d_init;
     
-    core_b_cmd.params[P_TARGET_VELOCITY]    = 0.0f;
-    core_b_cmd.params[P_TARGET_ANGLE]       = 0.0f;
-    core_b_cmd.params[P_TARGET_MOTOR_STAND] = 0.0f;
+    core_b_cmd.params[P_TARGET_VELOCITY]    = Target_Velocity_init;
+    core_b_cmd.params[P_TARGET_ANGLE]       = Target_Angle_init;
+    core_b_cmd.params[P_TARGET_MOTOR_STAND] = Target_Motor_Stand_init;
     
-    core_b_cmd.params[P_AIR_ROLL_P] = 45.0f;
-    core_b_cmd.params[P_AIR_ROLL_I] = 0.0f;
-    core_b_cmd.params[P_AIR_ROLL_D] = 2.0f;
-    
-    core_b_cmd.params[P_DIR_P] = 0.0099f;
-    core_b_cmd.params[P_DIR_I] = 0.015f;
-    core_b_cmd.params[P_DIR_D] = 0.001f;
-    
-    core_b_cmd.params[P_NAV_Q_X] = 0.001f;
-    core_b_cmd.params[P_NAV_Q_Y] = 0.001f;
-    core_b_cmd.params[P_NAV_Q_V] = 0.01f;
-    core_b_cmd.params[P_NAV_Q_BIAS_AX] = 0.1f;
-    core_b_cmd.params[P_NAV_R_V_NORMAL] = 0.01f;
-    core_b_cmd.params[P_NAV_R_V_SLIP] = 10.0f;
+    core_b_cmd.params[P_LEG_KP]  = Leg_Kp_init;
+    core_b_cmd.params[P_LEG_KI]  = Leg_Ki_init;
+    core_b_cmd.params[P_LEG_KD]  = Leg_Kd_init;
+    core_b_cmd.params[P_X_CURRENT] = X_Current_init;
+    core_b_cmd.params[P_Y_CURRENT] = Y_Current_init;
 
-    core_b_cmd.update_mask = 0;
-    core_b_cmd.param_update_flag = 0;
+    core_b_cmd.params[P_AIR_ROLL_P] = Air_roll_p_init;
+    core_b_cmd.params[P_AIR_ROLL_I] = Air_roll_i_init;
+    core_b_cmd.params[P_AIR_ROLL_D] = Air_roll_d_init;
+    
+    core_b_cmd.params[P_DIR_P] = Direction_p_init;
+    core_b_cmd.params[P_DIR_I] = Direction_i_init;
+    core_b_cmd.params[P_DIR_D] = Direction_d_init;
+    
+    core_b_cmd.params[P_NAV_Q_V] = Nav_q_v_init;
+    core_b_cmd.params[P_NAV_Q_W] = Nav_q_w_init;
+    core_b_cmd.params[P_NAV_Q_BIAS_AX] = Nav_q_bias_ax_init;
+    core_b_cmd.params[P_NAV_Q_BIAS_W]  = Nav_q_bias_w_init;
+    core_b_cmd.params[P_NAV_R_V_NORMAL] = Nav_r_v_normal_init;
+    core_b_cmd.params[P_NAV_R_V_SLIP]   = Nav_r_v_slip_init;
+    core_b_cmd.params[P_NAV_R_W_NORMAL] = Nav_r_w_normal_init;
+    core_b_cmd.params[P_NAV_R_W_SLIP]   = Nav_r_w_slip_init;
+    core_b_cmd.params[P_NAV_R_GYRO]     = Nav_r_gyro_init;
+    
+    core_b_cmd.params[P_MAG_OFFSET_X] = Mag_offset_x_init;
+    core_b_cmd.params[P_MAG_OFFSET_Y] = Mag_offset_y_init;
+    core_b_cmd.params[P_MAG_SCALE_X]  = Mag_scale_x_init;
+    core_b_cmd.params[P_MAG_SCALE_Y]  = Mag_scale_y_init;
+
+    core_b_cmd.update_mask = 0xFFFFFFFFFFFFFFFFULL; 
+    core_b_cmd.param_update_flag = 1;
 
     SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -150,9 +175,9 @@ void IPC_Check_And_Apply_Params_To_Core0(void) {
     
     if(core_b_cmd.param_update_flag == 1) {
         for(int i = 0; i < PARAM_COUNT; i++) {
-            // 检查对应位是否被置 1
-            if(core_b_cmd.update_mask & (1 << i)) {
-                *(param_map[i]) = core_b_cmd.params[i]; // 直接把值写到底层变量内存里！
+            // 【关键修改：把 1 改成 1ULL】
+            if(core_b_cmd.update_mask & (1ULL << i)) {
+                *(param_map[i]) = core_b_cmd.params[i]; 
             }
         }
         core_b_cmd.update_mask = 0;
@@ -275,25 +300,44 @@ void IPC_Load_Params_From_Flash(void) {
                F_S(core_b_cmd.params[P_DIR_I]), F_I(core_b_cmd.params[P_DIR_I]), F_D(core_b_cmd.params[P_DIR_I]),
                F_S(core_b_cmd.params[P_DIR_D]), F_I(core_b_cmd.params[P_DIR_D]), F_D(core_b_cmd.params[P_DIR_D]));
         
-        LOG_Printf(" [ Nav ]  qx: %s%d.%05d, qy: %s%d.%05d, qv: %s%d.%05d\r\n", 
-               F_S(core_b_cmd.params[P_NAV_Q_X]), F_I(core_b_cmd.params[P_NAV_Q_X]), F_D5(core_b_cmd.params[P_NAV_Q_X]),
-               F_S(core_b_cmd.params[P_NAV_Q_Y]), F_I(core_b_cmd.params[P_NAV_Q_Y]), F_D5(core_b_cmd.params[P_NAV_Q_Y]),
-               F_S(core_b_cmd.params[P_NAV_Q_V]), F_I(core_b_cmd.params[P_NAV_Q_V]), F_D5(core_b_cmd.params[P_NAV_Q_V]));
+        LOG_Printf(" [ Nav ]  qv: %s%d.%05d, qw: %s%d.%05d, qba: %s%d.%05d\r\n", 
+               F_S(core_b_cmd.params[P_NAV_Q_V]), F_I(core_b_cmd.params[P_NAV_Q_V]), F_D5(core_b_cmd.params[P_NAV_Q_V]),
+               F_S(core_b_cmd.params[P_NAV_Q_W]), F_I(core_b_cmd.params[P_NAV_Q_W]), F_D5(core_b_cmd.params[P_NAV_Q_W]),
+               F_S(core_b_cmd.params[P_NAV_Q_BIAS_AX]), F_I(core_b_cmd.params[P_NAV_Q_BIAS_AX]), F_D5(core_b_cmd.params[P_NAV_Q_BIAS_AX]));
                
-        LOG_Printf(" [ Nav ]  qba: %s%d.%05d, rvn: %s%d.%05d, rvs: %s%d.%05d\r\n", 
-               F_S(core_b_cmd.params[P_NAV_Q_BIAS_AX]), F_I(core_b_cmd.params[P_NAV_Q_BIAS_AX]), F_D5(core_b_cmd.params[P_NAV_Q_BIAS_AX]),
+        LOG_Printf(" [ Nav ]  qbw: %s%d.%05d, rvn: %s%d.%05d, rvs: %s%d.%05d\r\n", 
+               F_S(core_b_cmd.params[P_NAV_Q_BIAS_W]), F_I(core_b_cmd.params[P_NAV_Q_BIAS_W]), F_D5(core_b_cmd.params[P_NAV_Q_BIAS_W]),
                F_S(core_b_cmd.params[P_NAV_R_V_NORMAL]), F_I(core_b_cmd.params[P_NAV_R_V_NORMAL]), F_D5(core_b_cmd.params[P_NAV_R_V_NORMAL]),
                F_S(core_b_cmd.params[P_NAV_R_V_SLIP]), F_I(core_b_cmd.params[P_NAV_R_V_SLIP]), F_D5(core_b_cmd.params[P_NAV_R_V_SLIP]));
+               
+        LOG_Printf(" [ Nav ]  rwn: %s%d.%05d, rws: %s%d.%05d, rgy: %s%d.%05d\r\n", 
+               F_S(core_b_cmd.params[P_NAV_R_W_NORMAL]), F_I(core_b_cmd.params[P_NAV_R_W_NORMAL]), F_D5(core_b_cmd.params[P_NAV_R_W_NORMAL]),
+               F_S(core_b_cmd.params[P_NAV_R_W_SLIP]), F_I(core_b_cmd.params[P_NAV_R_W_SLIP]), F_D5(core_b_cmd.params[P_NAV_R_W_SLIP]),
+               F_S(core_b_cmd.params[P_NAV_R_GYRO]), F_I(core_b_cmd.params[P_NAV_R_GYRO]), F_D5(core_b_cmd.params[P_NAV_R_GYRO]));
+        
+        LOG_Printf(" [ Mag ]  off_x: %s%d.%04d, off_y: %s%d.%04d\r\n", 
+               F_S(core_b_cmd.params[P_MAG_OFFSET_X]), F_I(core_b_cmd.params[P_MAG_OFFSET_X]), F_D(core_b_cmd.params[P_MAG_OFFSET_X]),
+               F_S(core_b_cmd.params[P_MAG_OFFSET_Y]), F_I(core_b_cmd.params[P_MAG_OFFSET_Y]), F_D(core_b_cmd.params[P_MAG_OFFSET_Y]));
+               
+        LOG_Printf(" [ Mag ]  scl_x: %s%d.%04d, scl_y: %s%d.%04d\r\n", 
+               F_S(core_b_cmd.params[P_MAG_SCALE_X]), F_I(core_b_cmd.params[P_MAG_SCALE_X]), F_D(core_b_cmd.params[P_MAG_SCALE_X]),
+               F_S(core_b_cmd.params[P_MAG_SCALE_Y]), F_I(core_b_cmd.params[P_MAG_SCALE_Y]), F_D(core_b_cmd.params[P_MAG_SCALE_Y]));
         
         LOG_Printf("=============================================\r\n\r\n");
 
         // 3. 敲响门铃，让 Core A 一次性全量更新
-        core_b_cmd.update_mask = 0xFFFFFFFF; 
+        core_b_cmd.update_mask = 0xFFFFFFFFFFFFFFFFULL; // 【关键修改：64个1】
         core_b_cmd.param_update_flag = 1;
         SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     }
     else
     {
         LOG_Printf("\r\n[SYS] Flash is empty or invalid. Using default params.\r\n");
+        
+        // ?? 【必须补上这三行救命代码！】
+        // 如果 Flash 读取失败，必须敲响门铃，把刚才在 Init 里装填的 _init 出厂默认值强行同步给 Core 0
+        core_b_cmd.update_mask = 0xFFFFFFFFFFFFFFFFULL; 
+        core_b_cmd.param_update_flag = 1;
+        SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     }
 }

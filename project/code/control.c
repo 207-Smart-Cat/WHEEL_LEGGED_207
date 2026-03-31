@@ -26,6 +26,9 @@ int i = 0;
 // 电机输出
 signed short int Motor_Left, Motor_Right;        // 左右电机PWM输出
 float Velocity_Angle_left, Velocity_Angle_right; // 左右电机速度
+float out_speed_l = 0, out_speed_r = 0;
+float out_angle_l = 0, out_angle_r = 0;
+float out_gyro_l  = 0, out_gyro_r  = 0;
 // 其他变量
 float last_error;                 // 上一次误差
 extern Attitude_3D_Kalman filter; // 卡尔曼滤波器
@@ -398,28 +401,30 @@ int cuu(int c)
 float Turn_gyro(float target_angle, float gyro)
 {
     // 1. 计算原始误差
-    float error = Turn_target(target_angle - gyro);
+    float error = target_angle - gyro;
 
     // 2. 将误差归一化到 [-180, 180] 之间
     // 这样可以确保小车永远旋转角度差绝对值小于 180 的那个方向
-    
+    while (error > 180)  error -= 360;
+    while (error < -180) error += 360;
+
     return error; // 返回给 PID 作为 Input
 }
 
 // 转向目标角度计算,划分到合适区间（-180~+180）
 float Turn_target(float target_angle)
 {
-    while(target_angle >= 180)
+    if (target_angle >= 180)
         target_angle = target_angle - 360;
-    while (target_angle <= -180)
+    else if (target_angle <= -180)
         target_angle = 360 + target_angle;
-    return target_angle;
+    return -target_angle;
 }
 
 // 转向控制计算
 float Turn(float gyro, float target_angle) // Gyro传入的是当前的角度
 {
-    target_angle = -Turn_target(target_angle); // 防止本身越界
+    target_angle = Turn_target(target_angle); // 防止本身越界
     float error = Turn_gyro(target_angle, gyro);
     if (fabs(error) < 1.5)
     { // 低通截断，避免毛刺影响
@@ -561,7 +566,13 @@ void balance_control()
     // 限制PWM输出范围
     Motor_Left = -(signed short int)cuu(Motor_Left);
     Motor_Right = (signed short int)cuu(Motor_Right);
-
+    
+    out_speed_l = Velocity_Angle_left;
+    out_speed_r = Velocity_Angle_right;
+    out_angle_l = Balance_Pwm_left;
+    out_angle_r = Balance_Pwm_right;
+    out_gyro_l  = Gyro_Pwm_left;
+    out_gyro_r  = Gyro_Pwm_right;
     // 设置PWM输出
     small_driver_set_duty(-Motor_Left, -Motor_Right);
 
