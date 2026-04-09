@@ -2,6 +2,7 @@
 #include "FiveBarLinkageData.h"
 #include "kalman_rm.h"
 #include "param.h"
+#include "wifi.h"
 // 全局变量
 extern float target_velocity;      // 目标速度
 extern float target_angle;         // 目标角度
@@ -25,6 +26,9 @@ int i = 0;
 // 电机输出
 signed short int Motor_Left, Motor_Right;        // 左右电机PWM输出
 float Velocity_Angle_left, Velocity_Angle_right; // 左右电机速度
+float out_speed_l = 0, out_speed_r = 0;
+float out_angle_l = 0, out_angle_r = 0;
+float out_gyro_l  = 0, out_gyro_r  = 0;
 // 其他变量
 float last_error;                 // 上一次误差
 extern Attitude_3D_Kalman filter; // 卡尔曼滤波器
@@ -36,6 +40,8 @@ int engine_change = 600; // 发动机变化量
 int jump_stop = 0;
 int jump_position = 0;
 float border = 94;
+bool First_angle = true;
+bool IMU_ready = false;
 //============================================================================/
 // 腿部控制参数
 
@@ -394,23 +400,15 @@ int cuu(int c)
 // 最小转向角
 float Turn_gyro(float target_angle, float gyro)
 {
-    int y = 0;
-    if (target_angle >= 0)
-    {
-        y = target_angle - 180;
-        if (gyro <= y && gyro >= -180)
-            gyro = 360 + gyro;
-        gyro = gyro - target_angle;
-    }
-    else
-    {
-        y = target_angle + 180;
-        if (gyro <= 180 && gyro >= y)
-            gyro = gyro - 360;
-        gyro = gyro - target_angle;
-    }
-    return gyro;
-    /*它是转向 PID 控制器的输入。该函数解决了角度在180° 附近跳转时的“环绕问题”，确保小车总是向着目标方向转动更小的弧度，而不是为了转过一个微小的角度而绕一个大圈 */
+    // 1. 计算原始误差
+    float error = target_angle - gyro;
+
+    // 2. 将误差归一化到 [-180, 180] 之间
+    // 这样可以确保小车永远旋转角度差绝对值小于 180 的那个方向
+    while (error > 180)  error -= 360;
+    while (error < -180) error += 360;
+
+    return error; // 返回给 PID 作为 Input
 }
 
 // 转向目标角度计算,划分到合适区间（-180~+180）
@@ -420,40 +418,38 @@ float Turn_target(float target_angle)
         target_angle = target_angle - 360;
     else if (target_angle <= -180)
         target_angle = 360 + target_angle;
-    return target_angle;
+    return -target_angle;
 }
 
 // 转向控制计算
-float Turn(float gyro, float target_angle)
+float Turn(float gyro, float target_angle) // Gyro传入的是当前的角度
 {
-    // Gyro传入的是当前的角度
-    static float previous_error = 0.0; // 上一次误差
-    float error = gyro - target_angle; // 当前误差
-    if (fabs(error) < 3)
+    target_angle = Turn_target(target_angle); // 防止本身越界
+    float error = Turn_gyro(target_angle, gyro);
+    if (fabs(error) < 1.5)
     { // 低通截断，避免毛刺影响
-        return 0;
+        return 0.0;
     }
-    float derivative = error - previous_error; // 微分项
-    previous_error = error;                    // 更新误差
-
-    // 计算控制输出
-    float control_output = -motor_direction.kp * error - error * func_abs(error) * motor_direction.ki - motor_direction.kd * derivative;
-    // 限制输出范围
-    if (control_output > 2000)
-        control_output = 2000;
-    if (control_output < -2000)
-        control_output = -2000;
-
-    // 动态调整PID参数
-
+    float control_output = +PidLocCtrl(&motor_direction, error);
+    control_output = constrain_float(control_output, -2000, 2000);
     return control_output; // 返回控制输出
+    
+      //printf("%f\n",control_output);
+
 }
 
 // 平衡控制主函数
 void balance_control()
 {
     float Balance_Pwm_left, Balance_Pwm_right, Gyro_Pwm_left, Gyro_Pwm_right; // 平衡PWM值k
-
+    //======================调试转向用=================================
+    if (First_angle && IMU_ready)
+    {
+        target_angle = IMU_data.filter_result.yaw;
+        First_angle = false;
+    }
+    // printf("target_angle/now_yaw: %f %f\n",target_angle,IMU_data.filter_result.yaw);
+    //======================调试转向用=================================
     // 获取编码器值
     Encoder_Left = -motor_value.receive_left_speed_data;
     Encoder_Right = -motor_value.receive_right_speed_data;
@@ -471,38 +467,39 @@ void balance_control()
         // 刹车/停机时，直接把 PID 系数设为 0，相当于切断输出
         PidChange(&motor_speed, 0, 0, 0);
         PidChange(&motor_Stand, 0, 0, 0);
-        PidChange(&motor_gyro,  0, 0, 0);
+        PidChange(&motor_gyro, 0, 0, 0);
     }
     else
     {
         // 正常运行时，实时把全局变量（已被 VOFA+ 篡改）同步给 PID 结构体
         PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
         PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
-        
+
         // 【关键】你旧代码里漏掉了角速度环的热更新，现在补上了！
-        PidChange(&motor_gyro,  Gyro_p,  Gyro_i,  Gyro_d);
+        PidChange(&motor_gyro, Gyro_p, Gyro_i, Gyro_d);
+        PidChange(&motor_direction, Direction_p, Direction_i, Direction_d); 
     }
-//    // 跳跃更新
-//    if (jump_stop == 1)
-//    {
-//        // 初始化速度PID
-//        PidInit(&motor_speed);
-//        PidChange(&motor_speed, 0, 0, 0);
-//
-//        // 初始化电机角度PID
-//        PidInit(&motor_Stand);
-//        PidChange(&motor_Stand, 0, 0, 0);
-//    }
-//    else
-//    {
-//        // 初始化速度PID
-//        PidInit(&motor_speed);
-//        PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
-//
-//        // 初始化电机角度PID
-//        PidInit(&motor_Stand);
-//        PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
-//    }
+    //    // 跳跃更新
+    //    if (jump_stop == 1)
+    //    {
+    //        // 初始化速度PID
+    //        PidInit(&motor_speed);
+    //        PidChange(&motor_speed, 0, 0, 0);
+    //
+    //        // 初始化电机角度PID
+    //        PidInit(&motor_Stand);
+    //        PidChange(&motor_Stand, 0, 0, 0);
+    //    }
+    //    else
+    //    {
+    //        // 初始化速度PID
+    //        PidInit(&motor_speed);
+    //        PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
+    //
+    //        // 初始化电机角度PID
+    //        PidInit(&motor_Stand);
+    //        PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
+    //    }
     // 计算左右电机速度
     if (i % 5 == 0)
     {
@@ -543,29 +540,39 @@ void balance_control()
     else
     {
         // 计算转向PWM值
-        // Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle); // 中点拟合
+        Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
+       //printf("Turn_pwm %f\n\n", Turn_Pwm);
+        //Turn_Pwm = 0;
         // //===================仅调试去除转向功能使用=================================
-        Turn_Pwm = 0;
+        // Turn_Pwm = 0;
         // //====================================================================
-        if (Turn_Pwm <= 0.2) // !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
-        {
-            speed_up = 1;
-        }
-        else if (Turn_Pwm <= 2)
-        {
-            speed_up = 2;
-        }
-        else
-        {
-            speed_up = 0;
-        }
-        Motor_Left = (signed short int)Gyro_Pwm_left * (1 + Turn_Pwm) - (signed short int)(imu963ra_gyro_z / 2);
-        Motor_Right = (signed short int)Gyro_Pwm_right * (1 - Turn_Pwm) + (signed short int)(imu963ra_gyro_z / 2);
+        // if (Turn_Pwm <= 0.2) // !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
+        // {
+        //     speed_up = 1;
+        // }
+        // else if (Turn_Pwm <= 2)
+        // {
+        //     speed_up = 2;
+        // }
+        // else
+        // {
+        //     speed_up = 0;
+        // }
+        // Motor_Left = (signed short int)Gyro_Pwm_left * (1 + Turn_Pwm) - (signed short int)(imu963ra_gyro_z / 2);
+        // Motor_Right = (signed short int)Gyro_Pwm_right * (1 - Turn_Pwm) + (signed short int)(imu963ra_gyro_z / 2);
+        Motor_Left = (signed short int)Gyro_Pwm_left * (1 + Turn_Pwm);
+        Motor_Right = (signed short int)Gyro_Pwm_right * (1 - Turn_Pwm);
     }
     // 限制PWM输出范围
     Motor_Left = -(signed short int)cuu(Motor_Left);
     Motor_Right = (signed short int)cuu(Motor_Right);
-
+    
+    out_speed_l = Velocity_Angle_left;
+    out_speed_r = Velocity_Angle_right;
+    out_angle_l = Balance_Pwm_left;
+    out_angle_r = Balance_Pwm_right;
+    out_gyro_l  = Gyro_Pwm_left;
+    out_gyro_r  = Gyro_Pwm_right;
     // 设置PWM输出
     small_driver_set_duty(-Motor_Left, -Motor_Right);
 
@@ -583,8 +590,8 @@ void leg_control(float *x, float *y)
 {
 
     // ---------- 1. 计算腿部位置：前后倾斜补偿 ----------
-    float x_cal = -0.029 * tan((double)(IMU_data.filter_result.roll / 180 * 3.14)); //-----Actually，Velocity_Angle_left/right均为目标倾角（速度环输出）
-    printf("X_Cal: %f", x_cal);
+    // float x_cal = -0.029 * tan((double)(IMU_data.filter_result.roll / 180 * 3.14)); //-----Actually，Velocity_Angle_left/right均为目标倾角（速度环输出）
+    float x_cal = -0.026 * tan((double)(IMU_data.filter_result.roll / 180 * 3.14)); //-----Actually，Velocity_Angle_left/right均为目标倾角（速度环输出）
     if (x_cal > 0.04f)
         x_cal = 0.04f;
     else if (x_cal < -0.04f)

@@ -74,7 +74,6 @@ void servo_control(float x, float y, int *leg1, int *leg2) {
     
     // 1. 如果目标点在物理上完全无法到达 (无解)
     if(phi1 == 400.0f || phi4 == 400.0f) {
-        // 通常是因为过长不可达，使用1200站立
         *leg1 = leg1_last; // 根据你的舵机中值替换为安全的PWM值
         *leg2 = leg2_last; 
         printf("Overloaded!\n");

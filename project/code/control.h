@@ -20,6 +20,8 @@ extern int speed_up;                      // 加速标志位
 extern pid_param_t motor_direction;       // 方向PID参数
 //******************
 extern signed short int Motor_Left, Motor_Right;
+extern float out_speed_l, out_speed_r, out_angle_l, out_angle_r, out_gyro_l, out_gyro_r;
+extern float Turn_Pwm, leg_error;
 //******************
 void Balance_init(void);
 void balance_control(void);

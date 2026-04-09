@@ -21,22 +21,37 @@
 #define QPITCH_ROLL 0.05f //过程噪声协方差 (减小这个值。这会告诉滤波器更相信陀螺仪的历史惯性积分，使得输出轨迹变得非常平稳)0.05
 extern const float servo_alpha;
 
+// ========================================================
+// 1. 运行时参数变量声明 (会被 IPC 覆盖实时更新)
+// ========================================================
 extern float target_velocity;    // 目标速度
 extern float target_angle;       // 目标角度
 extern float target_motor_Stand; // 目标电机角度
 extern float x_current, y_current;
 
+extern float Speed_p, Speed_i, Speed_d;
+extern float Angle_p, Angle_i, Angle_d;
+extern float Gyro_p, Gyro_i, Gyro_d;
+extern float Air_roll_p, Air_roll_i, Air_roll_d;
+extern float Direction_p, Direction_i, Direction_d;
+extern float leg_Kp, leg_Ki, leg_Kd;
 
-extern pid_param_t motor_speed;     // 速度PID参数---------------------速度环
-extern pid_param_t motor_Stand;     // 电机角度PID参数---------------------角度环
-extern pid_param_t motor_direction; // 方向PID参数------------------------方向调整
-extern pid_param_t motor_gyro;      // 陀螺仪PID参数------------------------角速度环
-extern pid_param_t air_roll_pid;    // 空中控制器参数
+// ========================================================
+// 2. 【新增】系统默认初始值常量声明 (带有 _init 后缀)
+// ========================================================
+extern const float Q_yaw_init, Q_pr_init, Q_bias_init, R_yaw_init, R_pr_init;
+extern const float Speed_p_init, Speed_i_init, Speed_d_init;
+extern const float Angle_p_init, Angle_i_init, Angle_d_init;
+extern const float Gyro_p_init, Gyro_i_init, Gyro_d_init;
+extern const float Target_Velocity_init, Target_Angle_init, Target_Motor_Stand_init;
+extern const float Leg_Kp_init, Leg_Ki_init, Leg_Kd_init;
+extern const float X_Current_init, Y_Current_init;
+extern const float Air_roll_p_init, Air_roll_i_init, Air_roll_d_init;
+extern const float Direction_p_init, Direction_i_init, Direction_d_init;
 
-extern float Speed_p,Speed_i,Speed_d;
-extern float Angle_p,Angle_i,Angle_d;
-extern float Gyro_p,Gyro_i,Gyro_d;
-extern float Air_roll_p,Air_roll_i,Air_roll_d;
-extern float Direction_p,Direction_i,Direction_d;
-extern float leg_Kp,leg_Ki,leg_Kd;
-#endif // PARAMS_H
+// 导航与磁力计初始值
+extern const float Nav_q_v_init, Nav_q_w_init, Nav_q_bias_ax_init, Nav_q_bias_w_init;
+extern const float Nav_r_v_normal_init, Nav_r_v_slip_init, Nav_r_w_normal_init, Nav_r_w_slip_init, Nav_r_gyro_init;
+extern const float Mag_offset_x_init, Mag_offset_y_init, Mag_scale_x_init, Mag_scale_y_init;
+
+#endif // PARAM_H
