@@ -18,52 +18,15 @@ __no_init CoreB_Command_t core_b_cmd;
 
 // 【核心映射表】把底层全局变量的地址，按枚举顺序放进这个指针数组里
 float* const param_map[PARAM_COUNT] = {
-    &filter.Qyaw,          // P_Q_YAW (0)
-    &filter.Qpitch_roll,   // P_Q_PR  (1)
-    &filter.Qgyrobias,
-    &filter.Ryaw,
-    &filter.Rpitch_roll,
-    &Speed_p,
-    &Speed_i,
-    &Speed_d,
-    &Angle_p,
-    &Angle_i,
-    &Angle_d,
-    &Gyro_p,
-    &Gyro_i,
-    &Gyro_d,
-    &target_velocity,
-    &target_angle,
-    &target_motor_Stand,    // P_TARGET_MOTOR_STAND (16)
-    
-    &leg_Kp,               // 17
-    &leg_Ki,               // 18
-    &leg_Kd,               // 19
-    &x_current,            // 20
-    &y_current,             // 21
-      
-    &Air_roll_p,           // 22
-    &Air_roll_i,           // 23
-    &Air_roll_d,           // 24
-    &Direction_p,          // 25
-    &Direction_i,          // 26
-    &Direction_d,           // 27
-      
-    &nav_q_v,              // 28
-    &nav_q_w,              // 29
-    &nav_q_bias_ax,        // 30
-    &nav_q_bias_w,         // 31
-    &nav_r_v_normal,       // 32
-    &nav_r_v_slip,         // 33
-    &nav_r_w_normal,       // 34
-    &nav_r_w_slip,         // 35
-    &nav_r_gyro,           // 36
-      
-    // --- 你的 4 个磁力计参数 ---
-    &mag_offset_x,         // 37
-    &mag_offset_y,         // 38
-    &mag_scale_x,          // 39
-    &mag_scale_y           // 40
+#define PARAM_ITEM(id, runtime_var, init_val, display_name) &runtime_var,
+#include "param_registry.def"
+#undef PARAM_ITEM
+};
+
+const char *const g_param_names[PARAM_COUNT] = {
+#define PARAM_ITEM(id, runtime_var, init_val, display_name) display_name,
+#include "param_registry.def"
+#undef PARAM_ITEM
 };
 
 // --- 初始化函数 ---
@@ -72,56 +35,9 @@ void IPC_Init_Shared_Memory(void) {
     memset(&core_b_cmd, 0, sizeof(CoreB_Command_t));
     
     // 【完美替换】直接从 param.c 读取基准初始配置
-    core_b_cmd.params[P_Q_YAW]  = Q_yaw_init;
-    core_b_cmd.params[P_Q_PR]   = Q_pr_init;
-    core_b_cmd.params[P_Q_BIAS] = Q_bias_init;
-    core_b_cmd.params[P_R_YAW]  = R_yaw_init;
-    core_b_cmd.params[P_R_PR]   = R_pr_init;
-    
-    core_b_cmd.params[P_SPEED_P] = Speed_p_init; 
-    core_b_cmd.params[P_SPEED_I] = Speed_i_init; 
-    core_b_cmd.params[P_SPEED_D] = Speed_d_init;
-    
-    core_b_cmd.params[P_ANGLE_P] = Angle_p_init;  
-    core_b_cmd.params[P_ANGLE_I] = Angle_i_init; 
-    core_b_cmd.params[P_ANGLE_D] = Angle_d_init;
-    
-    core_b_cmd.params[P_GYRO_P]  = Gyro_p_init;  
-    core_b_cmd.params[P_GYRO_I]  = Gyro_i_init; 
-    core_b_cmd.params[P_GYRO_D]  = Gyro_d_init;
-    
-    core_b_cmd.params[P_TARGET_VELOCITY]    = Target_Velocity_init;
-    core_b_cmd.params[P_TARGET_ANGLE]       = Target_Angle_init;
-    core_b_cmd.params[P_TARGET_MOTOR_STAND] = Target_Motor_Stand_init;
-    
-    core_b_cmd.params[P_LEG_KP]  = Leg_Kp_init;
-    core_b_cmd.params[P_LEG_KI]  = Leg_Ki_init;
-    core_b_cmd.params[P_LEG_KD]  = Leg_Kd_init;
-    core_b_cmd.params[P_X_CURRENT] = X_Current_init;
-    core_b_cmd.params[P_Y_CURRENT] = Y_Current_init;
-
-    core_b_cmd.params[P_AIR_ROLL_P] = Air_roll_p_init;
-    core_b_cmd.params[P_AIR_ROLL_I] = Air_roll_i_init;
-    core_b_cmd.params[P_AIR_ROLL_D] = Air_roll_d_init;
-    
-    core_b_cmd.params[P_DIR_P] = Direction_p_init;
-    core_b_cmd.params[P_DIR_I] = Direction_i_init;
-    core_b_cmd.params[P_DIR_D] = Direction_d_init;
-    
-    core_b_cmd.params[P_NAV_Q_V] = Nav_q_v_init;
-    core_b_cmd.params[P_NAV_Q_W] = Nav_q_w_init;
-    core_b_cmd.params[P_NAV_Q_BIAS_AX] = Nav_q_bias_ax_init;
-    core_b_cmd.params[P_NAV_Q_BIAS_W]  = Nav_q_bias_w_init;
-    core_b_cmd.params[P_NAV_R_V_NORMAL] = Nav_r_v_normal_init;
-    core_b_cmd.params[P_NAV_R_V_SLIP]   = Nav_r_v_slip_init;
-    core_b_cmd.params[P_NAV_R_W_NORMAL] = Nav_r_w_normal_init;
-    core_b_cmd.params[P_NAV_R_W_SLIP]   = Nav_r_w_slip_init;
-    core_b_cmd.params[P_NAV_R_GYRO]     = Nav_r_gyro_init;
-    
-    core_b_cmd.params[P_MAG_OFFSET_X] = Mag_offset_x_init;
-    core_b_cmd.params[P_MAG_OFFSET_Y] = Mag_offset_y_init;
-    core_b_cmd.params[P_MAG_SCALE_X]  = Mag_scale_x_init;
-    core_b_cmd.params[P_MAG_SCALE_Y]  = Mag_scale_y_init;
+#define PARAM_ITEM(id, runtime_var, init_val, display_name) core_b_cmd.params[id] = init_val;
+#include "param_registry.def"
+#undef PARAM_ITEM
 
     core_b_cmd.update_mask = 0xFFFFFFFFFFFFFFFFULL; 
     core_b_cmd.param_update_flag = 1;
@@ -132,19 +48,11 @@ void IPC_Init_Shared_Memory(void) {
 
 // --- 3. Core A 专属：将全局变量打包进共享内存，并刷入 SRAM ---
 void IPC_Push_Status_From_CoreA(void) {
-    // 1. 打包高频运动状态
-    core_a_status.roll  = IMU_data.filter_result.roll;
-    core_a_status.pitch = IMU_data.filter_result.pitch;
-    core_a_status.yaw   = IMU_data.filter_result.yaw;
-    core_a_status.left_wheel_speed =  motor_value.receive_left_speed_data;
-    core_a_status.right_wheel_speed = motor_value.receive_right_speed_data;
-    core_a_status.left_pwm_duty = Motor_Left;
-    core_a_status.right_pwm_duty = Motor_Right;
-    
-    core_a_status.nav_x = (float)robot_pose.x; 
-    core_a_status.nav_y = (float)robot_pose.y;
-    core_a_status.nav_v = robot_pose.v;
-    core_a_status.nav_w = robot_pose.w;
+    // 1. 打包高频运动状态与调试输出
+#define STATUS_ITEM(type, name, source_expr) core_a_status.name = (source_expr);
+#include "status_registry.def"
+#undef STATUS_ITEM
+
     // 2. 【核心新增】打包当前真正在使用的底层参数 (Ground Truth)
     for(int i = 0; i < PARAM_COUNT; i++) {
             core_a_status.act_params[i] = *(param_map[i]);

@@ -1,152 +1,146 @@
 #include "engine.h"
 
-/*************************************************************************
- *  函数名称：uint32 buu(uint32 c)
- *  功能说明：舵机初始化函数
- *  参数说明：
- * @param    c   ： 舵机占空比设置
- *  函数返回：无
- *  修改时间：2025年1月21日
- *  备    注：//设置占空比反向
- *************************************************************************/
-uint32 buu(uint32 c)
+typedef struct
 {
-    c = 1500 - c;
-    return c;
+    uint32 pwm_channel;
+    uint8 reverse;
+    int16 trim;
+    uint16 logical_min;
+    uint16 logical_max;
+} servo_channel_cal_t;
+
+static const servo_channel_cal_t k_left_servo_1 = {PWM_1, 1, 0, 250, 1230};
+static const servo_channel_cal_t k_left_servo_2 = {PWM_2, 1, 0, 250, 1230};
+static const servo_channel_cal_t k_right_servo_1 = {PWM_4, 0, 0, 250, 1230};
+static const servo_channel_cal_t k_right_servo_2 = {PWM_3, 0, 0, 250, 1230};
+static uint32 g_pwm_out_1 = 0;
+static uint32 g_pwm_out_2 = 0;
+static uint32 g_pwm_out_3 = 0;
+static uint32 g_pwm_out_4 = 0;
+static int g_logic_left_1 = 0;
+static int g_logic_left_2 = 0;
+static int g_logic_right_1 = 0;
+static int g_logic_right_2 = 0;
+
+static uint32 apply_servo_test_override(uint32 pwm_out, uint8 channel_index)
+{
+#if SERVO_TEST_MODE
+    if (channel_index == SERVO_TEST_CHANNEL)
+    {
+        return (uint32)SERVO_TEST_DUTY;
+    }
+#endif
+    return pwm_out;
 }
 
-/*************************************************************************
- *  函数名称：uint32 auu(uint32 c)
- *  功能说明：舵机初始化函数
- *  参数说明：
- * @param    c   ： 舵机占空比限幅设置
- *  函数返回：无
- *  修改时间：2025年1月21日
- *  备    注：//设置占空比限幅
- *************************************************************************/
+uint32 buu(uint32 c)
+{
+    return 1500 - c;
+}
+
 uint32 auu(uint32 c)
 {
     if (c > 1230)
+    {
         return 1230;
-    else if (c < 250)
+    }
+    if (c < 250)
+    {
         return 250;
-    else
-        return c;
+    }
+    return c;
 }
 
-/*************************************************************************
- *  函数名称：void engine_init(int pwm);
- *  功能说明：舵机初始化函数
- *  参数说明：
- * @param    pwm   ： 舵机占空比初始化设置
- *  函数返回：无
- *  修改时间：2025年1月18日
- *  备    注：//750———1250越大腿往下伸长
- *************************************************************************/
+static uint32 apply_servo_calibration(int logical_pwm, const servo_channel_cal_t *cal)
+{
+    int pwm = logical_pwm + cal->trim;
+
+    if (pwm < (int)cal->logical_min)
+    {
+        pwm = cal->logical_min;
+    }
+    if (pwm > (int)cal->logical_max)
+    {
+        pwm = cal->logical_max;
+    }
+
+    if (cal->reverse)
+    {
+        pwm = (int)buu((uint32)pwm);
+    }
+
+    return (uint32)pwm;
+}
+
 void engine_init(int pwm1, int pwm2)
 {
-    pwm1 = auu(pwm1); // 限幅
-    pwm2 = auu(pwm2);
+    pwm1 = (int)auu((uint32)pwm1);
+    pwm2 = (int)auu((uint32)pwm2);
 
-    // pwm_init(PWM_1, FREQ, 260);
-    // pwm_init(PWM_2, FREQ, 260);
-    // pwm_init(PWM_3, FREQ, 260);
-    // pwm_init(PWM_4, FREQ, 260);
+    g_logic_left_1 = pwm1;
+    g_logic_left_2 = pwm2;
+    g_logic_right_1 = pwm1;
+    g_logic_right_2 = pwm2;
+    g_pwm_out_1 = apply_servo_calibration(pwm1, &k_left_servo_1);
+    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_left_servo_2);
+    g_pwm_out_3 = apply_servo_calibration(pwm2, &k_right_servo_2);
+    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_right_servo_1);
+    g_pwm_out_1 = apply_servo_test_override(g_pwm_out_1, 1);
+    g_pwm_out_2 = apply_servo_test_override(g_pwm_out_2, 2);
+    g_pwm_out_3 = apply_servo_test_override(g_pwm_out_3, 3);
+    g_pwm_out_4 = apply_servo_test_override(g_pwm_out_4, 4);
 
-    pwm_init(PWM_1, FREQ, buu(pwm1));
-    pwm_init(PWM_2, FREQ, buu(pwm2));
-
-    pwm_init(PWM_3, FREQ, pwm2);
-    pwm_init(PWM_4, FREQ, pwm1);
-   // printf("PWM1~4(after buu):%d %d %d %d\n", buu(pwm1), buu(pwm2), pwm2, pwm1);
-    //printf("INIT SUCCEED!");
+    pwm_init(k_left_servo_1.pwm_channel, FREQ, g_pwm_out_1);
+    pwm_init(k_left_servo_2.pwm_channel, FREQ, g_pwm_out_2);
+    pwm_init(k_right_servo_1.pwm_channel, FREQ, g_pwm_out_4);
+    pwm_init(k_right_servo_2.pwm_channel, FREQ, g_pwm_out_3);
 }
 
-/*************************************************************************
- *  函数名称：void engine_maintain(int pwm);
- *  功能说明：舵机保持函数
- *  参数说明：
- * @param    pwm   ： 舵机占空比输入
- *  函数返回：无
- *  修改时间：2025年1月18日
- *  备    注：//750———1250越大腿往下伸长
- *************************************************************************/
-// void engine_maintain(int pwm1, int pwm2) // 记得修改
-// {
-//     pwm1 = auu(pwm1);
-//     pwm2 = auu(pwm2);
-
-//     pwm_set_duty(PWM_1, pwm1);
-//     pwm_set_duty(PWM_2, buu(pwm2));
-
-//     pwm_set_duty(PWM_3, (pwm2));
-//     pwm_set_duty(PWM_4, buu(pwm1));
-// }
-
-/*************************************************************************
- *  函数名称：void engine_left_maintain(int pwm);
- *  功能说明：左舵机保持函数
- *  参数说明：
- * @param    pwm   ： 舵机占空比输入
- *  函数返回：无
- *  修改时间：2025年1月18日
- *  备    注：//750———1250越大腿往下伸长
- *************************************************************************/
 void engine_left_maintain(int pwm1, int pwm2)
 {
-    pwm1 = auu(pwm1);
-    pwm2 = auu(pwm2);
-    pwm_set_duty(PWM_1, buu(pwm1));
-    pwm_set_duty(PWM_2, buu(pwm2));
+    pwm1 = (int)auu((uint32)pwm1);
+    pwm2 = (int)auu((uint32)pwm2);
+
+    g_logic_left_1 = pwm1;
+    g_logic_left_2 = pwm2;
+    g_pwm_out_1 = apply_servo_calibration(pwm1, &k_left_servo_1);
+    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_left_servo_2);
+    g_pwm_out_1 = apply_servo_test_override(g_pwm_out_1, 1);
+    g_pwm_out_2 = apply_servo_test_override(g_pwm_out_2, 2);
+
+    pwm_set_duty(k_left_servo_1.pwm_channel, g_pwm_out_1);
+    pwm_set_duty(k_left_servo_2.pwm_channel, g_pwm_out_2);
 }
 
-/*************************************************************************
- *  函数名称：void engine_right_maintain(int pwm);
- *  功能说明：右舵机保持函数
- *  参数说明：
- * @param    pwm   ： 舵机占空比输入
- *  函数返回：无
- *  修改时间：2025年1月18日
- *  备    注：//750———1250越大腿往下伸长
- *************************************************************************/
 void engine_right_maintain(int pwm1, int pwm2)
 {
-    pwm1 = auu(pwm1);
-    pwm2 = auu(pwm2);
-    pwm_set_duty(PWM_3, pwm2);
-    pwm_set_duty(PWM_4, pwm1);
+    pwm1 = (int)auu((uint32)pwm1);
+    pwm2 = (int)auu((uint32)pwm2);
+
+    g_logic_right_1 = pwm1;
+    g_logic_right_2 = pwm2;
+    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_right_servo_1);
+    g_pwm_out_3 = apply_servo_calibration(pwm2, &k_right_servo_2);
+    g_pwm_out_4 = apply_servo_test_override(g_pwm_out_4, 4);
+    g_pwm_out_3 = apply_servo_test_override(g_pwm_out_3, 3);
+
+    pwm_set_duty(k_right_servo_1.pwm_channel, g_pwm_out_4);
+    pwm_set_duty(k_right_servo_2.pwm_channel, g_pwm_out_3);
 }
 
-/*************************************************************************
- *  函数名称：void engine_jump(void);
- *  功能说明：轮足跳跃函数
- *  函数返回：无
- *  修改时间：2025年1月18日
- *  备    注：本历程尚未实现，建议改良为PID缓慢拟合
- *************************************************************************/
 void engine_jump(void)
 {
-    //    engine_maintain(750);
-    //    system_delay_ms(100);
-    //    engine_maintain(1250);
-    //    system_delay_ms(100);
-    //    engine_maintain(750);
 }
 
-/*************************************************************************
- *  函数名称：void engine_Stand_change(uint32 left, uint32 right, pid_param_t * pid);
- *  功能说明：轮足高度直立环选择函数
- *  函数返回：无
- *  修改时间：2025年1月18日
- *  备    注：本历程尚未实现，建议改良为PID缓慢拟合
- *************************************************************************/
 void engine_Stand_change(uint32 left, uint32 right, pid_param_t *pid1, pid_param_t *pid2)
 {
     if (left > right)
     {
         auu(left);
         if (left == 750)
+        {
             PidChange(pid1, 17000, 0, 1570);
+        }
         else if (left > 750 && left < 850)
         {
             PidChange(pid1, 18500, 0, 1570);
@@ -159,13 +153,17 @@ void engine_Stand_change(uint32 left, uint32 right, pid_param_t *pid1, pid_param
             target_motor_Stand = 0;
         }
         else
+        {
             PidChange(pid1, 24000, 0, 1570);
+        }
     }
     else
     {
         auu(right);
         if (left == 750)
+        {
             PidChange(pid1, 17000, 0, 1570);
+        }
         else if (right > 750 && right < 850)
         {
             PidChange(pid1, 18500, 0, 1570);

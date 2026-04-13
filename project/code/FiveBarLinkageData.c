@@ -1,108 +1,241 @@
-#include <stdio.h>
 #include <math.h>
+#include <stdio.h>
 #include "FiveBarLinkageData.h"
 #include "param.h"
 
+typedef struct
+{
+    int leg1_pwm_last;
+    int leg2_pwm_last;
+    float phi1_last_deg;
+    float phi4_last_signed_deg;
+} servo_leg_state_t;
 
-#include <math.h>
+static servo_leg_state_t g_servo_leg_state[2] = {
+    {250, 750, 180.0f, 0.0f},
+    {250, 750, 180.0f, 0.0f}
+};
 
-// L1~L5 已经在外部宏定义
+static float normalize_360(float angle_deg)
+{
+    while (angle_deg >= 360.0f)
+    {
+        angle_deg -= 360.0f;
+    }
+    while (angle_deg < 0.0f)
+    {
+        angle_deg += 360.0f;
+    }
+    return angle_deg;
+}
 
-static int leg1_last , leg2_last;
-void getJointAngles(float x_target, float y_target, float *phi1, float *phi4) {
-    // ==========================================
-    // 1. 计算左侧关节角 phi1
-    // ==========================================
+static float normalize_signed(float angle_deg)
+{
+    angle_deg = normalize_360(angle_deg);
+    if (angle_deg > 180.0f)
+    {
+        angle_deg -= 360.0f;
+    }
+    return angle_deg;
+}
+
+static float abs_local(float value)
+{
+    return (value >= 0.0f) ? value : -value;
+}
+
+static float circular_distance_deg(float a_deg, float b_deg)
+{
+    return abs_local(normalize_signed(a_deg - b_deg));
+}
+
+static int solve_phi1_candidates(float x_target, float y_target, float *phi1_a_deg, float *phi1_b_deg)
+{
     float x_plus = x_target + L5 / 2.0f;
     float a = 2.0f * x_plus * L1;
     float b = 2.0f * y_target * L1;
     float c = (x_plus * x_plus) + (y_target * y_target) + (L1 * L1) - (L2 * L2);
+    float denom = (a * a) + (b * b);
+    float radicand = denom - (c * c);
 
-    float a_sq_plus_b_sq = (a * a) + (b * b);
-    float sum_val = a_sq_plus_b_sq - (c * c); // 等价于你原来的 a^2 + b^2 - c^2
-
-    if (sum_val >= 0) {
-        float psi1 = atan2(b, a);
-        float alpha1 = acos(c / sqrt(a_sq_plus_b_sq));
-        
-        float phi1_rad = psi1 + alpha1; 
-        
-        *phi1 = phi1_rad * (180.0f / PI);
-
-        // 标准化角度到 0 ~ 360 度
-        while (*phi1 > 360.0f) *phi1 -= 360.0f;
-        while (*phi1 < 0.0f)   *phi1 += 360.0f;
-    } else {
-        *phi1 = 400.0f; // 目标不可达标志(as a marker, no impact)
-        // printf("PHI1,ERROR\n");
+    if (radicand < 0.0f || denom <= 0.0f)
+    {
+        return 0;
     }
 
-    // ==========================================
-    // 2. 计算右侧关节角 phi4
-    // ==========================================
-    float x_minus = x_target - L5 / 2.0f;
-    float a1 = 2.0f * x_minus * L4;
-    float b1 = 2.0f * y_target * L4;
-    float c1 = (x_minus * x_minus) + (y_target * y_target) + (L4 * L4) - (L3 * L3);
-
-    float a1_sq_plus_b1_sq = (a1 * a1) + (b1 * b1);
-    float sum_val1 = a1_sq_plus_b1_sq - (c1 * c1);
-
-    if (sum_val1 >= 0) {
-        float psi4 = atan2(b1, a1);
-        float alpha4 = acos(c1 / sqrt(a1_sq_plus_b1_sq));
-        
-        // 这里的 - 号对应原代码的 -sqrt 逻辑
-        float phi4_rad = psi4 - alpha4; 
-        
-        *phi4 = phi4_rad * (180.0f / PI);
-
-        // 标准化角度到 0 ~ 360 度
-        while (*phi4 > 360.0f) *phi4 -= 360.0f;
-        while (*phi4 < 0.0f)   *phi4 += 360.0f;
-    } else {
-        *phi4 = 400.0f; // 目标不可达标志
-        // printf("PHI4,ERROR\n");
+    {
+        float psi = atan2f(b, a);
+        float alpha = acosf(c / sqrtf(denom));
+        *phi1_a_deg = normalize_360((psi + alpha) * (180.0f / PI));
+        *phi1_b_deg = normalize_360((psi - alpha) * (180.0f / PI));
     }
+
+    return 1;
 }
 
+static int solve_phi4_candidates(float x_target, float y_target, float *phi4_a_signed_deg, float *phi4_b_signed_deg)
+{
+    float x_minus = x_target - L5 / 2.0f;
+    float a = 2.0f * x_minus * L4;
+    float b = 2.0f * y_target * L4;
+    float c = (x_minus * x_minus) + (y_target * y_target) + (L4 * L4) - (L3 * L3);
+    float denom = (a * a) + (b * b);
+    float radicand = denom - (c * c);
 
-void servo_control(float x, float y, int *leg1, int *leg2) {
-    float phi1, phi4;
+    if (radicand < 0.0f || denom <= 0.0f)
+    {
+        return 0;
+    }
 
-    getJointAngles(x, y, &phi1, &phi4);
-    
-    // 1. 如果目标点在物理上完全无法到达 (无解)
-    if(phi1 == 400.0f || phi4 == 400.0f) {
-        *leg1 = leg1_last; // 根据你的舵机中值替换为安全的PWM值
-        *leg2 = leg2_last; 
-        printf("Overloaded!\n");
+    {
+        float psi = atan2f(b, a);
+        float alpha = acosf(c / sqrtf(denom));
+        *phi4_a_signed_deg = normalize_signed((psi - alpha) * (180.0f / PI));
+        *phi4_b_signed_deg = normalize_signed((psi + alpha) * (180.0f / PI));
+    }
+
+    return 1;
+}
+
+static int phi1_candidate_valid(float phi1_deg)
+{
+    return (phi1_deg >= 99.0f && phi1_deg <= 261.0f);
+}
+
+static int phi4_candidate_valid(float phi4_signed_deg)
+{
+    return (phi4_signed_deg >= -81.0f && phi4_signed_deg <= 81.0f);
+}
+
+static int select_phi1_deg(float candidate_a_deg, float candidate_b_deg, float last_deg, float *selected_deg)
+{
+    int valid_a = phi1_candidate_valid(candidate_a_deg);
+    int valid_b = phi1_candidate_valid(candidate_b_deg);
+
+    if (!valid_a && !valid_b)
+    {
+        return 0;
+    }
+    if (valid_a && !valid_b)
+    {
+        *selected_deg = candidate_a_deg;
+        return 1;
+    }
+    if (!valid_a && valid_b)
+    {
+        *selected_deg = candidate_b_deg;
+        return 1;
+    }
+
+    {
+        float dist_a = circular_distance_deg(candidate_a_deg, last_deg);
+        float dist_b = circular_distance_deg(candidate_b_deg, last_deg);
+        *selected_deg = (dist_a <= dist_b) ? candidate_a_deg : candidate_b_deg;
+    }
+    return 1;
+}
+
+static int select_phi4_signed_deg(float candidate_a_signed_deg, float candidate_b_signed_deg, float last_signed_deg, float *selected_signed_deg)
+{
+    int valid_a = phi4_candidate_valid(candidate_a_signed_deg);
+    int valid_b = phi4_candidate_valid(candidate_b_signed_deg);
+
+    if (!valid_a && !valid_b)
+    {
+        return 0;
+    }
+    if (valid_a && !valid_b)
+    {
+        *selected_signed_deg = candidate_a_signed_deg;
+        return 1;
+    }
+    if (!valid_a && valid_b)
+    {
+        *selected_signed_deg = candidate_b_signed_deg;
+        return 1;
+    }
+
+    {
+        float dist_a = abs_local(candidate_a_signed_deg - last_signed_deg);
+        float dist_b = abs_local(candidate_b_signed_deg - last_signed_deg);
+        *selected_signed_deg = (dist_a <= dist_b) ? candidate_a_signed_deg : candidate_b_signed_deg;
+    }
+    return 1;
+}
+
+static int phi1_deg_to_pwm(float phi1_deg)
+{
+    return (int)(((phi1_deg - 90.0f) / 180.0f) * 1000.0f + 250.0f);
+}
+
+static int phi4_signed_deg_to_pwm(float phi4_signed_deg)
+{
+    return (int)(((phi4_signed_deg + 90.0f) / 180.0f) * 1000.0f + 250.0f);
+}
+
+int servo_target_valid(servo_leg_id_t leg_id, float x, float y)
+{
+    float phi1_a_deg;
+    float phi1_b_deg;
+    float phi4_a_signed_deg;
+    float phi4_b_signed_deg;
+    (void)leg_id;
+
+    if (!solve_phi1_candidates(x, y, &phi1_a_deg, &phi1_b_deg) ||
+        !solve_phi4_candidates(x, y, &phi4_a_signed_deg, &phi4_b_signed_deg))
+    {
+        return 0;
+    }
+
+    return ((phi1_candidate_valid(phi1_a_deg) || phi1_candidate_valid(phi1_b_deg)) &&
+            (phi4_candidate_valid(phi4_a_signed_deg) || phi4_candidate_valid(phi4_b_signed_deg)));
+}
+
+void servo_control(servo_leg_id_t leg_id, float x, float y, int *leg1, int *leg2)
+{
+    float phi1_a_deg;
+    float phi1_b_deg;
+    float phi4_a_signed_deg;
+    float phi4_b_signed_deg;
+    float phi1_selected_deg;
+    float phi4_selected_signed_deg;
+    servo_leg_state_t *state;
+
+    if (leg1 == NULL || leg2 == NULL)
+    {
         return;
     }
 
-    // 2. 对求出的角度进行强制软限幅 (保护舵机，且防止进入无赋值分支)
-    if(phi1 < 99.0f)  phi1 = 99.0f;
-    if(phi1 > 261.0f) phi1 = 261.0f;
-
-    // phi4 的合法范围是 0~81 或 279~360
-    // 如果 phi4 落在非法区间 81~279 内，将其强制拉回最近的边界
-    if(phi4 > 81.0f && phi4 < 180.0f) phi4 = 81.0f;
-    if(phi4 >= 180.0f && phi4 < 279.0f) phi4 = 279.0f;
-
-    // 3. 计算最终的舵机 PWM 值 (此时角度绝对在安全范围内)
-    *leg1 = (int)((phi1-90 ) / 180.0f * 1000.0f + 250.0f);
-    
-    if (phi4 >= 270.0f) {
-        *leg2 = (int)((phi4 - 270.0f) / 180.0f * 1000.0f + 250.0f);
-    } 
-    else if(phi4 <= 90.0f) {
-        *leg2 = (int)((90.0f + phi4) / 180.0f * 1000.0f + 250.0f);
-    } 
-    else {
-        // 兜底赋值，防止任何意料之外的数值导致乱码
-        *leg2 = 250; 
+    if (leg_id != SERVO_LEG_LEFT && leg_id != SERVO_LEG_RIGHT)
+    {
+        *leg1 = 250;
+        *leg2 = 750;
+        return;
     }
-    leg1_last=*leg1;
-    leg2_last=*leg2;
-    
+
+    state = &g_servo_leg_state[(int)leg_id];
+
+    if (!solve_phi1_candidates(x, y, &phi1_a_deg, &phi1_b_deg) ||
+        !solve_phi4_candidates(x, y, &phi4_a_signed_deg, &phi4_b_signed_deg))
+    {
+        *leg1 = state->leg1_pwm_last;
+        *leg2 = state->leg2_pwm_last;
+        return;
+    }
+
+    if (!select_phi1_deg(phi1_a_deg, phi1_b_deg, state->phi1_last_deg, &phi1_selected_deg) ||
+        !select_phi4_signed_deg(phi4_a_signed_deg, phi4_b_signed_deg, state->phi4_last_signed_deg, &phi4_selected_signed_deg))
+    {
+        *leg1 = state->leg1_pwm_last;
+        *leg2 = state->leg2_pwm_last;
+        return;
+    }
+
+    *leg1 = phi1_deg_to_pwm(phi1_selected_deg);
+    *leg2 = phi4_signed_deg_to_pwm(phi4_selected_signed_deg);
+
+    state->leg1_pwm_last = *leg1;
+    state->leg2_pwm_last = *leg2;
+    state->phi1_last_deg = phi1_selected_deg;
+    state->phi4_last_signed_deg = phi4_selected_signed_deg;
 }

@@ -16,6 +16,71 @@ typedef union {
 
 
 
+static uint8 VOFA_Calc_Checksum(const uint8 *data, uint32 len)
+{
+    uint8 sum = 0;
+    uint32 i;
+    for (i = 0; i < len; i++)
+    {
+        sum += data[i];
+    }
+    return sum;
+}
+
+static uint64_t VOFA_Get_All_Param_Mask(void)
+{
+    if (PARAM_COUNT >= 64)
+    {
+        return 0xFFFFFFFFFFFFFFFFULL;
+    }
+    return ((1ULL << PARAM_COUNT) - 1ULL);
+}
+
+static uint32 VOFA_Build_Params_Frame(const float *params, uint8 *tx_buf, uint32 tx_buf_size)
+{
+    uint32 payload_len = PARAM_COUNT * sizeof(float);
+    uint32 frame_len = payload_len + 3;
+
+    if (params == NULL || tx_buf == NULL || tx_buf_size < frame_len)
+    {
+        return 0;
+    }
+
+    tx_buf[0] = 0xAA;
+    tx_buf[1] = 0xC4;
+    memcpy(&tx_buf[2], params, payload_len);
+    tx_buf[2 + payload_len] = VOFA_Calc_Checksum(&tx_buf[2], payload_len);
+    return frame_len;
+}
+
+uint8 VOFA_Send_Params_To_Wifi(const float *params)
+{
+    uint8 tx_buf[200];
+    uint32 frame_len = VOFA_Build_Params_Frame(params, tx_buf, sizeof(tx_buf));
+
+    if (frame_len == 0)
+    {
+        return 1;
+    }
+
+    return WIFI_Send_Buffer_Checked(tx_buf, frame_len, 1);
+}
+
+void VOFA_Save_Params_To_Flash(void)
+{
+    IPC_Save_Params_To_Flash();
+}
+
+void VOFA_Load_Params_From_Flash(void)
+{
+    IPC_Load_Params_From_Flash();
+}
+
+void VOFA_Upload_Params_To_UI(void)
+{
+    IPC_Pull_Status_To_CoreB();
+    VOFA_Send_Params_To_Wifi(core_a_status.act_params);
+}
 /**
  * @brief 终极通用协议解析器
  */
@@ -79,7 +144,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
         // ========================================================
         else if((i + 6) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC2)
         {
-            uint8 param_id = rx_buffer[i + 2]; // VOFA 下发的是 0x01 到 0x11
+            uint8 param_id = rx_buffer[i + 2]; // VOFA 下发的是 1 到 PARAM_COUNT
             
             // 安全检查：如果 ID 超出了我们现有的参数总数，直接丢弃
             if (param_id == 0 || param_id > PARAM_COUNT) {
@@ -100,28 +165,11 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             // 仅仅两行代码，替代了你原来的 17 个 case！
             core_b_cmd.params[index] = temp_float.f_val; 
             core_b_cmd.update_mask |= (1ULL << index);
-
             core_b_cmd.param_update_flag = 1; 
             SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
             __enable_irq(); 
-            
-            // 字符串映射表
-            static const char* param_names[] = {
-                "Q_yaw", "Q_pr", "Q_bias", "R_yaw", "R_pr", 
-                "Speed_P", "Speed_I", "Speed_D",            
-                "Angle_P", "Angle_I", "Angle_D",            
-                "Gyro_P", "Gyro_I", "Gyro_D",               
-                "Target_Velocity", "Target_Angle", "Target_Motor_Stand", // <--- 加上这个逗号！
-                "Leg_Kp", "Leg_Ki", "Leg_Kd", "X_Current", "Y_Current",
-                "Air_Roll_P", "Air_Roll_I", "Air_Roll_D",
-                "Direction_P", "Direction_I", "Direction_D",
-                "Nav_Q_V", "Nav_Q_W", "Nav_Q_Bias_Ax", "Nav_Q_Bias_W", 
-                "Nav_R_V_Normal", "Nav_R_V_Slip", "Nav_R_W_Normal", "Nav_R_W_Slip", "Nav_R_Gyro",
-                "Mag_Offset_X", "Mag_Offset_Y", "Mag_Scale_X", "Mag_Scale_Y"
-            };
-            
-            LOG_Printf("[Core 1] Param '%s' set to %.4f (Mask: 0x%02X)\r\n", 
-                   param_names[index], temp_float.f_val, core_b_cmd.update_mask);
+
+            LOG_Printf("[Core 1] Param '%s' set to %.4f\r\n", g_param_names[index], temp_float.f_val);
             
             i += 6; continue;
         }
@@ -152,11 +200,11 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
         }
         // ========================================================
         // 协议 5: 批量下发所有参数 (AA C4)
-        // 格式: AA C4 [22个float (88字节)] [1字节校验和]
+        // 格式: AA C4 [PARAM_COUNT个float] [1字节校验和]
         // ========================================================
         else if((i + 2 + PARAM_COUNT * 4 + 1) <= data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC4)
         {
-            // 1. 计算校验和 (仅校验 88 字节的数据区)
+            // 1. 计算校验和 (仅校验 float 数据区)
             uint8 sum_check = 0;
             for(int j = 0; j < PARAM_COUNT * 4; j++) {
                 sum_check += rx_buffer[i + 2 + j];
@@ -172,13 +220,13 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 memcpy(core_b_cmd.params, &rx_buffer[i + 2], PARAM_COUNT * sizeof(float));
                 
                 // 触发全量更新掩码 (0xFFFFFFFF 表示所有位都是 1)
-                core_b_cmd.update_mask = 0xFFFFFFFFFFFFFFFFULL; 
+                core_b_cmd.update_mask = VOFA_Get_All_Param_Mask(); 
                 core_b_cmd.param_update_flag = 1; 
                 
                 SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
                 __enable_irq(); 
                 
-                LOG_Printf("[VOFA] All 22 Parameters Updated Successfully!\r\n");
+                LOG_Printf("[VOFA] All %d Parameters Updated Successfully!\r\n", PARAM_COUNT);
             }
             else
             {
@@ -198,31 +246,20 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
         {
             LOG_Printf("\r\n[VOFA] Received PARAM REQUEST (AA C5)! Sending...\r\n");
             
+            uint8 tx_buf[200];
+            uint32 total_len;
+
             // 1. 获取最新真值
             IPC_Pull_Status_To_CoreB(); 
             
-            // 2. 构建二进制返回包 (AA C4)
-            uint8 tx_buf[200]; // 扩容到 200，保底足够放下 155 字节的数据
-            tx_buf[0] = 0xAA;
-            tx_buf[1] = 0xC4;
-            
-            // 拷贝 88 字节的 float 数组
-            memcpy(&tx_buf[2], core_a_status.act_params, PARAM_COUNT * sizeof(float));
-            
-            // 计算校验和
-            uint8 tx_sum = 0;
-            for(int j = 0; j < PARAM_COUNT * 4; j++) {
-                tx_sum += tx_buf[2 + j];
+            // 2. 构建并发送二进制返回包 (AA C4)
+            total_len = VOFA_Build_Params_Frame(core_a_status.act_params, tx_buf, sizeof(tx_buf));
+            if (total_len > 0)
+            {
+                WIFI_Send_Buffer_Checked(tx_buf, total_len, 1);
             }
-            tx_buf[2 + PARAM_COUNT * 4] = tx_sum;
             
-            // 发送给电脑（为了以后兼容你自己的上位机，这步保留）
-            wifi_spi_send_buffer(tx_buf, 3 + PARAM_COUNT * 4);
-            #if (WIFI_PROTOCOL_MODE == 1)
-            wifi_spi_udp_send_now(); 
-            #endif
-            
-// 3. 打印给人类看的清单（采用防对齐 Bug 宏）
+            // 3. 打印给人类看的清单（采用防对齐 Bug 宏）
             #define F_S(f) ((f) < 0 ? "-" : "")
             #define F_I(f) (int)((f) < 0 ? -(f) : (f))
             #define F_D(f) (int)((((f) < 0 ? -(f) : (f)) - (int)((f) < 0 ? -(f) : (f))) * 10000)
@@ -258,30 +295,30 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                    F_S(core_a_status.act_params[P_MAG_SCALE_Y]), F_I(core_a_status.act_params[P_MAG_SCALE_Y]), F_D(core_a_status.act_params[P_MAG_SCALE_Y]));
             LOG_Printf("=============================================\r\n");
 
-            // 4. 分 4 段安全拼合打印 139 字节的数据 (防丢包/溢出)
+            // 4. 分 4 段安全拼合打印 AA C4 参数包（防丢包/溢出）
             LOG_Printf("\r\n>>> VOFA+ COPY & PASTE COMMAND (AA C4) <<<\r\n");
             
             char hex_str[160]; 
-            int total_len = 3 + PARAM_COUNT * 4; // 现在总长为 139 字节
+            
             
             // 第 1 段：0 ~ 39 字节
             memset(hex_str, 0, sizeof(hex_str));
-            for(int k = 0; k < 40; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
+            for(int k = 0; k < 40 && k < (int)total_len; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
             LOG_Printf("%s", hex_str);
             
             // 第 2 段：40 ~ 79 字节
             memset(hex_str, 0, sizeof(hex_str));
-            for(int k = 40; k < 80; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
+            for(int k = 40; k < 80 && k < (int)total_len; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
             LOG_Printf("%s", hex_str);
             
             // 第 3 段：80 ~ 119 字节
             memset(hex_str, 0, sizeof(hex_str));
-            for(int k = 80; k < 120; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
+            for(int k = 80; k < 120 && k < (int)total_len; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
             LOG_Printf("%s", hex_str);
             
             // 第 4 段：120 ~ 末尾
             memset(hex_str, 0, sizeof(hex_str));
-            for(int k = 120; k < total_len; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
+            for(int k = 120; k < (int)total_len; k++) sprintf(hex_str + strlen(hex_str), "%02X ", tx_buf[k]);
             LOG_Printf("%s\r\n", hex_str);
             
             LOG_Printf(">>> END OF COMMAND <<<\r\n\r\n");
@@ -322,3 +359,5 @@ void VOFA_UART_Process(void)
         VOFA_Protocol_Parse(fifo_get_data, fifo_data_count);
     }
 }
+
+

@@ -78,7 +78,7 @@ int main(void)
   Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
   small_driver_uart_init(); // 驱动板通信初始化
   //=================================舵机初始化======================
-  pit_ms_init(PIT_Engine, 30); // 舵机初始化
+  pit_ms_init(PIT_Engine, 20); // 舵机固定 20ms 周期更新
 
 //  // === 1. 导航系统初始化 ===
 //    navi_data_init();
@@ -108,9 +108,6 @@ int main(void)
   while (true)
   {
     // 此处编写需要循环执行的代码
-    extern float x_current, y_current;
-    leg_control(&x_current, &y_current);
-
     IPC_Push_Status_From_CoreA();
     //printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);    
    // printf("Target Angle:%f\n",target_angle);

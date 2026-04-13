@@ -7,10 +7,17 @@
 
 
 #define PWM_1              (TCPWM_CH13_P00_3)//左2 900向上 +
-#define PWM_2              (TCPWM_CH12_P01_0)//左1 900向下 +
+#define PWM_2              (TCPWM_CH12_P05_3)//左1 改到 P05_3 测试
 #define PWM_3              (TCPWM_CH11_P01_1)//右1 900向上 -
 #define PWM_4              (TCPWM_CH10_P05_1)//右2 900向下 -
 #define FREQ               (50)  //与后期250-1250占空对应，不得更改
+
+// 单通道舵机测试模式
+// 0: 关闭测试
+// 1: 固定输出指定通道，隔离硬件/映射问题
+#define SERVO_TEST_MODE    (0)
+#define SERVO_TEST_CHANNEL (2)    // 1~4 对应 PWM_1~PWM_4
+#define SERVO_TEST_DUTY    (750)  // 直接作用到物理 PWM 输出
 
 //初始化使用
 void engine_init(int pwm1,int pwm2);
@@ -26,3 +33,6 @@ void engine_Stand_change(uint32 left, uint32 right, pid_param_t * pid1, pid_para
 void engine_jump(void);
 
 #endif /* CODE_ENGINE_H_ */
+
+
+

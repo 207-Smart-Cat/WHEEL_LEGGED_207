@@ -6,21 +6,21 @@
 // 全局变量
 extern float target_velocity;      // 目标速度
 extern float target_angle;         // 目标角度
-float now_velocity = 0.0;          // 实际速度值
+float now_velocity = 0.0;          // 实际速度�?
 extern float target_motor_Stand;   // 目标电机角度
-float Encoder_Left, Encoder_Right; // 左右电机编码器值
+float Encoder_Left, Encoder_Right; // 左右电机编码器�?
 float leg_error;
 
 int speed_up = 0;
-float Turn_Pwm; // 转向PWM值
+float Turn_Pwm; // 转向PWM�?
 
 // PID参数
-extern pid_param_t motor_speed;     // 速度PID参数---------------------速度环
-extern pid_param_t motor_Stand;     // 电机角度PID参数---------------------角度环
+extern pid_param_t motor_speed;     // 速度PID参数---------------------速度�?
+extern pid_param_t motor_Stand;     // 电机角度PID参数---------------------角度�?
 extern pid_param_t motor_direction; // 方向PID参数------------------------方向调整
-extern pid_param_t motor_gyro;      // 陀螺仪PID参数------------------------角速度环
-extern pid_param_t air_roll_pid;    // 空中控制器参数
-extern pid_param_t motor_leg_pid;   // 腿高控制器
+extern pid_param_t motor_gyro;      // 陀螺仪PID参数------------------------角速度�?
+extern pid_param_t air_roll_pid;    // 空中控制器参�?
+extern pid_param_t motor_leg_pid;   // 腿高控制�?
 extern float x_current, y_current;
 int i = 0;
 // 电机输出
@@ -30,7 +30,8 @@ float out_speed_l = 0, out_speed_r = 0;
 float out_angle_l = 0, out_angle_r = 0;
 float out_gyro_l  = 0, out_gyro_r  = 0;
 // 其他变量
-float last_error;                 // 上一次误差
+static float balance_last_error = 0.0f;
+static float gyro_last_error = 0.0f;
 extern Attitude_3D_Kalman filter; // 卡尔曼滤波器
 extern IMU_t IMU_data;            // IMU数据
 extern float v_buchang;
@@ -46,14 +47,23 @@ bool IMU_ready = false;
 // 腿部控制参数
 
 float temp_a, temp_b;
+typedef struct
+{
+    float velocity;
+    float encoder_bias;
+    float encoder_integral;
+} velocity_loop_state_t;
+
+static velocity_loop_state_t g_velocity_left = {0};
+static velocity_loop_state_t g_velocity_right = {0};
 
 // 模糊规则参数
 typedef struct
 {
-    float error_threshold_high;   // 高误差阈值
-    float error_threshold_low;    // 低误差阈值
-    float d_error_threshold_high; // 高误差变化率阈值
-    float d_error_threshold_low;  // 低误差变化率阈值
+    float error_threshold_high;   // 高误差阈�?
+    float error_threshold_low;    // 低误差阈�?
+    float d_error_threshold_high; // 高误差变化率阈�?
+    float d_error_threshold_low;  // 低误差变化率阈�?
     float kp_inc_high;            // 高KP增量
     float kp_inc_low;             // 低KP增量
     float ki_inc_high;            // 高KI增量
@@ -85,8 +95,8 @@ fuzzy_rules_t speed_rules = {
 fuzzy_rules_t angle_rules = {
     .error_threshold_high = 8.0,    // 高误差阈值（度）
     .error_threshold_low = 3,       // 低误差阈值（度）
-    .d_error_threshold_high = 30.0, // 高误差变化率阈值（度/秒）
-    .d_error_threshold_low = 5.0,   // 低误差变化率阈值（度/秒）
+    .d_error_threshold_high = 30.0, // 高误差变化率阈值（�?秒）
+    .d_error_threshold_low = 5.0,   // 低误差变化率阈值（�?秒）
     .kp_inc_high = 0.01,
     .kp_inc_low = 0.01,
     .ki_inc_high = 0,
@@ -114,7 +124,7 @@ void fuzzy_pid_adjust(pid_param_t *pid, float error, float d_error, fuzzy_rules_
 {
     // 模糊集合
     float e = error;    // 误差
-    float de = d_error; // 误差变化率
+    float de = d_error; // 误差变化�?
 
     // 模糊规则
     float delta_kp, delta_ki, delta_kd;
@@ -176,21 +186,21 @@ void fuzzy_pid_adjust(pid_param_t *pid, float error, float d_error, fuzzy_rules_
 void pid_init()
 {
     PidInit(&motor_speed);
-    PidChange(&motor_speed, Speed_p, Speed_i, Speed_d); // 速度环
+    PidChange(&motor_speed, Speed_p, Speed_i, Speed_d); // 速度�?
 
     PidInit(&motor_Stand);
-    PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d); // 角度环
+    PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d); // 角度�?
 
     PidInit(&motor_direction);
-    PidChange(&motor_direction, Direction_p, Direction_i, Direction_d); // 转向环
+    PidChange(&motor_direction, Direction_p, Direction_i, Direction_d); // 转向�?
 
     PidInit(&motor_gyro);
-    PidChange(&motor_gyro, Gyro_p, Gyro_i, Gyro_d); // 角速度环
+    PidChange(&motor_gyro, Gyro_p, Gyro_i, Gyro_d); // 角速度�?
 
     PidInit(&air_roll_pid);
     PidChange(&air_roll_pid, Air_roll_p, Air_roll_i, Air_roll_d); // 初始化空中控制器PID
 }
-// 检测是否处于腾空状态
+// 检测是否处于腾空状�?
 bool is_airborne()
 {
 
@@ -200,15 +210,15 @@ bool is_airborne()
 // 应用空中控制
 void apply_air_control(float roll_control)
 {
-    // 根据控制输出调整轮子转速
+    // 根据控制输出调整轮子转�?
     float wheel_left = roll_control;
     float wheel_right = roll_control;
 
-    // 限制轮子转速范围
+    // 限制轮子转速范�?
     wheel_left = fmaxf(fminf(wheel_left, 1000.0), -1000.0);
     wheel_right = fmaxf(fminf(wheel_right, 1000.0), -1000.0);
 
-    // 设置轮子转速
+    // 设置轮子转�?
     small_driver_set_duty(wheel_left, wheel_right);
 }
 
@@ -216,7 +226,7 @@ void apply_air_control(float roll_control)
 void air_control()
 {
     static float last_roll_error = 0.0;
-    // 获取当前姿态
+    // 获取当前姿�?
     float current_roll = IMU_data.filter_result.roll;
 
     // 目标姿态（可以根据需要调整）
@@ -225,7 +235,7 @@ void air_control()
     // 计算误差
     float roll_error = target_roll - current_roll;
 
-    // 计算误差变化率
+    // 计算误差变化�?
     float roll_d_error = roll_error - last_roll_error;
 
     // 保存当前误差
@@ -237,17 +247,17 @@ void air_control()
     // 限制输出范围
     roll_control = fmaxf(fminf(roll_control, 1000.0), -1000.0);
 
-    // 应用控制输出到轮子
+    // 应用控制输出到轮�?
     apply_air_control(roll_control);
 }
 
 void adjust_pid_based_on_leg_height(float *current_leg_height)
 {
-    // 计算腿部高度比例（0到1之间）
+    // 计算腿部高度比例�?�?之间�?
     float leg_ratio = (*current_leg_height - MIN_LEG_LENGTH) / (MAX_LEG_LENGTH - MIN_LEG_LENGTH);
     leg_ratio = fmaxf(fminf(leg_ratio, 1.0), 0.0);
 
-    // 原始参数（腿部高度较低时）
+    // 原始参数（腿部高度较低时�?
     static bool initialized = false;
     static float original_angle_kp, original_angle_ki, original_angle_kd;
     static float original_gyro_kp, original_gyro_ki, original_gyro_kd, original_stand;
@@ -292,7 +302,7 @@ void Balance_init()
     pid_init(); // 初始化PID参数
 
     int leg1, leg2;
-    servo_control(x_current, y_current, &leg1, &leg2);
+    servo_control(SERVO_LEG_LEFT, x_current, y_current, &leg1, &leg2);
 
     //============调试使用=========================
     // printf("Leg1: %d, Leg2: %d\r\n", leg1, leg2);
@@ -300,40 +310,36 @@ void Balance_init()
 
     engine_init(leg1, leg2); // 初始化发动机
 }
-// 角度补偿量计算，使得平衡环目标改变，控制量为速度（PI速度计算，以编码器计）
-float Velocity(int encoder_left, float target_velocity) //===========左边为基础，右边送入务必取反
+// 角度补偿量计算，使得平衡环目标改变，控制量为速度（PI速度计算，以编码器计�?
+float Velocity(velocity_loop_state_t *state, int encoder_left, float target_velocity) //===========左边为基础，右边送入务必取反
 {
-    static float velocity;         // 当前速度
-    static float Encoder_bias;     // 编码器偏差
-    static float Encoder_Integral; // 积分项
-
-    Encoder_bias = target_velocity - encoder_left; // 计算偏差
-    Encoder_Integral += Encoder_bias;              // 积分
-    //==============================更改了积分限幅措施（7000）======================
+    state->encoder_bias = target_velocity - encoder_left; // 计算偏差
+    state->encoder_integral += state->encoder_bias;       // 积分
+    //==============================更改了积分限幅措施（7000�?=====================
     // 限制积分范围
-    if (Encoder_Integral > 2000)
-        Encoder_Integral = 2000;
-    if (Encoder_Integral < -2000)
-        Encoder_Integral = -2000;
-    //==============================更改了积分限幅措施（7000）======================
+    if (state->encoder_integral > 2000)
+        state->encoder_integral = 2000;
+    if (state->encoder_integral < -2000)
+        state->encoder_integral = -2000;
+    //==============================更改了积分限幅措施（7000�?=====================
 
-    // 计算角度（Velocity的物理意义是输出角度）
-    velocity = motor_speed.kp * Encoder_bias + motor_speed.ki * Encoder_Integral;
+    // 计算角度（Velocity的物理意义是输出角度�?
+    state->velocity = motor_speed.kp * state->encoder_bias + motor_speed.ki * state->encoder_integral;
     // 限制速度范围
-    if (velocity > 18)
-        velocity = 18;
-    if (velocity < -18)
-        velocity = -18;
+    if (state->velocity > 18)
+        state->velocity = 18;
+    if (state->velocity < -18)
+        state->velocity = -18;
 
     // 动态调整PID参数
-    // fuzzy_pid_adjust(&motor_speed, Encoder_bias, velocity - last_error, &speed_rules, &speed_pid_limits);
+    // fuzzy_pid_adjust(&motor_speed, state->encoder_bias, state->velocity - last_error, &speed_rules, &speed_pid_limits);
 
     //============调试使用=========================
-    // printf("Encoder_bias|Encoder_Integral|velocity(angle):%f,%f,%f\r\n", Encoder_bias, Encoder_Integral, velocity);
+    // printf("Encoder_bias|Encoder_Integral|velocity(angle):%f,%f,%f\r\n", state->encoder_bias, state->encoder_integral, state->velocity);
     // printf("target_velocity : %lf\r\n", target_velocity);
     //============调试使用=========================
 
-    return velocity; // 角度补偿值
+    return state->velocity; // 角度补偿�?
 }
 // 平衡控制计算（PD控制角度环）
 float Balance(float Angle, float Gyro, float target)
@@ -341,12 +347,12 @@ float Balance(float Angle, float Gyro, float target)
     float Angle_bias = target_motor_Stand + target - Angle;                    // 计算角度偏差
     float Gyro_bias = 0 - Gyro;                                                // 微分控制项，用于平缓过度
     float balance = -motor_Stand.kp * Angle_bias + Gyro_bias * motor_Stand.kd; // （修改了Gyro_bias的符号）
-    /*增大角度的本质在于适当减速使得车身前倾，因此为负值*/
+    // �ٶȻ�Ŀ���Ϊ��ʱ���ó���ǰ�㣬���ﱣ��ԭ���Ʒ���
     // printf("%lf\n", Gyro);
     //  printf("data: %f,%f,%f\r\n", Angle_bias, Gyro_bias, balance);
     //  fuzzy_pid_adjust(&motor_Stand, Angle_bias, Gyro_bias, &angle_rules, &angle_pid_limits);
 
-    last_error = Angle_bias; // 更新误差
+    balance_last_error = Angle_bias; // 更新误差
     if (balance > 5000)
         balance = 5000; //=========限幅5000
     if (balance < -5000)
@@ -359,22 +365,23 @@ float Balance(float Angle, float Gyro, float target)
     return balance; // 返回平衡值，留给后面使用
 }
 
-// 陀螺仪控制计算（PID计算朝向角度）
-float GyroControl(float target_gyro, float current_gyro) // 角速度环
+// 陀螺仪控制计算（PID计算朝向角度�?
+float GyroControl(float target_gyro, float current_gyro) // 角速度�?
 {
     float gyro_error = target_gyro - current_gyro; // 计算陀螺仪误差
-    static float gyro_Integral;                    // 积分项
+    static float gyro_Integral;                    // 积分�?
     gyro_Integral += gyro_error;                   // 积分
     if (gyro_Integral > 1500)
         gyro_Integral = 1500;
     if (gyro_Integral < -1500)
         gyro_Integral = -1500;
     // 计算控制输出
-    float gyro_control = +motor_gyro.kp * gyro_error + motor_gyro.ki * gyro_Integral + motor_gyro.kd * (gyro_error - last_error);
-    last_error = gyro_error; // 更新误差
+    float gyro_delta = gyro_error - gyro_last_error;
+    float gyro_control = +motor_gyro.kp * gyro_error + motor_gyro.ki * gyro_Integral + motor_gyro.kd * gyro_delta;
+    gyro_last_error = gyro_error; // 更新误差
 
     // 动态调整PID参数
-    // fuzzy_pid_adjust(&motor_gyro, gyro_error, gyro_error - last_error, &gyro_rules, &gyro_pid_limits);
+    // fuzzy_pid_adjust(&motor_gyro, gyro_error, gyro_delta, &gyro_rules, &gyro_pid_limits);
 
     //============调试使用=========================
     //    printf("gyro_error|gyro_Integral|gyro_control: %f,%f,%f\r\n", gyro_error, gyro_Integral, gyro_control);
@@ -404,14 +411,14 @@ float Turn_gyro(float target_angle, float gyro)
     float error = target_angle - gyro;
 
     // 2. 将误差归一化到 [-180, 180] 之间
-    // 这样可以确保小车永远旋转角度差绝对值小于 180 的那个方向
+    // 这样可以确保小车永远旋转角度差绝对值小�?180 的那个方�?
     while (error > 180)  error -= 360;
     while (error < -180) error += 360;
 
-    return error; // 返回给 PID 作为 Input
+    return error; // 返回�?PID 作为 Input
 }
 
-// 转向目标角度计算,划分到合适区间（-180~+180）
+// 转向目标角度计算,划分到合适区间（-180~+180�?
 float Turn_target(float target_angle)
 {
     if (target_angle >= 180)
@@ -422,7 +429,7 @@ float Turn_target(float target_angle)
 }
 
 // 转向控制计算
-float Turn(float gyro, float target_angle) // Gyro传入的是当前的角度
+float Turn(float gyro, float target_angle) // Gyro传入的是当前的角�?
 {
     target_angle = Turn_target(target_angle); // 防止本身越界
     float error = Turn_gyro(target_angle, gyro);
@@ -438,19 +445,20 @@ float Turn(float gyro, float target_angle) // Gyro传入的是当前的角度
 
 }
 
-// 平衡控制主函数
+// 平衡控制主函�?
 void balance_control()
 {
-    float Balance_Pwm_left, Balance_Pwm_right, Gyro_Pwm_left, Gyro_Pwm_right; // 平衡PWM值k
-    //======================调试转向用=================================
+    static float Balance_Pwm_left = 0.0f, Balance_Pwm_right = 0.0f;
+    float Gyro_Pwm_left, Gyro_Pwm_right; // 平衡PWM值k
+    //======================调试转向�?================================
     if (First_angle && IMU_ready)
     {
         target_angle = IMU_data.filter_result.yaw;
         First_angle = false;
     }
     // printf("target_angle/now_yaw: %f %f\n",target_angle,IMU_data.filter_result.yaw);
-    //======================调试转向用=================================
-    // 获取编码器值
+    //======================调试转向�?================================
+    // 获取编码器�?
     Encoder_Left = -motor_value.receive_left_speed_data;
     Encoder_Right = -motor_value.receive_right_speed_data;
     now_velocity = (Encoder_Left - Encoder_Right) / 2;
@@ -459,19 +467,19 @@ void balance_control()
     roll = IMU_data.filter_result.roll;
     i++;
     // ==============================================================
-    // 【核心修复】利用 PidChange 实时热更新 PID 参数
-    // 坚决不准在这里调用 PidInit() ！！！
+    // 【核心修复】利�?PidChange 实时热更�?PID 参数
+    // 坚决不准在这里调�?PidInit() ！！�?
     // ==============================================================
     if (jump_stop == 1)
     {
-        // 刹车/停机时，直接把 PID 系数设为 0，相当于切断输出
+        // 刹车/停机时，直接�?PID 系数设为 0，相当于切断输出
         PidChange(&motor_speed, 0, 0, 0);
         PidChange(&motor_Stand, 0, 0, 0);
         PidChange(&motor_gyro, 0, 0, 0);
     }
     else
     {
-        // 正常运行时，实时把全局变量（已被 VOFA+ 篡改）同步给 PID 结构体
+        // 正常运行时，实时把全局变量（已�?VOFA+ 篡改）同步给 PID 结构�?
         PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
         PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
 
@@ -501,18 +509,18 @@ void balance_control()
     //        PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
     //    }
     // 计算左右电机速度
-    if (i % 5 == 0)
+    if (i % 4 == 0)
     {
-        /********速度补偿单边桥启动***************************/
+        /********速度补偿单边桥启�?**************************/
         if (leg_error > 0)
         {
-            Velocity_Angle_left = Velocity(Encoder_Left, target_velocity - v_buchang);
-            Velocity_Angle_right = Velocity(-Encoder_Right, target_velocity + v_buchang); // 右侧输入务必取反
+            Velocity_Angle_left = Velocity(&g_velocity_left, Encoder_Left, target_velocity - v_buchang);
+            Velocity_Angle_right = Velocity(&g_velocity_right, -Encoder_Right, target_velocity + v_buchang); // 右侧输入务必取反
         }
         else
         {
-            Velocity_Angle_left = Velocity(Encoder_Left, target_velocity + v_buchang);
-            Velocity_Angle_right = Velocity(-Encoder_Right, target_velocity - v_buchang);
+            Velocity_Angle_left = Velocity(&g_velocity_left, Encoder_Left, target_velocity + v_buchang);
+            Velocity_Angle_right = Velocity(&g_velocity_right, -Encoder_Right, target_velocity - v_buchang);
         }
     }
 
@@ -520,13 +528,10 @@ void balance_control()
     // 平滑处理速度
     //    left_angle = left_angle * 0.2 + Velocity_Angle_left * 0.8;
     //    right_angle = right_angle * 0.2 + Velocity_Angle_right * 0.8;
-    // 计算平衡PWM值
-    if (i % 2 == 0)
-    {
-        Balance_Pwm_left = Balance(roll, IMU_data.gyro[0], Velocity_Angle_left);
-        Balance_Pwm_right = Balance(roll, IMU_data.gyro[0], Velocity_Angle_right);
-    }
-    // 计算陀螺仪控制PWM值
+    // 计算平衡PWM�?
+    Balance_Pwm_left = Balance(roll, IMU_data.gyro[0], Velocity_Angle_left);
+    Balance_Pwm_right = Balance(roll, IMU_data.gyro[0], Velocity_Angle_right);
+    // 计算陀螺仪控制PWM�?
 
     Gyro_Pwm_left = GyroControl(-Balance_Pwm_left, IMU_data.gyro[0]);
     Gyro_Pwm_right = GyroControl(-Balance_Pwm_right, IMU_data.gyro[0]);
@@ -539,11 +544,11 @@ void balance_control()
     }
     else
     {
-        // 计算转向PWM值
+        // 计算转向PWM�?
         Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
        //printf("Turn_pwm %f\n\n", Turn_Pwm);
         //Turn_Pwm = 0;
-        // //===================仅调试去除转向功能使用=================================
+        // //===================仅调试去除转向功能使�?================================
         // Turn_Pwm = 0;
         // //====================================================================
         // if (Turn_Pwm <= 0.2) // !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
@@ -584,90 +589,212 @@ float filter_leg_control(float current_angle, float target_angle, float filter_f
 {
     return current_angle * filter_factor + target_angle * (1 - filter_factor);
 }
-/* 腿部控制器 */
+/* 腿部控制�?*/
 
 void leg_control(float *x, float *y)
 {
-
-    // ---------- 1. 计算腿部位置：前后倾斜补偿 ----------
-    // float x_cal = -0.029 * tan((double)(IMU_data.filter_result.roll / 180 * 3.14)); //-----Actually，Velocity_Angle_left/right均为目标倾角（速度环输出）
-    float x_cal = -0.026 * tan((double)(IMU_data.filter_result.roll / 180 * 3.14)); //-----Actually，Velocity_Angle_left/right均为目标倾角（速度环输出）
-    if (x_cal > 0.04f)
-        x_cal = 0.04f;
-    else if (x_cal < -0.04f)
-        x_cal = -0.04f;
-    static float x_filter_last = 0.0f;
-    float alpha = 0.4f; // 滤波系数：alpha越小越平滑，响应越慢；
-    float x_final = alpha * x_cal + (1.0f - alpha) * x_filter_last;
-    x_filter_last = x_final; // 更新历史值
-    *x = x_final;            // 将平滑后的值赋
-
     extern float leg_Kp, leg_Ki, leg_Kd;
-    PidInit(&motor_leg_pid);
-    PidChange(&motor_leg_pid, leg_Kp, leg_Ki, leg_Kd);
-    motor_leg_pid.imax = 0.01f;
-
-    // ---------- 2. 左右平衡：单边抬高 (去毛刺与平滑处理) ----------
-    //======================================================
-    //======================================================
-    float angle_now = IMU_data.filter_result.pitch;
-    float target_pitch = 0.0f;
-    static float angle_last = 0.0f;
     static bool is_first_run = true;
-    float angle_filtered = leg_sensor_filter(angle_now, is_first_run);
+    static bool hold_mode = true;
+    static float angle_last = 0.0f;
+    static float leg_error_target = 0.0f;
+    static float x_cmd_last = 0.0f;
+    static float left_y_cmd_last = 0.0f;
+    static float right_y_cmd_last = 0.0f;
+    static int leg1_last = 0, leg2_last = 0, leg3_last = 0, leg4_last = 0;
+    float angle_now;
+    float angle_filtered;
+    float angle;
+    float pitch_error;
+    float abs_pitch_error;
+    float leg_gain_p;
+    float leg_target;
+    float projected_x;
+    float projected_leg_error;
+    float left_y_target;
+    float right_y_target;
+    float projection_ratio = 1.0f;
+    int target_valid = 0;
+    int projection_iter;
+    int leg1;
+    int leg2;
+    int leg3;
+    int leg4;
+    (void)leg_Ki;
+    (void)leg_Kd;
+
+    angle_now = IMU_data.filter_result.pitch;
+    angle_filtered = leg_sensor_filter(angle_now, is_first_run);
     if (is_first_run)
     {
         angle_last = angle_filtered;
-        // 注意：此处先不要将 is_first_run 设为 false，留到函数末尾舵机状态初始化后再处理
     }
-    float angle = 0.5f * angle_last + 0.5f * angle_filtered;
+
+    angle = 0.78f * angle_last + 0.22f * angle_filtered;
     angle_last = angle;
 
-    float pitch_error = target_pitch - angle_filtered;
-    leg_error = PidLocCtrl(&motor_leg_pid, pitch_error);
-
-    float LEG_DEADZONE = 2.5f; // 角度低阈值限幅
-    if (fabs(pitch_error) < LEG_DEADZONE)
     {
-        leg_error = 0;
-        motor_leg_pid.integrator = 0; // 处于死区时清除积分，防止由于积分积累导致的缓慢爬行
+        const float LEG_DEG_TO_RAD = (PI / 180.0f);
+        const float HOLD_ENTER_PITCH = 0.8f * LEG_DEG_TO_RAD;
+        const float HOLD_EXIT_PITCH = 1.8f * LEG_DEG_TO_RAD;
+        const float HOLD_ENTER_ROLL = 1.2f * LEG_DEG_TO_RAD;
+        const float HOLD_EXIT_ROLL = 2.5f * LEG_DEG_TO_RAD;
+        const float HOLD_ENTER_RATE = 12.0f * LEG_DEG_TO_RAD;
+        const float HOLD_EXIT_RATE = 20.0f * LEG_DEG_TO_RAD;
+        const float LEG_SOFTZONE = 1.5f * LEG_DEG_TO_RAD;
+        const float LEG_HARDZONE = 7.0f * LEG_DEG_TO_RAD;
+        const float X_ACTIVEZONE = 2.0f * LEG_DEG_TO_RAD;
+        const float LEG_GAIN_SCALE = 6.0f;
+        const float LEG_MIN_DIFF = 0.0015f;
+        const float LEG_MAX_DIFF = 0.020f;
+        const float LEG_STEP_LIMIT = 0.0009f;
+        const float X_STEP_LIMIT = 0.0008f;
+        const float Y_STEP_LIMIT = 0.0006f;
+        const float X_HOLD_BAND = 0.0008f;
+        const float Y_HOLD_BAND = 0.0006f;
+        float roll_angle_rad = IMU_data.filter_result.roll * LEG_DEG_TO_RAD;
+        float pitch_rate = IMU_data.gyro[1] * LEG_DEG_TO_RAD;
+        float roll_rate = IMU_data.gyro[0] * LEG_DEG_TO_RAD;
+        float x_cal = 0.0f;
+        float abs_roll_angle = fabsf(roll_angle_rad);
+        float abs_pitch_rate = fabsf(pitch_rate);
+        float abs_roll_rate = fabsf(roll_rate);
+
+        pitch_error = -angle * LEG_DEG_TO_RAD;
+        abs_pitch_error = fabsf(pitch_error);
+
+        if (hold_mode)
+        {
+            if (abs_pitch_error > HOLD_EXIT_PITCH || abs_roll_angle > HOLD_EXIT_ROLL || abs_pitch_rate > HOLD_EXIT_RATE || abs_roll_rate > HOLD_EXIT_RATE)
+            {
+                hold_mode = false;
+            }
+        }
+        else
+        {
+            if (abs_pitch_error < HOLD_ENTER_PITCH && abs_roll_angle < HOLD_ENTER_ROLL && abs_pitch_rate < HOLD_ENTER_RATE && abs_roll_rate < HOLD_ENTER_RATE)
+            {
+                hold_mode = true;
+            }
+        }
+
+        leg_target = constrain_float(*y, MIN_Y, MAX_Y);
+        leg_gain_p = fabsf(leg_Kp) * LEG_GAIN_SCALE;
+        pitch_error = -angle * LEG_DEG_TO_RAD;
+        abs_pitch_error = fabsf(pitch_error);
+
+        if (hold_mode)
+        {
+            leg_error_target = 0.0f;
+            leg_error += constrain_float(-leg_error, -LEG_STEP_LIMIT, LEG_STEP_LIMIT);
+            projected_x = x_cmd_last;
+            projected_leg_error = 0.0f;
+            left_y_target = leg_target;
+            right_y_target = leg_target;
+            target_valid = 1;
+        }
+        else
+        {
+            if (abs_pitch_error < LEG_SOFTZONE)
+            {
+                pitch_error = 0.0f;
+            }
+            else
+            {
+                pitch_error = ((pitch_error > 0.0f) ? 1.0f : -1.0f) * (abs_pitch_error - LEG_SOFTZONE);
+            }
+
+            leg_error_target = leg_gain_p * pitch_error;
+            if (fabsf(leg_error_target) > 0.0f && fabsf(leg_error_target) < LEG_MIN_DIFF)
+            {
+                leg_error_target = (leg_error_target > 0.0f) ? LEG_MIN_DIFF : -LEG_MIN_DIFF;
+            }
+            if (abs_pitch_error > LEG_HARDZONE)
+            {
+                leg_error_target = (pitch_error >= 0.0f) ? LEG_MAX_DIFF : -LEG_MAX_DIFF;
+            }
+            else
+            {
+                leg_error_target = constrain_float(leg_error_target, -LEG_MAX_DIFF, LEG_MAX_DIFF);
+            }
+            leg_error += constrain_float(leg_error_target - leg_error, -LEG_STEP_LIMIT, LEG_STEP_LIMIT);
+
+            if (abs_roll_angle > X_ACTIVEZONE)
+            {
+                x_cal = -0.012f * tanf((float)(IMU_data.filter_result.roll * PI / 180.0f));
+            }
+            x_cal = constrain_float(x_cal, -0.012f, 0.012f);
+
+            projected_x = 0.0f;
+            projected_leg_error = 0.0f;
+            left_y_target = leg_target;
+            right_y_target = leg_target;
+            target_valid = 0;
+
+            for (projection_iter = 0; projection_iter < 20; projection_iter++)
+            {
+                projected_x = x_cal * projection_ratio;
+                projected_leg_error = leg_error * projection_ratio;
+                left_y_target = constrain_float(leg_target - projected_leg_error, MIN_Y, MAX_Y);
+                right_y_target = constrain_float(leg_target + projected_leg_error, MIN_Y, MAX_Y);
+
+                if (servo_target_valid(SERVO_LEG_LEFT, projected_x, left_y_target) &&
+                    servo_target_valid(SERVO_LEG_RIGHT, projected_x, right_y_target))
+                {
+                    target_valid = 1;
+                    break;
+                }
+
+                projection_ratio *= 0.80f;
+            }
+
+            if (!target_valid)
+            {
+                projected_x = x_cmd_last;
+                projected_leg_error = 0.0f;
+                left_y_target = leg_target;
+                right_y_target = leg_target;
+                leg_error += constrain_float(-leg_error, -LEG_STEP_LIMIT, LEG_STEP_LIMIT);
+            }
+        }
+
+        leg_error = projected_leg_error;
+
+        if (is_first_run)
+        {
+            x_cmd_last = projected_x;
+            left_y_cmd_last = left_y_target;
+            right_y_cmd_last = right_y_target;
+        }
+
+        if (!hold_mode && fabsf(projected_x - x_cmd_last) >= X_HOLD_BAND)
+        {
+            x_cmd_last += constrain_float(projected_x - x_cmd_last, -X_STEP_LIMIT, X_STEP_LIMIT);
+        }
+
+        if (fabsf(left_y_target - left_y_cmd_last) >= Y_HOLD_BAND)
+        {
+            left_y_cmd_last += constrain_float(left_y_target - left_y_cmd_last, -Y_STEP_LIMIT, Y_STEP_LIMIT);
+        }
+        else if (hold_mode)
+        {
+            left_y_cmd_last = left_y_target;
+        }
+
+        if (fabsf(right_y_target - right_y_cmd_last) >= Y_HOLD_BAND)
+        {
+            right_y_cmd_last += constrain_float(right_y_target - right_y_cmd_last, -Y_STEP_LIMIT, Y_STEP_LIMIT);
+        }
+        else if (hold_mode)
+        {
+            right_y_cmd_last = right_y_target;
+        }
     }
 
-    // printf("pitch_error:%lf \n",pitch_error);  //  送入正常
-    // printf("kp: %lf \n",motor_leg_pid.kp);
-    // printf("P/I/D %lf %lf %lf \n",motor_leg_pid.out_p,motor_leg_pid.out_i,motor_leg_pid.out_d);
-    // printf("leg_error:%lf \n",leg_error);     //输出及其异常
+    *x = x_cmd_last;
 
-    // if (leg_error > 0.08f)  ----------这是PID的参数，本身不要限制！！
-    //     leg_error = 0.08f;
-    // else if (leg_error < -0.08f)
-    //     leg_error = -0.08f;
-
-    // ---------- 3. 计算前后基准高度 ----------
-
-    // // ---------- 4. 叠加左右补偿：单边抬高 ----------
-    // float left_y = leg_target;
-    // float right_y = leg_target;
-
-    // if (leg_error > 0)
-    //     left_y = leg_target + leg_error;
-    // else if (leg_error < 0)
-    //     right_y = leg_target - leg_error;
-    // 希望两边抬高
-    float leg_target = *y;
-    float left_y = max(min(leg_target - leg_error, MAX_Y), MIN_Y);
-    float right_y = max(min(leg_target + leg_error, MAX_Y), MIN_Y);
-    // printf("Left/Right:%lf %lf\n", left_y, right_y);
-
-    // ---------- 5. 逆运动学解算 ----------
-    int leg1, leg2, leg3, leg4;
-    static int leg1_last = 0, leg2_last = 0, leg3_last = 0, leg4_last = 0;
-
-    // servo_control(*x, left_y, &leg1, &leg2);  // 左腿
-    // servo_control(*x, right_y, &leg3, &leg4); // 右腿
-
-    servo_control(*x, *y, &leg1, &leg2); // 左腿
-    servo_control(*x, *y, &leg3, &leg4); // 右腿
+    servo_control(SERVO_LEG_LEFT, *x, left_y_cmd_last, &leg1, &leg2);
+    servo_control(SERVO_LEG_RIGHT, *x, right_y_cmd_last, &leg3, &leg4);
 
     if (is_first_run)
     {
@@ -678,10 +805,7 @@ void leg_control(float *x, float *y)
         is_first_run = false;
     }
 
-    // ---------- 6. 舵机最终输出的机械平滑 ----------
-    // 在最终驱动电机前再加一道轻度平滑，防止机械机构高频抖动共振
-    // alpha 越小越平滑，但响应越慢；0.3 到 0.5 通常是不错的平衡点
-    extern const float servo_alpha; // 0.4--oorigin
+    extern const float servo_alpha;
     leg1 = (int)(leg1 * servo_alpha + leg1_last * (1.0f - servo_alpha));
     leg2 = (int)(leg2 * servo_alpha + leg2_last * (1.0f - servo_alpha));
     leg3 = (int)(leg3 * servo_alpha + leg3_last * (1.0f - servo_alpha));
@@ -689,9 +813,7 @@ void leg_control(float *x, float *y)
 
     engine_left_maintain(leg1, leg2);
     engine_right_maintain(leg3, leg4);
-    // printf("Leg Positions:%d,%d,%d,%d\n", leg1, leg2, leg3, leg4);
-    // printf("%lf\n", IMU_data.filter_result.pitch);
-    // 记录历史值
+
     leg1_last = leg1;
     leg2_last = leg2;
     leg3_last = leg3;
@@ -700,7 +822,7 @@ void leg_control(float *x, float *y)
 // 速度补偿计算
 float calculate_speed_compensation(float v, float h, float l)
 {
-    // 计算单边桥上的轮子路程
+    // 计算单边桥上的轮子路�?
     float S = sqrt(2 * h * h + (l / 2) * (l / 2));
 
     // 计算速度补偿
@@ -716,10 +838,10 @@ float leg_sensor_filter(float new_val, bool is_first_run)
     static float last_out = 0;
     static int count = 0;
 
-    // --- 冷启动标注处理 ---
+    // --- 冷启动标注处�?---
     if (is_first_run)
     {
-        // 第一次运行时，强制将缓冲区全部填充为当前值
+        // 第一次运行时，强制将缓冲区全部填充为当前�?
         // 防止滤波器从 0 开始缓慢爬升或产生突跳
         for (int i = 0; i < WINDOW_SIZE; i++)
         {

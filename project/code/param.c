@@ -14,10 +14,10 @@
 float target_velocity = 0;    
 float target_angle = 0;       
 float target_motor_Stand = 0; 
-float x_current = 0, y_current = 0.4; 
+float x_current = 0, y_current = 0.04; 
 
 pid_param_t motor_speed, motor_Stand, motor_direction, motor_gyro, air_roll_pid, motor_leg_pid;
-const float servo_alpha = 0.3f; //一阶平滑，越大越灵敏
+const float servo_alpha = 0.55f; //一阶平滑，越大越灵敏
 
 float Speed_p = 0, Speed_i = 0, Speed_d = 0; 
 float Angle_p = 0, Angle_i = 0, Angle_d = 0; 

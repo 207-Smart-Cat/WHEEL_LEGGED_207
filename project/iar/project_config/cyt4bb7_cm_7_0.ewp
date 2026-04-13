@@ -1188,6 +1188,9 @@
             <name>$PROJ_DIR$\..\..\code\param.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\param_registry.def</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\pid.c</name>
         </file>
         <file>

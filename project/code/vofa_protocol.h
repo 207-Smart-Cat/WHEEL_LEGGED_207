@@ -17,7 +17,10 @@ void VOFA_UART_Process(void);   // 放 main 的 while(1) 循环里
 
 void VOFA_Save_Params_To_Flash(void);
 void VOFA_Load_Params_From_Flash(void);
+uint8 VOFA_Send_Params_To_Wifi(const float *params);
 void VOFA_Upload_Params_To_UI(void); // 用于上电时同步电脑界面的数据
 
 
 #endif
+
+

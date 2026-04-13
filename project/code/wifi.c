@@ -31,6 +31,39 @@ static uint8 wifi_fifo_buffer[512];       // WiFi 专属底层 FIFO 数组
 fifo_struct wifi_data_fifo;               // WiFi 专属 FIFO 结构体
 static uint8 wifi_parse_buffer[512];      // 拼装完的完整数据包缓冲区
 
+uint8 WIFI_Send_Buffer_Checked(const uint8 *data, uint32 len, uint8 flush_now)
+{
+    if (data == NULL || len == 0)
+    {
+        return 1;
+    }
+
+    if (wifi_is_connected == 0)
+    {
+        return 1;
+    }
+
+    if (wifi_spi_send_buffer((uint8 *)data, len) != 0)
+    {
+        wifi_error_count++;
+        if (wifi_error_count > 10)
+        {
+            wifi_is_connected = 0;
+            wifi_reconnect_cooldown = 100;
+            printf("\r\n[SYS] WiFi Connection Lost! Entering Auto-Reconnect Mode...\r\n");
+        }
+        return 1;
+    }
+
+    wifi_error_count = 0;
+#if (WIFI_PROTOCOL_MODE == 1)
+    if (flush_now)
+    {
+        wifi_spi_udp_send_now();
+    }
+#endif
+    return 0;
+}
 /**
  * @brief WiFi模块初始化并连接 (带超时限制)
  */
@@ -149,24 +182,7 @@ void wifi_auto_reconnect_task(void)
             // 坚决不读 Flash，而是把刚调好的参数同步给 VOFA+
             // ========================================================
             IPC_Pull_Status_To_CoreB(); 
-            uint8 tx_buf[200]; // 【修复：扩容到 200 字节防止溢出死机！】
-            tx_buf[0] = 0xAA;
-            tx_buf[1] = 0xC4;
-            // 拷贝 float 数组
-            memcpy(&tx_buf[2], core_a_status.act_params, PARAM_COUNT * sizeof(float));
-            
-            // 计算校验和
-            uint8 tx_sum = 0;
-            for(int j = 0; j < PARAM_COUNT * 4; j++) {
-                tx_sum += tx_buf[2 + j];
-            }
-            tx_buf[2 + PARAM_COUNT * 4] = tx_sum;
-            
-            // 发送给电脑端同步 UI
-            wifi_spi_send_buffer(tx_buf, 3 + PARAM_COUNT * 4);
-            #if (WIFI_PROTOCOL_MODE == 1)
-            wifi_spi_udp_send_now(); 
-            #endif
+            VOFA_Send_Params_To_Wifi(core_a_status.act_params);
             printf("[WIFI] Current RAM Params Synced to PC!\r\n");
             // ========================================================
 
@@ -288,19 +304,16 @@ void wifi_report_task(void)
                     if(strlen(text_buffer) > 0) 
                     {
                         strcat(text_buffer, "\r\n");
-                        wifi_spi_send_buffer((uint8*)text_buffer, strlen(text_buffer));
-                        #if (WIFI_PROTOCOL_MODE == 1)
-                        wifi_spi_udp_send_now(); 
-                        #endif
+                        WIFI_Send_Buffer_Checked((uint8*)text_buffer, strlen(text_buffer), 1);
                     }
                 }
                 break;
 
             case WIFI_MODE_IMAGE:
-                wifi_spi_send_buffer((uint8*)"IMAGE MODE NOW\r\n", 16);
+                WIFI_Send_Buffer_Checked((uint8*)"IMAGE MODE NOW\r\n", 16, 1);
                 break;
             case WIFI_MODE_LOG:
-                wifi_spi_send_buffer((uint8*)"System Running OK...\r\n", 22);
+                WIFI_Send_Buffer_Checked((uint8*)"System Running OK...\r\n", 22, 1);
                 break;
             default:
                 break; 
@@ -326,24 +339,10 @@ void LOG_Printf(const char *format, ...)
     // 2. WiFi 通道与掉线检测
     if (wifi_is_connected == 1)
     {
-        // 如果底层发送函数返回非 0，说明发生网络/SPI错误
-        if (wifi_spi_send_buffer((uint8*)log_buf, strlen(log_buf)) != 0)
-        {
-            wifi_error_count++;
-            if (wifi_error_count > 10) // 连续失败 10 次，判定为彻底断开
-            {
-                wifi_is_connected = 0;         // 拔掉发送权限，阻止主循环卡死
-                wifi_reconnect_cooldown = 100; // 设定一个初始冷却期
-                printf("\r\n[SYS] WiFi Connection Lost! Entering Auto-Reconnect Mode...\r\n");
-            }
-        }
-        else
-        {
-            wifi_error_count = 0; // 发送成功则清零计数器
-        }
-        
-        #if (WIFI_PROTOCOL_MODE == 1)
-        wifi_spi_udp_send_now(); 
-        #endif
+        WIFI_Send_Buffer_Checked((uint8*)log_buf, strlen(log_buf), 1);
     }
 }
+
+
+
+

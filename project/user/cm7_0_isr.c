@@ -24,6 +24,7 @@ void pit0_ch0_isr() // IMU读取与滤波解析，非常重要 (5ms)
     IPC_Check_And_Apply_Params_To_Core0();
 
     imu_attitude();
+    balance_control();
     cnt++;
     if (cnt == 10 && IMU_ready == false)
         IMU_ready = true;
@@ -41,11 +42,11 @@ void pit0_ch2_isr() //
     pit_isr_flag_clear(PIT_CH2);
 }
 
-void pit0_ch10_isr() // 平衡控制，非常重要（10ms）
+void pit0_ch10_isr() // 预留：主平衡控制已迁移到 5ms IMU 中断
 {
   test_pit10_cnt++; // 每次进中断，计数器加 1
   
-    balance_control();
+    // balance_control() 已改为在 5ms IMU 中断中执行
 //    if (IMU_ready) {
 //        navi_ekf_update(); 
 //    }
@@ -63,10 +64,10 @@ void pit0_ch12_isr() // 遥控器控制，重要（10ms）
     pit_isr_flag_clear(PIT_CH12);
 }
 
-void pit0_ch13_isr() // 舵机控制，非常重要（30ms）
+void pit0_ch13_isr() // 舵机控制，固定周期执行
 {
-    //    extern float x_current, y_current;
-    //    //leg_control(&x_current, &y_current);
+    extern float x_current, y_current;
+    leg_control(&x_current, &y_current);
     pit_isr_flag_clear(PIT_CH13);
 }
 

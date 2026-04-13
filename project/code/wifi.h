@@ -44,6 +44,8 @@ void wifi_init(void);
 void wifi_process_loop(void);   // 负责接收指令（包含切换模式的指令）
 void wifi_report_task(void);    // 负责根据当前模式向外发送数据 
 void wifi_auto_reconnect_task(void); // 【新增】断线自动重连状态机
+uint8 WIFI_Send_Buffer_Checked(const uint8 *data, uint32 len, uint8 flush_now);
 void LOG_Printf(const char *format, ...);
 
 #endif
+
