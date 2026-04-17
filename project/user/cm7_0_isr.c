@@ -15,21 +15,35 @@ int cnt;
 
 volatile uint32_t test_pit10_cnt = 0;
 
+#define PERF_PROBE_PIN P19_0
+#define PERF_PROBE_NONE 0
+#define PERF_PROBE_IMU_RAW 1
+#define PERF_PROBE_BALANCE 2
+#define PERF_PROBE_LEG 3
+#define PERF_PROBE_TARGET PERF_PROBE_BALANCE
+
+#define PERF_PROBE_HIGH(target) do { if (PERF_PROBE_TARGET == (target)) gpio_set_level(PERF_PROBE_PIN, GPIO_HIGH); } while (0)
+#define PERF_PROBE_LOW(target)  do { if (PERF_PROBE_TARGET == (target)) gpio_set_level(PERF_PROBE_PIN, GPIO_LOW); } while (0)
 
 // **************************** PIT中断函数 ****************************
-void pit0_ch0_isr() // IMU读取与滤波解析，非常重要 (5ms)
+void pit0_ch0_isr() // IMU原始数据 1ms 更新，姿态解算 5ms 更新
 {
+    static uint8_t attitude_div = 0;
     pit_isr_flag_clear(PIT_CH0);
 
-    IPC_Check_And_Apply_Params_To_Core0();
+    PERF_PROBE_HIGH(PERF_PROBE_IMU_RAW);
+    imu_update_raw();
+    PERF_PROBE_LOW(PERF_PROBE_IMU_RAW);
 
-    imu_attitude();
-    balance_control();
-    cnt++;
-    if (cnt == 10 && IMU_ready == false)
-        IMU_ready = true;
-
-    // printf("%f,%f,%f \n",IMU_data.filter_result.yaw,IMU_data.filter_result.pitch,IMU_data.filter_result.roll);
+    attitude_div++;
+    if (attitude_div >= 5)
+    {
+        attitude_div = 0;
+        imu_attitude();
+        cnt++;
+        if (cnt == 10 && IMU_ready == false)
+            IMU_ready = true;
+    }
 }
 
 void pit0_ch1_isr() //
@@ -44,8 +58,10 @@ void pit0_ch2_isr() //
 
 void pit0_ch10_isr() // 预留：主平衡控制已迁移到 5ms IMU 中断
 {
-  test_pit10_cnt++; // 每次进中断，计数器加 1
-  
+    test_pit10_cnt++; // 每次进中断，计数器加 1
+    PERF_PROBE_HIGH(PERF_PROBE_BALANCE);
+    balance_control();
+    PERF_PROBE_LOW(PERF_PROBE_BALANCE);
     // balance_control() 已改为在 5ms IMU 中断中执行
 //    if (IMU_ready) {
 //        navi_ekf_update(); 
@@ -53,9 +69,10 @@ void pit0_ch10_isr() // 预留：主平衡控制已迁移到 5ms IMU 中断
     pit_isr_flag_clear(PIT_CH10);
 }
 
-void pit0_ch11_isr() //
+void pit0_ch11_isr() // 双核参数同步，10ms
 {
     pit_isr_flag_clear(PIT_CH11);
+    IPC_Check_And_Apply_Params_To_Core0();
 }
 
 void pit0_ch12_isr() // 遥控器控制，重要（10ms）
@@ -67,7 +84,9 @@ void pit0_ch12_isr() // 遥控器控制，重要（10ms）
 void pit0_ch13_isr() // 舵机控制，固定周期执行
 {
     extern float x_current, y_current;
+    PERF_PROBE_HIGH(PERF_PROBE_LEG);
     leg_control(&x_current, &y_current);
+    PERF_PROBE_LOW(PERF_PROBE_LEG);
     pit_isr_flag_clear(PIT_CH13);
 }
 

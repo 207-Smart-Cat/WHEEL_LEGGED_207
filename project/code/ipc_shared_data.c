@@ -6,6 +6,7 @@
 #include "navigation_data_handling.h"
 #include "kalman_rm.h"
 #include "wifi.h"
+#include "battery_monitor.h"
 // --- 1. 绝对地址内存分配 ---
 #pragma location = 0x28001000
 __no_init CoreA_Status_t core_a_status; 

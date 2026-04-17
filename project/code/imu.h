@@ -11,6 +11,7 @@ extern float now_velocity_z;
 void imu_init (gpio_pin_enum pin);
 
 
+void imu_update_raw(void);
 void imu_attitude(void);
 void imu_get_3D(float *yaw,float *pitch,float *roll);
 

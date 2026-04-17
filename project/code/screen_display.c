@@ -125,6 +125,8 @@ void show_page_1(void)
     ips200_show_string(8, y_start + row_height + 5, temp_str);
     sprintf(temp_str, "Yaw  : %-6.2f", core_a_status.yaw);
     ips200_show_string(8, y_start + row_height * 2 + 5, temp_str);
+    sprintf(temp_str, "Bat:%-5.2fV", core_a_status.battery_voltage);
+    ips200_show_string(125, y_start + row_height * 2 + 5, temp_str);
 
     sprintf(temp_str, "SpdL:%-5d", core_a_status.left_wheel_speed);
     ips200_show_string(5, y_start + row_height * 3 + 5, temp_str);

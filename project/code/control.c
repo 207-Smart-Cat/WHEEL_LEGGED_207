@@ -326,10 +326,10 @@ float Velocity(velocity_loop_state_t *state, int encoder_left, float target_velo
     // 计算角度（Velocity的物理意义是输出角度�?
     state->velocity = motor_speed.kp * state->encoder_bias + motor_speed.ki * state->encoder_integral;
     // 限制速度范围
-    if (state->velocity > 18)
-        state->velocity = 18;
-    if (state->velocity < -18)
-        state->velocity = -18;
+    if (state->velocity > 6)
+        state->velocity = 6;
+    if (state->velocity < -6)
+        state->velocity = -6;
 
     // 动态调整PID参数
     // fuzzy_pid_adjust(&motor_speed, state->encoder_bias, state->velocity - last_error, &speed_rules, &speed_pid_limits);
@@ -339,57 +339,44 @@ float Velocity(velocity_loop_state_t *state, int encoder_left, float target_velo
     // printf("target_velocity : %lf\r\n", target_velocity);
     //============调试使用=========================
 
-    return state->velocity; // 角度补偿�?
+    return state->velocity; // �ٶȻ����ŷ�ת����ǰΪ���Ű汾�� A/B ��֤
 }
 // 平衡控制计算（PD控制角度环）
 float Balance(float Angle, float Gyro, float target)
 {
-    float Angle_bias = target_motor_Stand + target - Angle;                    // 计算角度偏差
-    float Gyro_bias = 0 - Gyro;                                                // 微分控制项，用于平缓过度
-    float balance = -motor_Stand.kp * Angle_bias + Gyro_bias * motor_Stand.kd; // （修改了Gyro_bias的符号）
-    // �ٶȻ�Ŀ���Ϊ��ʱ���ó���ǰ�㣬���ﱣ��ԭ���Ʒ���
-    // printf("%lf\n", Gyro);
-    //  printf("data: %f,%f,%f\r\n", Angle_bias, Gyro_bias, balance);
-    //  fuzzy_pid_adjust(&motor_Stand, Angle_bias, Gyro_bias, &angle_rules, &angle_pid_limits);
+    static float angle_integral = 0.0f;                                    // �ǶȻ����������������̬��̬ƫ��
+    float Angle_bias = target_motor_Stand + target - Angle;                // ����Ƕ�ƫ��
+    float Gyro_bias = 0 - Gyro;                                            // ΢�ֿ��������ƽ������
+    angle_integral += Angle_bias;
+    angle_integral = constrain_float(angle_integral, -1000.0f, 1000.0f);
 
-    balance_last_error = Angle_bias; // 更新误差
+    float balance = -motor_Stand.kp * Angle_bias - motor_Stand.ki * angle_integral + Gyro_bias * motor_Stand.kd;
+
+    balance_last_error = Angle_bias; // �������
     if (balance > 5000)
-        balance = 5000; //=========限幅5000
+        balance = 5000; //=========�޷�5000
     if (balance < -5000)
         balance = -5000;
 
-    //============调试使用=========================
-    // printf("Angle_bias|Gyro_bias|balance : %f,%f,%f\r\n", Angle_bias, Gyro_bias, balance);
-    //============调试使用=========================
-
-    return balance; // 返回平衡值，留给后面使用
+    return balance; // ����ƽ��ֵ����������ʹ��
 }
 
 // 陀螺仪控制计算（PID计算朝向角度�?
-float GyroControl(float target_gyro, float current_gyro) // 角速度�?
+float GyroControl(float target_gyro, float current_gyro) // ���ٶȻ�
 {
-    float gyro_error = target_gyro - current_gyro; // 计算陀螺仪误差
-    static float gyro_Integral;                    // 积分�?
-    gyro_Integral += gyro_error;                   // 积分
+    float gyro_error = target_gyro - current_gyro;                         // �������������
+    static float gyro_Integral;                                            // ������
+    gyro_Integral += gyro_error;
     if (gyro_Integral > 1500)
         gyro_Integral = 1500;
     if (gyro_Integral < -1500)
         gyro_Integral = -1500;
-    // 计算控制输出
+
     float gyro_delta = gyro_error - gyro_last_error;
     float gyro_control = +motor_gyro.kp * gyro_error + motor_gyro.ki * gyro_Integral + motor_gyro.kd * gyro_delta;
-    gyro_last_error = gyro_error; // 更新误差
+    gyro_last_error = gyro_error; // �������
 
-    // 动态调整PID参数
-    // fuzzy_pid_adjust(&motor_gyro, gyro_error, gyro_delta, &gyro_rules, &gyro_pid_limits);
-
-    //============调试使用=========================
-    //    printf("gyro_error|gyro_Integral|gyro_control: %f,%f,%f\r\n", gyro_error, gyro_Integral, gyro_control);
-    // printf("target_gyro:%lf\r\n", target_gyro);
-    //============调试使用=========================
-
-    // printf("gyro_error|gyro_Integral|gyro_control: %f,%f,%f\r\n", gyro_error, gyro_Integral, gyro_control);
-    return -gyro_control; // 返回控制输出
+    return -gyro_control; // ���ؿ������
 }
 
 // 限制PWM输出范围
@@ -429,159 +416,111 @@ float Turn_target(float target_angle)
 }
 
 // 转向控制计算
-float Turn(float gyro, float target_angle) // Gyro传入的是当前的角�?
+float Turn(float current_yaw, float target_yaw)
 {
-    target_angle = Turn_target(target_angle); // 防止本身越界
-    float error = Turn_gyro(target_angle, gyro);
-    if (fabs(error) < 1.5)
-    { // 低通截断，避免毛刺影响
-        return 0.0;
-    }
-    float control_output = +PidLocCtrl(&motor_direction, error);
-    control_output = constrain_float(control_output, -2000, 2000);
-    return control_output; // 返回控制输出
-    
-      //printf("%f\n",control_output);
+    float yaw_error = target_yaw - current_yaw;
+    float yaw_rate = IMU_data.gyro[2];
+    float control_output;
 
+    while (yaw_error > 180.0f)  yaw_error -= 360.0f;
+    while (yaw_error < -180.0f) yaw_error += 360.0f;
+
+    if (fabsf(yaw_error) < 1.5f)
+    {
+        yaw_error = 0.0f;
+    }
+
+    control_output = Direction_p * yaw_error - Direction_d * yaw_rate;
+    control_output = constrain_float(control_output, -1200.0f, 1200.0f);
+
+    return control_output;
 }
 
 // 平衡控制主函�?
 void balance_control()
 {
     static float Balance_Pwm_left = 0.0f, Balance_Pwm_right = 0.0f;
-    float Gyro_Pwm_left, Gyro_Pwm_right; // 平衡PWM值k
-    //======================调试转向�?================================
+    static uint8_t angle_loop_div = 0;
+    static uint8_t speed_loop_div = 0;
+    float Gyro_Pwm_left, Gyro_Pwm_right;
+    float raw_gyro_x = IMU_data.gyro[0] - 0.49f;
+
     if (First_angle && IMU_ready)
     {
         target_angle = IMU_data.filter_result.yaw;
         First_angle = false;
     }
-    // printf("target_angle/now_yaw: %f %f\n",target_angle,IMU_data.filter_result.yaw);
-    //======================调试转向�?================================
-    // 获取编码器�?
-    Encoder_Left = -motor_value.receive_left_speed_data;
-    Encoder_Right = -motor_value.receive_right_speed_data;
-    now_velocity = (Encoder_Left - Encoder_Right) / 2;
 
-    // 更新倾斜角度
-    roll = IMU_data.filter_result.roll;
-    i++;
-    // ==============================================================
-    // 【核心修复】利�?PidChange 实时热更�?PID 参数
-    // 坚决不准在这里调�?PidInit() ！！�?
-    // ==============================================================
+    roll = IMU_data.filter_result.roll - balance_zero_offset;
+
     if (jump_stop == 1)
     {
-        // 刹车/停机时，直接�?PID 系数设为 0，相当于切断输出
         PidChange(&motor_speed, 0, 0, 0);
         PidChange(&motor_Stand, 0, 0, 0);
         PidChange(&motor_gyro, 0, 0, 0);
     }
     else
     {
-        // 正常运行时，实时把全局变量（已�?VOFA+ 篡改）同步给 PID 结构�?
         PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
         PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
-
-        // 【关键】你旧代码里漏掉了角速度环的热更新，现在补上了！
         PidChange(&motor_gyro, Gyro_p, Gyro_i, Gyro_d);
-        PidChange(&motor_direction, Direction_p, Direction_i, Direction_d); 
+        PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
     }
-    //    // 跳跃更新
-    //    if (jump_stop == 1)
-    //    {
-    //        // 初始化速度PID
-    //        PidInit(&motor_speed);
-    //        PidChange(&motor_speed, 0, 0, 0);
-    //
-    //        // 初始化电机角度PID
-    //        PidInit(&motor_Stand);
-    //        PidChange(&motor_Stand, 0, 0, 0);
-    //    }
-    //    else
-    //    {
-    //        // 初始化速度PID
-    //        PidInit(&motor_speed);
-    //        PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
-    //
-    //        // 初始化电机角度PID
-    //        PidInit(&motor_Stand);
-    //        PidChange(&motor_Stand, Angle_p, Angle_i, Angle_d);
-    //    }
-    // 计算左右电机速度
-    if (i % 4 == 0)
+
+    angle_loop_div++;
+    speed_loop_div++;
+    if (angle_loop_div >= 5)
     {
-        /********速度补偿单边桥启�?**************************/
-        if (leg_error > 0)
+        angle_loop_div = 0;
+
+        Encoder_Left = -motor_value.receive_left_speed_data;
+        Encoder_Right = -motor_value.receive_right_speed_data;
+        now_velocity = (Encoder_Left - Encoder_Right) / 2;
+
+        if (speed_loop_div >= 20)
         {
-            Velocity_Angle_left = Velocity(&g_velocity_left, Encoder_Left, target_velocity - v_buchang);
-            Velocity_Angle_right = Velocity(&g_velocity_right, -Encoder_Right, target_velocity + v_buchang); // 右侧输入务必取反
+            speed_loop_div = 0;
+            if (leg_error > 0)
+            {
+                Velocity_Angle_left = Velocity(&g_velocity_left, Encoder_Left, target_velocity - v_buchang);
+                Velocity_Angle_right = Velocity(&g_velocity_right, -Encoder_Right, target_velocity + v_buchang);
+            }
+            else
+            {
+                Velocity_Angle_left = Velocity(&g_velocity_left, Encoder_Left, target_velocity + v_buchang);
+                Velocity_Angle_right = Velocity(&g_velocity_right, -Encoder_Right, target_velocity - v_buchang);
+            }
         }
-        else
-        {
-            Velocity_Angle_left = Velocity(&g_velocity_left, Encoder_Left, target_velocity + v_buchang);
-            Velocity_Angle_right = Velocity(&g_velocity_right, -Encoder_Right, target_velocity - v_buchang);
-        }
+
+        Balance_Pwm_left = Balance(roll, raw_gyro_x, Velocity_Angle_left);
+        Balance_Pwm_right = Balance(roll, raw_gyro_x, Velocity_Angle_right);
     }
+    Gyro_Pwm_left = GyroControl(-Balance_Pwm_left, raw_gyro_x);
+    Gyro_Pwm_right = GyroControl(-Balance_Pwm_right, raw_gyro_x);
 
-    //    printf("jiadata:%f,%f\r\n",Encoder_Left,target_velocity);
-    // 平滑处理速度
-    //    left_angle = left_angle * 0.2 + Velocity_Angle_left * 0.8;
-    //    right_angle = right_angle * 0.2 + Velocity_Angle_right * 0.8;
-    // 计算平衡PWM�?
-    Balance_Pwm_left = Balance(roll, IMU_data.gyro[0], Velocity_Angle_left);
-    Balance_Pwm_right = Balance(roll, IMU_data.gyro[0], Velocity_Angle_right);
-    // 计算陀螺仪控制PWM�?
-
-    Gyro_Pwm_left = GyroControl(-Balance_Pwm_left, IMU_data.gyro[0]);
-    Gyro_Pwm_right = GyroControl(-Balance_Pwm_right, IMU_data.gyro[0]);
-
-    // 计算最终PWM输出
-    if (jump_position == 1 || target_velocity == 0)
+    Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
+    if (jump_position == 1)
     {
         Motor_Left = (signed short int)Gyro_Pwm_left;
         Motor_Right = (signed short int)Gyro_Pwm_right;
     }
     else
     {
-        // 计算转向PWM�?
-        Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
-       //printf("Turn_pwm %f\n\n", Turn_Pwm);
-        //Turn_Pwm = 0;
-        // //===================仅调试去除转向功能使�?================================
-        // Turn_Pwm = 0;
-        // //====================================================================
-        // if (Turn_Pwm <= 0.2) // !!!!!!!!!!!!!!!!!!!转向中的积分可能有问题哦
-        // {
-        //     speed_up = 1;
-        // }
-        // else if (Turn_Pwm <= 2)
-        // {
-        //     speed_up = 2;
-        // }
-        // else
-        // {
-        //     speed_up = 0;
-        // }
-        // Motor_Left = (signed short int)Gyro_Pwm_left * (1 + Turn_Pwm) - (signed short int)(imu963ra_gyro_z / 2);
-        // Motor_Right = (signed short int)Gyro_Pwm_right * (1 - Turn_Pwm) + (signed short int)(imu963ra_gyro_z / 2);
-        Motor_Left = (signed short int)Gyro_Pwm_left * (1 + Turn_Pwm);
-        Motor_Right = (signed short int)Gyro_Pwm_right * (1 - Turn_Pwm);
+        Motor_Left = (signed short int)(Gyro_Pwm_left + Turn_Pwm);
+        Motor_Right = (signed short int)(Gyro_Pwm_right - Turn_Pwm);
     }
-    // 限制PWM输出范围
+
     Motor_Left = -(signed short int)cuu(Motor_Left);
     Motor_Right = (signed short int)cuu(Motor_Right);
-    
+
     out_speed_l = Velocity_Angle_left;
     out_speed_r = Velocity_Angle_right;
     out_angle_l = Balance_Pwm_left;
     out_angle_r = Balance_Pwm_right;
-    out_gyro_l  = Gyro_Pwm_left;
-    out_gyro_r  = Gyro_Pwm_right;
-    // 设置PWM输出
-    small_driver_set_duty(-Motor_Left, -Motor_Right);
+    out_gyro_l = Gyro_Pwm_left;
+    out_gyro_r = Gyro_Pwm_right;
 
-    // printf("\n\n\n");
+    small_driver_set_duty(-Motor_Left, -Motor_Right);
 }
 
 // 滤波处理
@@ -623,6 +562,45 @@ void leg_control(float *x, float *y)
     (void)leg_Ki;
     (void)leg_Kd;
 
+    const bool leg_adaptive_enable = false; // ��ƽ����ν׶��ȹ̶��Ȳ��������ȿ��Ŷ������� PID��
+    if (!leg_adaptive_enable)
+    {
+        *x = constrain_float(*x, MIN_X, MAX_X);
+        *y = constrain_float(*y, MIN_Y, MAX_Y);
+        x_cmd_last = *x;
+        left_y_cmd_last = *y;
+        right_y_cmd_last = *y;
+        leg_error = 0.0f;
+        hold_mode = true;
+
+        servo_control(SERVO_LEG_LEFT, *x, left_y_cmd_last, &leg1, &leg2);
+        servo_control(SERVO_LEG_RIGHT, *x, right_y_cmd_last, &leg3, &leg4);
+
+        if (is_first_run)
+        {
+            leg1_last = leg1;
+            leg2_last = leg2;
+            leg3_last = leg3;
+            leg4_last = leg4;
+            is_first_run = false;
+        }
+
+        extern const float servo_alpha;
+        leg1 = (int)(leg1 * servo_alpha + leg1_last * (1.0f - servo_alpha));
+        leg2 = (int)(leg2 * servo_alpha + leg2_last * (1.0f - servo_alpha));
+        leg3 = (int)(leg3 * servo_alpha + leg3_last * (1.0f - servo_alpha));
+        leg4 = (int)(leg4 * servo_alpha + leg4_last * (1.0f - servo_alpha));
+
+        engine_left_maintain(leg1, leg2);
+        engine_right_maintain(leg3, leg4);
+
+        leg1_last = leg1;
+        leg2_last = leg2;
+        leg3_last = leg3;
+        leg4_last = leg4;
+        return;
+    }
+
     angle_now = IMU_data.filter_result.pitch;
     angle_filtered = leg_sensor_filter(angle_now, is_first_run);
     if (is_first_run)
@@ -653,8 +631,8 @@ void leg_control(float *x, float *y)
         const float X_HOLD_BAND = 0.0008f;
         const float Y_HOLD_BAND = 0.0006f;
         float roll_angle_rad = IMU_data.filter_result.roll * LEG_DEG_TO_RAD;
-        float pitch_rate = IMU_data.gyro[1] * LEG_DEG_TO_RAD;
-        float roll_rate = IMU_data.gyro[0] * LEG_DEG_TO_RAD;
+        float pitch_rate = IMU_data.filter_result.unbiased_gyro_y * LEG_DEG_TO_RAD;
+        float roll_rate = IMU_data.filter_result.unbiased_gyro_x * LEG_DEG_TO_RAD;
         float x_cal = 0.0f;
         float abs_roll_angle = fabsf(roll_angle_rad);
         float abs_pitch_rate = fabsf(pitch_rate);
@@ -890,3 +868,11 @@ float min(float a, float b)
 {
     return (a < b) ? a : b;
 }
+
+
+
+
+
+
+
+

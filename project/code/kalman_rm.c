@@ -28,7 +28,7 @@ void cal(int16 imu963ra_acc_x,  int16 imu963ra_acc_y, int16 imu963ra_acc_z,
          int16 imu963ra_gyro_x, int16 imu963ra_gyro_y,int16 imu963ra_gyro_z,
          int16 imu963ra_mag_x,  int16 imu963ra_mag_y,  int16 imu963ra_mag_z)
 {
-     // 1. åŠ é€Ÿåº¦å’Œè§’é€Ÿåº¦ç‰©ç†é‡è½¬æ¢
+     // 1. åŠ é€Ÿåº¦å’Œè§’é€Ÿåº¦ç‰©ç†é‡è½¬æ?
      IMU_data.accel[0] = imu963ra_acc_transition(imu963ra_acc_x);
      IMU_data.accel[1] = imu963ra_acc_transition(imu963ra_acc_y);
      IMU_data.accel[2] = imu963ra_acc_transition(imu963ra_acc_z);
@@ -37,7 +37,7 @@ void cal(int16 imu963ra_acc_x,  int16 imu963ra_acc_y, int16 imu963ra_acc_z,
      IMU_data.gyro[1] = imu963ra_gyro_transition(imu963ra_gyro_y);
      IMU_data.gyro[2] = imu963ra_gyro_transition(imu963ra_gyro_z);
 
-     // 2. æå–ç£åŠ›è®¡åŽŸå§‹ç‰©ç†å€¼
+     // 2. æå–ç£åŠ›è®¡åŽŸå§‹ç‰©ç†å€?
      float raw_mag_x = imu963ra_mag_transition(imu963ra_mag_x);
      float raw_mag_y = imu963ra_mag_transition(imu963ra_mag_y);
      float raw_mag_z = imu963ra_mag_transition(imu963ra_mag_z);
@@ -83,10 +83,27 @@ void Kalman_update(Attitude_3D_t* result, Attitude_3D_Kalman* filter, float Acc_
     roll_rad = (double)filter->roll * DEG_TO_RAD;
     pitch_rad = (double)filter->pitch * DEG_TO_RAD;
     //Pitch und Roll aus Accelerometer
-    if(sqrtf(Acc_X * Acc_X + Acc_Z * Acc_Z)!=0&sqrtf(Acc_Y * Acc_Y + Acc_Z * Acc_Z)!=0)
+    float acc_xz_norm = sqrtf(Acc_X * Acc_X + Acc_Z * Acc_Z);
+    float acc_yz_norm = sqrtf(Acc_Y * Acc_Y + Acc_Z * Acc_Z);
+    float acc_norm = sqrtf(Acc_X * Acc_X + Acc_Y * Acc_Y + Acc_Z * Acc_Z);
+    float acc_error = fabsf(acc_norm - 9.81f);
+    float dynamic_Rpitch_roll = filter->Rpitch_roll;
+
+    if(acc_xz_norm > 1e-6f && acc_yz_norm > 1e-6f)
     {
-    measurement[2] = (double)atanf(Acc_Y / sqrtf(Acc_X * Acc_X + Acc_Z * Acc_Z)) * RAD_TO_DEG;
-    measurement[1] = (double)atanf(-1 * Acc_X / sqrtf(Acc_Y * Acc_Y + Acc_Z * Acc_Z)) * RAD_TO_DEG;
+        measurement[2] = (double)atanf(Acc_Y / acc_xz_norm) * RAD_TO_DEG;
+        measurement[1] = (double)atanf(-1 * Acc_X / acc_yz_norm) * RAD_TO_DEG;
+    }
+
+    // ¶¯Ì¬¹¤¿öÏÂ¼õÈõ¼ÓËÙ¶È¼ÆÐÞÕý£¬±ÜÃâÍÈ²¿¶¯×÷ºÍµØÃæ³å»÷°ÑÏß¼ÓËÙ¶Èµ±³É×ËÌ¬±ä»¯¡£
+    if (acc_error > 0.15f)
+    {
+        float acc_scale = 1.0f + (acc_error - 0.15f) * 6.0f;
+        if (acc_scale > 12.0f)
+        {
+            acc_scale = 12.0f;
+        }
+        dynamic_Rpitch_roll *= acc_scale;
     }
     //Magnetometer Messung in horizontale Ebene transformieren
     float XH;
@@ -142,14 +159,14 @@ void Kalman_update(Attitude_3D_t* result, Attitude_3D_Kalman* filter, float Acc_
 
     //Kalman Gain berechnen
     K1_1 = filter->P1_1 / (filter->P1_1 + filter->Ryaw);
-    K2_2 = filter->P2_2 / (filter->P2_2 + filter->Rpitch_roll);
-    K3_3 = filter->P3_3 / (filter->P3_3 + filter->Rpitch_roll);
-    K4_3 = filter->P3_4 / (filter->P3_3 + filter->Rpitch_roll);
-    K5_2 = filter->P2_5 / (filter->P2_2 + filter->Rpitch_roll);
-    K5_3 = filter->P3_5 / (filter->P3_3 + filter->Rpitch_roll);
+    K2_2 = filter->P2_2 / (filter->P2_2 + dynamic_Rpitch_roll);
+    K3_3 = filter->P3_3 / (filter->P3_3 + dynamic_Rpitch_roll);
+    K4_3 = filter->P3_4 / (filter->P3_3 + dynamic_Rpitch_roll);
+    K5_2 = filter->P2_5 / (filter->P2_2 + dynamic_Rpitch_roll);
+    K5_3 = filter->P3_5 / (filter->P3_3 + dynamic_Rpitch_roll);
     K6_1 = filter->P1_6 / (filter->P1_1 + filter->Ryaw);
-    K6_2 = filter->P2_6 / (filter->P2_2 + filter->Rpitch_roll);
-    K6_3 = filter->P3_6 / (filter->P3_3 + filter->Rpitch_roll);
+    K6_2 = filter->P2_6 / (filter->P2_2 + dynamic_Rpitch_roll);
+    K6_3 = filter->P3_6 / (filter->P3_3 + dynamic_Rpitch_roll);
 
     //corrected state estimate
     filter->yaw += K1_1 * y[0];

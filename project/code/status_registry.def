@@ -17,3 +17,5 @@ STATUS_ITEM(float, pid_out_gyro_l, out_gyro_l)
 STATUS_ITEM(float, pid_out_gyro_r, out_gyro_r)
 STATUS_ITEM(float, pid_out_turn, Turn_Pwm)
 STATUS_ITEM(float, pid_out_leg, leg_error)
+
+STATUS_ITEM(float, battery_voltage, battery_voltage)

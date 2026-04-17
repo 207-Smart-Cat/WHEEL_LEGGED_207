@@ -10,6 +10,7 @@
 #include "param.h"
 #include "navigation_data_handling.h"
 #include "navigation_tracking.h"
+#include "battery_monitor.h"
 
 // **************************** 核间通信区域 ****************************
 // 在 CM7_0 和 CM7_1 中都需要加入这段代码
@@ -28,6 +29,7 @@ __no_init CoreB_Command_t core_b_cmd;
 #define PIT_Balance (PIT_CH10)
 #define PIT_Remote (PIT_CH12)
 #define PIT_Engine (PIT_CH13)
+#define PIT_IPC (PIT_CH11)
 #define LED1 (P19_0)
 // **************************** 全局变量区域 ****************************
 
@@ -45,7 +47,6 @@ int Bridge_position = 1;     // 可能是过单边桥时候需要的（腿部自适应）
 int yanshi_biaozhiwei = 100; // 可能是过单边桥时候需要的（腿部自适应模式）
 int change_speed = 0;
 extern float temp_a, temp_b;
-
 
 // 外部变量引入
 extern RobotState_t robot_pose;
@@ -70,15 +71,17 @@ int main(void)
   gpio_init(LED1, GPO, GPIO_HIGH, GPO_PUSH_PULL); // 初始化 LED1 输出 默认高电平 推挽输出模式
   //=================================IMU初始化=======================
   imu_init(LED1);
-  pit_ms_init(PIT_IMU, 5);
+  pit_ms_init(PIT_IMU, 1);
   //========================遥控器控制初始化==========================
   //    Remote_Init();
   //    pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
   //=================================平衡动作初始化========================
   Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
   small_driver_uart_init(); // 驱动板通信初始化
+  battery_monitor_init(); // 电池电压 ADC 初始化
   //=================================舵机初始化======================
   pit_ms_init(PIT_Engine, 20); // 舵机固定 20ms 周期更新
+  pit_ms_init(PIT_IPC, 10); // 双核参数同步 10ms 周期检查
 
 //  // === 1. 导航系统初始化 ===
 //    navi_data_init();
@@ -86,7 +89,7 @@ int main(void)
 //
 //    // 修改：将 PIT_Balance 从 3ms 改为 10ms 以匹配 ENCODER_DT (0.01f)
 //    // 注意：如果是平衡控制强制要求 3ms，则需修改导航的 ENCODER_DT 为 0.03f 并在 3ms 中断分频调用
-    pit_ms_init(PIT_Balance, 10); 
+    pit_ms_init(PIT_Balance, 1); 
 ////    jump_stop = 1; // 在 control.c 中，jump_stop=1 会让 PID 参数全置 0
     interrupt_global_enable(0);
 //    
@@ -107,8 +110,24 @@ int main(void)
 
   while (true)
   {
+    static uint8_t battery_update_div = 0;
     // 此处编写需要循环执行的代码
+    battery_update_div++;
+    if (battery_update_div >= 100)
+    {
+        battery_update_div = 0;
+        battery_monitor_update();
+    }
     IPC_Push_Status_From_CoreA();
+//    imu_debug_div++;
+//    if (imu_debug_div >= 10)
+//    {
+//        imu_debug_div = 0;
+//        printf("%.3f,%.3f,%.3f\r\n",
+//               IMU_data.filter_result.roll,
+//               IMU_data.filter_result.pitch,
+//               IMU_data.filter_result.yaw);
+//    }
     //printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);    
    // printf("Target Angle:%f\n",target_angle);
     // printf("%f,%f",temp_a,temp_b);
@@ -120,6 +139,6 @@ int main(void)
     // printf("target_v: %f \n",target_velocity);
 //    printf("cnt: %d \n",test_pit10_cnt);
     
-    system_delay_ms(20);
+    system_delay_ms(1);
   }
 }

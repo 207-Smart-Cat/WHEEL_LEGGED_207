@@ -216,9 +216,9 @@ void wifi_report_task(void)
                     
                     if(channel_show[0]) 
                     {
-                        seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.yaw;
-                        seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.pitch;
-                        seekfree_assistant_oscilloscope_data.data[idx++] = IMU_data.filter_result.roll;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.yaw;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.pitch;
+                        seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.roll;
                     }
                     if(channel_show[1]) 
                     {
@@ -266,9 +266,17 @@ void wifi_report_task(void)
                     char text_buffer[200] = {0}; 
                     char temp[64];               
                     
+                    if(channel_show[0] && !channel_show[1] && !channel_show[2] && !channel_show[3] && !channel_show[4])
+                    {
+                        sprintf(text_buffer, "%.2f,%.2f,%.2f\r\n", core_a_status.yaw, core_a_status.pitch, core_a_status.roll);
+                        WIFI_Send_Buffer_Checked((uint8*)text_buffer, strlen(text_buffer), 1);
+                        break;
+                    }
+                    
+                    
                     if(channel_show[0]) 
                     {
-                        sprintf(temp, "Y:%.2f P:%.2f R:%.2f  ", IMU_data.filter_result.yaw, IMU_data.filter_result.pitch, IMU_data.filter_result.roll);
+                        sprintf(temp, "Y:%.2f P:%.2f R:%.2f  ", core_a_status.yaw, core_a_status.pitch, core_a_status.roll);
                         strcat(text_buffer, temp); 
                     }
                     // ... channel 1 和 2 保持你的原样 ...
