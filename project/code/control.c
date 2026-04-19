@@ -34,7 +34,6 @@ static float balance_last_error = 0.0f;
 static float gyro_last_error = 0.0f;
 extern Attitude_3D_Kalman filter; // 卡尔曼滤波器
 extern IMU_t IMU_data;            // IMU数据
-extern float v_buchang;
 float roll;              // 倾斜角度
 int engine_change = 600; // 发动机变化量
 //=======================未加入Jump Camera时的临时动作====================================
@@ -54,8 +53,7 @@ typedef struct
     float encoder_integral;
 } velocity_loop_state_t;
 
-static velocity_loop_state_t g_velocity_left = {0};
-static velocity_loop_state_t g_velocity_right = {0};
+static velocity_loop_state_t g_velocity_forward = {0};
 
 // 模糊规则参数
 typedef struct
@@ -311,9 +309,9 @@ void Balance_init()
     engine_init(leg1, leg2); // 初始化发动机
 }
 // 角度补偿量计算，使得平衡环目标改变，控制量为速度（PI速度计算，以编码器计�?
-float Velocity(velocity_loop_state_t *state, int encoder_left, float target_velocity) //===========左边为基础，右边送入务必取反
+float Velocity(velocity_loop_state_t *state, float measured_velocity, float target_velocity) //===========左边为基础，右边送入务必取反
 {
-    state->encoder_bias = target_velocity - encoder_left; // 计算偏差
+    state->encoder_bias = target_velocity - measured_velocity; // 计算偏差
     state->encoder_integral += state->encoder_bias;       // 积分
     //==============================更改了积分限幅措施（7000�?=====================
     // 限制积分范围
@@ -439,10 +437,10 @@ float Turn(float current_yaw, float target_yaw)
 // 平衡控制主函�?
 void balance_control()
 {
-    static float Balance_Pwm_left = 0.0f, Balance_Pwm_right = 0.0f;
+    static float Balance_Pwm = 0.0f;
     static uint8_t angle_loop_div = 0;
     static uint8_t speed_loop_div = 0;
-    float Gyro_Pwm_left, Gyro_Pwm_right;
+    float Gyro_Pwm;
     float raw_gyro_x = IMU_data.gyro[0] - 0.49f;
 
     if (First_angle && IMU_ready)
@@ -475,50 +473,41 @@ void balance_control()
 
         Encoder_Left = -motor_value.receive_left_speed_data;
         Encoder_Right = -motor_value.receive_right_speed_data;
-        now_velocity = (Encoder_Left - Encoder_Right) / 2;
+        now_velocity = (Encoder_Left - Encoder_Right) / 2.0f;
 
         if (speed_loop_div >= 20)
         {
             speed_loop_div = 0;
-            if (leg_error > 0)
-            {
-                Velocity_Angle_left = Velocity(&g_velocity_left, Encoder_Left, target_velocity - v_buchang);
-                Velocity_Angle_right = Velocity(&g_velocity_right, -Encoder_Right, target_velocity + v_buchang);
-            }
-            else
-            {
-                Velocity_Angle_left = Velocity(&g_velocity_left, Encoder_Left, target_velocity + v_buchang);
-                Velocity_Angle_right = Velocity(&g_velocity_right, -Encoder_Right, target_velocity - v_buchang);
-            }
+            Velocity_Angle_left = Velocity(&g_velocity_forward, now_velocity, target_velocity);
+            Velocity_Angle_right = Velocity_Angle_left;
         }
 
-        Balance_Pwm_left = Balance(roll, raw_gyro_x, Velocity_Angle_left);
-        Balance_Pwm_right = Balance(roll, raw_gyro_x, Velocity_Angle_right);
+        Balance_Pwm = Balance(roll, raw_gyro_x, Velocity_Angle_left);
     }
-    Gyro_Pwm_left = GyroControl(-Balance_Pwm_left, raw_gyro_x);
-    Gyro_Pwm_right = GyroControl(-Balance_Pwm_right, raw_gyro_x);
 
+    Gyro_Pwm = GyroControl(-Balance_Pwm, raw_gyro_x);
     Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
+
     if (jump_position == 1)
     {
-        Motor_Left = (signed short int)Gyro_Pwm_left;
-        Motor_Right = (signed short int)Gyro_Pwm_right;
+        Motor_Left = (signed short int)Gyro_Pwm;
+        Motor_Right = (signed short int)Gyro_Pwm;
     }
     else
     {
-        Motor_Left = (signed short int)(Gyro_Pwm_left + Turn_Pwm);
-        Motor_Right = (signed short int)(Gyro_Pwm_right - Turn_Pwm);
+        Motor_Left = (signed short int)(Gyro_Pwm + Turn_Pwm);
+        Motor_Right = (signed short int)(Gyro_Pwm - Turn_Pwm);
     }
 
     Motor_Left = -(signed short int)cuu(Motor_Left);
     Motor_Right = (signed short int)cuu(Motor_Right);
 
     out_speed_l = Velocity_Angle_left;
-    out_speed_r = Velocity_Angle_right;
-    out_angle_l = Balance_Pwm_left;
-    out_angle_r = Balance_Pwm_right;
-    out_gyro_l = Gyro_Pwm_left;
-    out_gyro_r = Gyro_Pwm_right;
+    out_speed_r = Velocity_Angle_left;
+    out_angle_l = Balance_Pwm;
+    out_angle_r = Balance_Pwm;
+    out_gyro_l = Gyro_Pwm;
+    out_gyro_r = Gyro_Pwm;
 
     small_driver_set_duty(-Motor_Left, -Motor_Right);
 }

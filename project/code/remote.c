@@ -19,6 +19,8 @@ static Remote_CtrlData_t s_RemoteData = {
     .channel = {REMOTE_SAFE_VALUE_CH1, REMOTE_SAFE_VALUE_CH2, REMOTE_SAFE_VALUE_CHother,
                 REMOTE_SAFE_VALUE_CHother, REMOTE_SAFE_VALUE_CHother, REMOTE_SAFE_VALUE_CHother}};
 
+static bool remote_drive_active = false;
+
 // ------------------- 接口实现 -------------------
 
 void Remote_Init(void)
@@ -68,7 +70,7 @@ void Remote_Update(void)
             s_RemoteData.channel[3] = REMOTE_SAFE_VALUE_CHother;
             s_RemoteData.channel[4] = REMOTE_SAFE_VALUE_CHother;
             s_RemoteData.channel[5] = REMOTE_SAFE_VALUE_CHother;
-            printf("Remote control has been disconnected.\r\n");
+            // Keep ISR path non-blocking. Do not print here.
         }
 
         // 必须清零完成标志位，等待下一次接收
@@ -116,35 +118,48 @@ int32_t Remote_GetChannelData(uint8_t ch_index) // 通道序号，用于外部访问
         return REMOTE_SAFE_VALUE_CHother;
         break;
     default:
-        break;
+        return REMOTE_SAFE_VALUE_CHother;
     }
 }
 
 void Remote_control_callback(void)
 {
-    Remote_Update(); // 获取最新状态
-    
-    // 只有在遥控器正常连接的情况下，才允许遥控器抢占控制权
+    float yaw_stick;
+
+    Remote_Update();
+
     if (Remote_GetStatus() == REMOTE_CONNECTED)
     {
-        // 【核心修改】：利用 CH5 拨杆作为权限开关
-        // 数值阈值(1000)请根据你的遥控器实际通道值域进行修改
-        // 通常三段开关的值域可能是 300(上), 1000(中), 1700(下)
-        if (Remote_GetChannelData(5) > 1000) 
+        if (Remote_GetChannelData(5) > 1000)
         {
-            // --- 遥控驾驶模式 ---
-            // 摇杆生效，覆盖 target_angle 和 target_velocity
-            target_angle = IMU_data.filter_result.yaw + (Remote_GetChannelData(1) - 888) / 332.0/5.0;
-            target_velocity = (Remote_GetChannelData(2) - 1000) / 689.0 * 800.0;
+            if (!remote_drive_active)
+            {
+                remote_drive_active = true;
+                target_angle = IMU_data.filter_result.yaw;
+            }
+
+            yaw_stick = (Remote_GetChannelData(1) - REMOTE_SAFE_VALUE_CH1) / 332.0f;
+            if (yaw_stick > 0.05f || yaw_stick < -0.05f)
+            {
+                target_angle += yaw_stick * 1.0f;
+                while (target_angle > 180.0f)  target_angle -= 360.0f;
+                while (target_angle < -180.0f) target_angle += 360.0f;
+            }
+
+            target_velocity = (Remote_GetChannelData(2) - REMOTE_SAFE_VALUE_CH2) / 689.0f * 800.0f;
         }
-        else
+        else if (remote_drive_active)
         {
-            // --- VOFA+ 调参模式 ---
-            // 此时拨杆处于另一侧，遥控器主动放弃控制权
-            // 什么都不做，保留 IPC 和 VOFA+ 写入的 target_velocity 和 target_angle
+            remote_drive_active = false;
+            target_velocity = 0.0f;
+            target_angle = IMU_data.filter_result.yaw;
         }
     }
-    // 如果遥控器处于断开状态 (REMOTE_DISCONNECTED)
-    // 同样什么都不做，让小车保持 VOFA+ 设定的目标值或安全停止
+    else if (remote_drive_active)
+    {
+        remote_drive_active = false;
+        target_velocity = 0.0f;
+        target_angle = IMU_data.filter_result.yaw;
+    }
 }
 

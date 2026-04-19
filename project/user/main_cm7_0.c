@@ -73,8 +73,8 @@ int main(void)
   imu_init(LED1);
   pit_ms_init(PIT_IMU, 1);
   //========================遥控器控制初始化==========================
-  //    Remote_Init();
-  //    pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
+  Remote_Init();
+  pit_ms_init(PIT_Remote, 10);//10ms更新一次目标速度
   //=================================平衡动作初始化========================
   Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
   small_driver_uart_init(); // 驱动板通信初始化
