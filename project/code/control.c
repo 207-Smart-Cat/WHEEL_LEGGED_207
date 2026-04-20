@@ -59,20 +59,23 @@ static float g_leg_speed_tilt_deg = 0.0f;
 static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
 {
     const float LEG_DEG_TO_RAD = (PI / 180.0f);
+    const float LEG_X_GAIN = 1.6f;
+    const float LEG_X_LIMIT = 0.018f;
+    const float LEG_X_MIN_STEP = 0.0008f;
     float tilt_rad;
     float x_offset;
 
     leg_tilt_deg = constrain_float(leg_tilt_deg, -10.0f, 10.0f);
     leg_height = constrain_float(leg_height, MIN_Y, MAX_Y);
     tilt_rad = leg_tilt_deg * LEG_DEG_TO_RAD;
-    x_offset = leg_x_gain * leg_height * tanf(tilt_rad);
+    x_offset = LEG_X_GAIN * leg_height * tanf(tilt_rad);
 
-    if (fabsf(leg_tilt_deg) > 0.3f && fabsf(x_offset) < leg_x_min_step)
+    if (fabsf(leg_tilt_deg) > 0.3f && fabsf(x_offset) < LEG_X_MIN_STEP)
     {
-        x_offset = (leg_tilt_deg > 0.0f) ? leg_x_min_step : -leg_x_min_step;
+        x_offset = (leg_tilt_deg > 0.0f) ? LEG_X_MIN_STEP : -LEG_X_MIN_STEP;
     }
 
-    return constrain_float(x_offset, -leg_x_limit, leg_x_limit);
+    return constrain_float(x_offset, -LEG_X_LIMIT, LEG_X_LIMIT);
 }
 
 // 妯＄硦瑙勫垯鍙傛暟
@@ -575,6 +578,7 @@ void leg_control(float *x, float *y)
     const bool leg_adaptive_enable = false; // 主平衡调参阶段先固定腿部，避免腿控扰动主串级 PID。
     if (!leg_adaptive_enable)
     {
+        const float LEG_X_STEP_LIMIT = 0.0012f;
         float base_x = constrain_float(*x, MIN_X, MAX_X);
         float base_y = constrain_float(*y, MIN_Y, MAX_Y);
         float leg_x_offset = speed_tilt_to_leg_x(g_leg_speed_tilt_deg, base_y);
@@ -593,7 +597,7 @@ void leg_control(float *x, float *y)
         }
         else
         {
-            x_cmd_last += constrain_float(x_target - x_cmd_last, -leg_x_step_limit, leg_x_step_limit);
+            x_cmd_last += constrain_float(x_target - x_cmd_last, -LEG_X_STEP_LIMIT, LEG_X_STEP_LIMIT);
         }
 
         servo_control(SERVO_LEG_LEFT, x_cmd_last, left_y_cmd_last, &leg1, &leg2);

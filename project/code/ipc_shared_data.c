@@ -198,12 +198,6 @@ void IPC_Load_Params_From_Flash(void) {
         LOG_Printf(" [ Pos ]  X: %s%d.%04d, Y: %s%d.%04d\r\n", 
                F_S(core_b_cmd.params[P_X_CURRENT]), F_I(core_b_cmd.params[P_X_CURRENT]), F_D(core_b_cmd.params[P_X_CURRENT]),
                F_S(core_b_cmd.params[P_Y_CURRENT]), F_I(core_b_cmd.params[P_Y_CURRENT]), F_D(core_b_cmd.params[P_Y_CURRENT]));
-        LOG_Printf(" [LegX]  G: %s%d.%04d, L: %s%d.%04d\r\n", 
-               F_S(core_b_cmd.params[P_LEG_X_GAIN]), F_I(core_b_cmd.params[P_LEG_X_GAIN]), F_D(core_b_cmd.params[P_LEG_X_GAIN]),
-               F_S(core_b_cmd.params[P_LEG_X_LIMIT]), F_I(core_b_cmd.params[P_LEG_X_LIMIT]), F_D(core_b_cmd.params[P_LEG_X_LIMIT]));
-        LOG_Printf(" [LegX]  M: %s%d.%04d, S: %s%d.%04d\r\n", 
-               F_S(core_b_cmd.params[P_LEG_X_MIN_STEP]), F_I(core_b_cmd.params[P_LEG_X_MIN_STEP]), F_D(core_b_cmd.params[P_LEG_X_MIN_STEP]),
-               F_S(core_b_cmd.params[P_LEG_X_STEP_LIMIT]), F_I(core_b_cmd.params[P_LEG_X_STEP_LIMIT]), F_D(core_b_cmd.params[P_LEG_X_STEP_LIMIT]));
         
         LOG_Printf(" [ Air ]  P: %s%d.%04d, I: %s%d.%04d, D: %s%d.%04d\r\n", 
                F_S(core_b_cmd.params[P_AIR_ROLL_P]), F_I(core_b_cmd.params[P_AIR_ROLL_P]), F_D(core_b_cmd.params[P_AIR_ROLL_P]),
