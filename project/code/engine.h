@@ -12,12 +12,17 @@
 #define PWM_4              (TCPWM_CH10_P05_1)//右2 900向下 -
 #define FREQ               (50)  //与后期250-1250占空对应，不得更改
 
-// 单通道舵机测试模式
+// 舵机测试模式
 // 0: 关闭测试
 // 1: 固定输出指定通道，隔离硬件/映射问题
+// 2: 四通道自动测试，依次输出中位/下限/上限
 #define SERVO_TEST_MODE    (0)
 #define SERVO_TEST_CHANNEL (2)    // 1~4 对应 PWM_1~PWM_4
 #define SERVO_TEST_DUTY    (750)  // 直接作用到物理 PWM 输出
+#define SERVO_TEST_CENTER_DUTY (750)
+#define SERVO_TEST_MIN_DUTY    (350)
+#define SERVO_TEST_MAX_DUTY    (1150)
+#define SERVO_TEST_STEP_TICKS  (50)   // 舵机控制 20ms 一次时，约 1 秒切换一步
 
 //初始化使用
 void engine_init(int pwm1,int pwm2);

@@ -16,6 +16,7 @@ float target_angle = 0;
 float target_motor_Stand = 0; 
 float balance_zero_offset = 8.0f; 
 float x_current = 0, y_current = 0.04; 
+float leg_x_gain = 1.6f, leg_x_limit = 0.018f, leg_x_min_step = 0.0008f, leg_x_step_limit = 0.0012f; 
 
 pid_param_t motor_speed, motor_Stand, motor_direction, motor_gyro, air_roll_pid, motor_leg_pid;
 const float servo_alpha = 0.55f; //一阶平滑，越大越灵敏
@@ -42,6 +43,7 @@ const float Target_Velocity_init = 0.0f, Target_Angle_init = 0.0f, Target_Motor_
 
 const float Leg_Kp_init = 0.015f,  Leg_Ki_init = 0.0f,    Leg_Kd_init = -0.007f;
 const float X_Current_init = 0.0f, Y_Current_init = 0.04f;
+const float Leg_X_Gain_init = 1.6f, Leg_X_Limit_init = 0.018f, Leg_X_Min_Step_init = 0.0008f, Leg_X_Step_Limit_init = 0.0012f;
 
 const float Air_roll_p_init = 45.0f, Air_roll_i_init = 0.0f, Air_roll_d_init = 2.0f;
 const float Direction_p_init = 0.0099f, Direction_i_init = 0.015f, Direction_d_init = 0.001f;

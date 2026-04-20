@@ -9,10 +9,17 @@ typedef struct
     uint16 logical_max;
 } servo_channel_cal_t;
 
-static const servo_channel_cal_t k_left_servo_1 = {PWM_1, 1, 0, 250, 1230};
-static const servo_channel_cal_t k_left_servo_2 = {PWM_2, 1, 0, 250, 1230};
-static const servo_channel_cal_t k_right_servo_1 = {PWM_4, 0, 0, 250, 1230};
-static const servo_channel_cal_t k_right_servo_2 = {PWM_3, 0, 0, 250, 1230};
+// 实测 4 路物理位置：
+// PWM_1 左前，PWM_2 右前，PWM_3 右后，PWM_4 左后
+// 实测从中位打到较小占空比时：
+// PWM_1/PWM_3 向上，PWM_2/PWM_4 向下
+// 因此 reverse 不能按“左边/右边”分，而要按实际通道分。
+// FiveBarLinkageData.c 中 servo_control() 输出顺序仍按 pwm1 / pwm2 进入，
+// 这里仅负责把每条腿的两个逻辑舵机映射到正确物理通道。
+static const servo_channel_cal_t k_left_servo_1 = {PWM_4, 1, 0, 250, 1230};
+static const servo_channel_cal_t k_left_servo_2 = {PWM_1, 1, 0, 250, 1230};
+static const servo_channel_cal_t k_right_servo_1 = {PWM_3, 0, 0, 250, 1230};
+static const servo_channel_cal_t k_right_servo_2 = {PWM_2, 0, 0, 250, 1230};
 static uint32 g_pwm_out_1 = 0;
 static uint32 g_pwm_out_2 = 0;
 static uint32 g_pwm_out_3 = 0;
@@ -22,13 +29,58 @@ static int g_logic_left_2 = 0;
 static int g_logic_right_1 = 0;
 static int g_logic_right_2 = 0;
 
+static uint32 get_servo_test_auto_output(uint8 channel_index)
+{
+    static uint16 tick = 0;
+    static uint8 phase = 0;
+    static uint32 outputs[4] = {
+        SERVO_TEST_CENTER_DUTY,
+        SERVO_TEST_CENTER_DUTY,
+        SERVO_TEST_CENTER_DUTY,
+        SERVO_TEST_CENTER_DUTY
+    };
+
+    if (channel_index == 1)
+    {
+        uint8 i;
+
+        if (++tick >= SERVO_TEST_STEP_TICKS)
+        {
+            tick = 0;
+            phase = (phase + 1) % 13;
+        }
+
+        for (i = 0; i < 4; i++)
+        {
+            outputs[i] = SERVO_TEST_CENTER_DUTY;
+        }
+
+        switch (phase)
+        {
+            case 1: outputs[0] = SERVO_TEST_MIN_DUTY; break;
+            case 2: outputs[0] = SERVO_TEST_MAX_DUTY; break;
+            case 4: outputs[1] = SERVO_TEST_MIN_DUTY; break;
+            case 5: outputs[1] = SERVO_TEST_MAX_DUTY; break;
+            case 7: outputs[2] = SERVO_TEST_MIN_DUTY; break;
+            case 8: outputs[2] = SERVO_TEST_MAX_DUTY; break;
+            case 10: outputs[3] = SERVO_TEST_MIN_DUTY; break;
+            case 11: outputs[3] = SERVO_TEST_MAX_DUTY; break;
+            default: break;
+        }
+    }
+
+    return outputs[channel_index - 1];
+}
+
 static uint32 apply_servo_test_override(uint32 pwm_out, uint8 channel_index)
 {
-#if SERVO_TEST_MODE
+#if SERVO_TEST_MODE == 1
     if (channel_index == SERVO_TEST_CHANNEL)
     {
         return (uint32)SERVO_TEST_DUTY;
     }
+#elif SERVO_TEST_MODE == 2
+    return get_servo_test_auto_output(channel_index);
 #endif
     return pwm_out;
 }
@@ -81,19 +133,19 @@ void engine_init(int pwm1, int pwm2)
     g_logic_left_2 = pwm2;
     g_logic_right_1 = pwm1;
     g_logic_right_2 = pwm2;
-    g_pwm_out_1 = apply_servo_calibration(pwm1, &k_left_servo_1);
-    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_left_servo_2);
-    g_pwm_out_3 = apply_servo_calibration(pwm2, &k_right_servo_2);
-    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_right_servo_1);
+    g_pwm_out_1 = apply_servo_calibration(pwm2, &k_left_servo_2);
+    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_right_servo_2);
+    g_pwm_out_3 = apply_servo_calibration(pwm1, &k_right_servo_1);
+    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_left_servo_1);
     g_pwm_out_1 = apply_servo_test_override(g_pwm_out_1, 1);
     g_pwm_out_2 = apply_servo_test_override(g_pwm_out_2, 2);
     g_pwm_out_3 = apply_servo_test_override(g_pwm_out_3, 3);
     g_pwm_out_4 = apply_servo_test_override(g_pwm_out_4, 4);
 
-    pwm_init(k_left_servo_1.pwm_channel, FREQ, g_pwm_out_1);
-    pwm_init(k_left_servo_2.pwm_channel, FREQ, g_pwm_out_2);
-    pwm_init(k_right_servo_1.pwm_channel, FREQ, g_pwm_out_4);
-    pwm_init(k_right_servo_2.pwm_channel, FREQ, g_pwm_out_3);
+    pwm_init(PWM_1, FREQ, g_pwm_out_1);
+    pwm_init(PWM_2, FREQ, g_pwm_out_2);
+    pwm_init(PWM_3, FREQ, g_pwm_out_3);
+    pwm_init(PWM_4, FREQ, g_pwm_out_4);
 }
 
 void engine_left_maintain(int pwm1, int pwm2)
@@ -103,13 +155,13 @@ void engine_left_maintain(int pwm1, int pwm2)
 
     g_logic_left_1 = pwm1;
     g_logic_left_2 = pwm2;
-    g_pwm_out_1 = apply_servo_calibration(pwm1, &k_left_servo_1);
-    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_left_servo_2);
+    g_pwm_out_1 = apply_servo_calibration(pwm2, &k_left_servo_2);
+    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_left_servo_1);
     g_pwm_out_1 = apply_servo_test_override(g_pwm_out_1, 1);
-    g_pwm_out_2 = apply_servo_test_override(g_pwm_out_2, 2);
+    g_pwm_out_4 = apply_servo_test_override(g_pwm_out_4, 4);
 
-    pwm_set_duty(k_left_servo_1.pwm_channel, g_pwm_out_1);
-    pwm_set_duty(k_left_servo_2.pwm_channel, g_pwm_out_2);
+    pwm_set_duty(PWM_1, g_pwm_out_1);
+    pwm_set_duty(PWM_4, g_pwm_out_4);
 }
 
 void engine_right_maintain(int pwm1, int pwm2)
@@ -119,13 +171,13 @@ void engine_right_maintain(int pwm1, int pwm2)
 
     g_logic_right_1 = pwm1;
     g_logic_right_2 = pwm2;
-    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_right_servo_1);
-    g_pwm_out_3 = apply_servo_calibration(pwm2, &k_right_servo_2);
-    g_pwm_out_4 = apply_servo_test_override(g_pwm_out_4, 4);
+    g_pwm_out_3 = apply_servo_calibration(pwm1, &k_right_servo_1);
+    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_right_servo_2);
     g_pwm_out_3 = apply_servo_test_override(g_pwm_out_3, 3);
+    g_pwm_out_2 = apply_servo_test_override(g_pwm_out_2, 2);
 
-    pwm_set_duty(k_right_servo_1.pwm_channel, g_pwm_out_4);
-    pwm_set_duty(k_right_servo_2.pwm_channel, g_pwm_out_3);
+    pwm_set_duty(PWM_3, g_pwm_out_3);
+    pwm_set_duty(PWM_2, g_pwm_out_2);
 }
 
 void engine_jump(void)

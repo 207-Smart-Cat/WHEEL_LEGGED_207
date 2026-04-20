@@ -54,6 +54,26 @@ typedef struct
 } velocity_loop_state_t;
 
 static velocity_loop_state_t g_velocity_forward = {0};
+static float g_leg_speed_tilt_deg = 0.0f;
+
+static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
+{
+    const float LEG_DEG_TO_RAD = (PI / 180.0f);
+    float tilt_rad;
+    float x_offset;
+
+    leg_tilt_deg = constrain_float(leg_tilt_deg, -10.0f, 10.0f);
+    leg_height = constrain_float(leg_height, MIN_Y, MAX_Y);
+    tilt_rad = leg_tilt_deg * LEG_DEG_TO_RAD;
+    x_offset = leg_x_gain * leg_height * tanf(tilt_rad);
+
+    if (fabsf(leg_tilt_deg) > 0.3f && fabsf(x_offset) < leg_x_min_step)
+    {
+        x_offset = (leg_tilt_deg > 0.0f) ? leg_x_min_step : -leg_x_min_step;
+    }
+
+    return constrain_float(x_offset, -leg_x_limit, leg_x_limit);
+}
 
 // 妯＄硦瑙勫垯鍙傛暟
 typedef struct
@@ -480,9 +500,10 @@ void balance_control()
             speed_loop_div = 0;
             Velocity_Angle_left = Velocity(&g_velocity_forward, now_velocity, target_velocity);
             Velocity_Angle_right = Velocity_Angle_left;
+            g_leg_speed_tilt_deg = Velocity_Angle_left;
         }
 
-        Balance_Pwm = Balance(roll, raw_gyro_x, Velocity_Angle_left);
+        Balance_Pwm = Balance(roll, raw_gyro_x, 0.0f);
     }
 
     Gyro_Pwm = GyroControl(-Balance_Pwm, raw_gyro_x);
@@ -554,16 +575,29 @@ void leg_control(float *x, float *y)
     const bool leg_adaptive_enable = false; // 主平衡调参阶段先固定腿部，避免腿控扰动主串级 PID。
     if (!leg_adaptive_enable)
     {
-        *x = constrain_float(*x, MIN_X, MAX_X);
-        *y = constrain_float(*y, MIN_Y, MAX_Y);
-        x_cmd_last = *x;
+        float base_x = constrain_float(*x, MIN_X, MAX_X);
+        float base_y = constrain_float(*y, MIN_Y, MAX_Y);
+        float leg_x_offset = speed_tilt_to_leg_x(g_leg_speed_tilt_deg, base_y);
+        float x_target = constrain_float(base_x + leg_x_offset, MIN_X, MAX_X);
+
+        *x = base_x;
+        *y = base_y;
         left_y_cmd_last = *y;
         right_y_cmd_last = *y;
-        leg_error = 0.0f;
+        leg_error = leg_x_offset;
         hold_mode = true;
 
-        servo_control(SERVO_LEG_LEFT, *x, left_y_cmd_last, &leg1, &leg2);
-        servo_control(SERVO_LEG_RIGHT, *x, right_y_cmd_last, &leg3, &leg4);
+        if (is_first_run)
+        {
+            x_cmd_last = x_target;
+        }
+        else
+        {
+            x_cmd_last += constrain_float(x_target - x_cmd_last, -leg_x_step_limit, leg_x_step_limit);
+        }
+
+        servo_control(SERVO_LEG_LEFT, x_cmd_last, left_y_cmd_last, &leg1, &leg2);
+        servo_control(SERVO_LEG_RIGHT, x_cmd_last, right_y_cmd_last, &leg3, &leg4);
 
         if (is_first_run)
         {
