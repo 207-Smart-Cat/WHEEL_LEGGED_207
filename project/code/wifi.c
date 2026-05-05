@@ -16,7 +16,7 @@ uint8 wifi_spi_receive_data[WIFI_RX_BUF_SIZE];
 static uint32 data_length;                       
 
 // ================= 全局状态变量 =================
-wifi_mode_t current_wifi_mode = WIFI_MODE_WAVE;         
+wifi_mode_t current_wifi_mode = WIFI_MODE_SILENT;         
 uint8 wave_format = 1; 
 uint8 channel_show[5] = {1, 1, 1, 0, 0}; 
 volatile uint8 WIFI_Send_flag = 0;               
