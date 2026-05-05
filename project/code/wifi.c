@@ -16,7 +16,7 @@ uint8 wifi_spi_receive_data[WIFI_RX_BUF_SIZE];
 static uint32 data_length;                       
 
 // ================= 全局状态变量 =================
-wifi_mode_t current_wifi_mode = WIFI_MODE_SILENT;         
+wifi_mode_t current_wifi_mode = WIFI_MODE_WAVE;         
 uint8 wave_format = 1; 
 uint8 channel_show[5] = {1, 1, 1, 0, 0}; 
 volatile uint8 WIFI_Send_flag = 0;               
@@ -252,6 +252,7 @@ void wifi_report_task(void)
                         seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.pid_out_leg;
                     }
 
+
                     seekfree_assistant_oscilloscope_data.channel_num = idx; 
                     if(idx > 0) 
                     {
@@ -263,7 +264,7 @@ void wifi_report_task(void)
                 }
                 else // ============ 文本 (TEXT) 模式 ============
                 {
-                    char text_buffer[200] = {0}; 
+                    char text_buffer[300] = {0}; 
                     char temp[64];               
                     
                     if(channel_show[0] && !channel_show[1] && !channel_show[2] && !channel_show[3] && !channel_show[4])
@@ -309,6 +310,7 @@ void wifi_report_task(void)
                         strcat(text_buffer, temp);
                     }
                     
+
                     if(strlen(text_buffer) > 0) 
                     {
                         strcat(text_buffer, "\r\n");

@@ -1,7 +1,6 @@
 #include "remote.h"
-#include "kalman_rm.h"
+#include "imu.h"
 #include "param.h"
-extern Attitude_3D_Kalman filter; // 卡尔曼滤波器
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
@@ -21,6 +20,28 @@ static Remote_CtrlData_t s_RemoteData = {
 
 static bool remote_drive_active = false;
 
+float remote_dbg_connected = 0.0f;
+float remote_dbg_ch1 = REMOTE_SAFE_VALUE_CH1;
+float remote_dbg_ch2 = REMOTE_SAFE_VALUE_CH2;
+float remote_dbg_ch3 = REMOTE_SAFE_VALUE_CHother;
+float remote_dbg_ch4 = REMOTE_SAFE_VALUE_CHother;
+float remote_dbg_ch5 = REMOTE_SAFE_VALUE_CHother;
+float remote_dbg_ch6 = REMOTE_SAFE_VALUE_CHother;
+float remote_dbg_frame_count = 0.0f;
+float remote_dbg_raw_state = 0.0f;
+float remote_dbg_uart4_isr_count = 0.0f;
+
+static void Remote_UpdateDebugValues(void)
+{
+    remote_dbg_connected = (s_RemoteData.status == REMOTE_CONNECTED) ? 1.0f : 0.0f;
+    remote_dbg_ch1 = (float)s_RemoteData.channel[0];
+    remote_dbg_ch2 = (float)s_RemoteData.channel[1];
+    remote_dbg_ch3 = (float)s_RemoteData.channel[2];
+    remote_dbg_ch4 = (float)s_RemoteData.channel[3];
+    remote_dbg_ch5 = (float)s_RemoteData.channel[4];
+    remote_dbg_ch6 = (float)s_RemoteData.channel[5];
+    remote_dbg_raw_state = (float)uart_receiver.state;
+}
 // ------------------- 接口实现 -------------------
 
 void Remote_Init(void)
@@ -36,7 +57,8 @@ void Remote_Init(void)
     s_RemoteData.channel[3] = REMOTE_SAFE_VALUE_CHother;
     s_RemoteData.channel[4] = REMOTE_SAFE_VALUE_CHother;
     s_RemoteData.channel[5] = REMOTE_SAFE_VALUE_CHother;
-    target_angle = IMU_data.filter_result.yaw;
+    Remote_UpdateDebugValues();
+    target_angle = 180.0f;
 }
 
 void Remote_Update(void)
@@ -44,6 +66,7 @@ void Remote_Update(void)
     // 检查底层库是否完成了一帧数据的解析
     if (1 == uart_receiver.finsh_flag)
     {
+        remote_dbg_frame_count += 1.0f;
         // 判断遥控器状态
         if (1 == uart_receiver.state)
         {
@@ -72,6 +95,8 @@ void Remote_Update(void)
             s_RemoteData.channel[5] = REMOTE_SAFE_VALUE_CHother;
             // Keep ISR path non-blocking. Do not print here.
         }
+
+        Remote_UpdateDebugValues();
 
         // 必须清零完成标志位，等待下一次接收
         uart_receiver.finsh_flag = 0;
@@ -135,7 +160,7 @@ void Remote_control_callback(void)
             if (!remote_drive_active)
             {
                 remote_drive_active = true;
-                target_angle = IMU_data.filter_result.yaw;
+                target_angle = 180.0f;
             }
 
             yaw_stick = (Remote_GetChannelData(1) - REMOTE_SAFE_VALUE_CH1) / 332.0f;
@@ -152,14 +177,14 @@ void Remote_control_callback(void)
         {
             remote_drive_active = false;
             target_velocity = 0.0f;
-            target_angle = IMU_data.filter_result.yaw;
+            target_angle = 180.0f;
         }
     }
     else if (remote_drive_active)
     {
         remote_drive_active = false;
         target_velocity = 0.0f;
-        target_angle = IMU_data.filter_result.yaw;
+        target_angle = 180.0f;
     }
 }
 

@@ -4,9 +4,10 @@
 #include "control.h"
 #include "param.h"
 #include "navigation_data_handling.h"
-#include "kalman_rm.h"
+#include "imu.h"
 #include "wifi.h"
 #include "battery_monitor.h"
+#include "remote.h"
 // --- 1. 绝对地址内存分配 ---
 #pragma location = 0x28001000
 __no_init CoreA_Status_t core_a_status; 
@@ -79,6 +80,16 @@ void IPC_Pull_Status_To_CoreB(void) {
  * @note  建议放在 Core 0 的 5ms 定时器中断最开始执行
  */
 // Core A 定时器调用的精准更新函数
+void IPC_Update_Wifi_Status_From_CoreB(uint8 connected) {
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    core_b_cmd.wifi_connected = connected;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+}
+
+uint8 IPC_CoreB_Wifi_Is_Connected(void) {
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    return core_b_cmd.wifi_connected;
+}
 void IPC_Check_And_Apply_Params_To_Core0(void) {
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     

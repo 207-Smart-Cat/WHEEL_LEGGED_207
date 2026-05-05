@@ -60,10 +60,14 @@ static const screen_param_item_t k_page3_items[] = {
     {P_NAV_R_W_NORMAL, 145, 192, "%-8.5f"},
     {P_NAV_R_W_SLIP, 145, 214, "%-8.5f"},
     {P_NAV_R_GYRO, 145, 236, "%-8.5f"},
-    {P_MAG_OFFSET_X, 75,  265, "%-6.1f"},
-    {P_MAG_OFFSET_Y, 170, 265, "%-6.1f"},
-    {P_MAG_SCALE_X,  75,  287, "%-6.2f"},
-    {P_MAG_SCALE_Y,  170, 287, "%-6.2f"}
+    {P_MAG_OFFSET_X, 75,  252, "%-6.1f"},
+    {P_MAG_OFFSET_Y, 170, 252, "%-6.1f"},
+    {P_MAG_SCALE_X,  75,  268, "%-6.2f"},
+    {P_MAG_SCALE_Y,  170, 268, "%-6.2f"},
+    {P_LEG_X_GAIN, 75,  284, "%-6.3f"},
+    {P_LEG_X_LIMIT, 170, 284, "%-6.3f"},
+    {P_LEG_X_MIN_STEP, 75,  300, "%-6.4f"},
+    {P_LEG_X_STEP_LIMIT, 170, 300, "%-6.4f"}
 };
 
 static const float *screen_get_param_values(void)
@@ -157,15 +161,14 @@ void show_page_1(void)
     ips200_show_string(5, y_start + row_height * 8 + 5, temp_str);
     sprintf(temp_str, "Leg:%-6.3f", core_a_status.pid_out_leg);
     ips200_show_string(125, y_start + row_height * 8 + 5, temp_str);
-
-    sprintf(temp_str, "X:%-6.3f", core_a_status.nav_x);
+    sprintf(temp_str, "LS:%-6.2f", core_a_status.leg_dbg_speed_tilt);
     ips200_show_string(5, y_start + row_height * 9 + 5, temp_str);
-    sprintf(temp_str, "Y:%-6.3f", core_a_status.nav_y);
+    sprintf(temp_str, "LO:%-6.3f", core_a_status.leg_dbg_x_offset);
     ips200_show_string(125, y_start + row_height * 9 + 5, temp_str);
 
-    sprintf(temp_str, "V:%-6.3f", core_a_status.nav_v);
+    sprintf(temp_str, "XT:%-6.3f", core_a_status.leg_dbg_x_target);
     ips200_show_string(5, y_start + row_height * 10 + 5, temp_str);
-    sprintf(temp_str, "W:%-6.1f", core_a_status.nav_w);
+    sprintf(temp_str, "TK:%-6.0f", core_a_status.leg_dbg_tick);
     ips200_show_string(125, y_start + row_height * 10 + 5, temp_str);
 }
 
@@ -247,15 +250,21 @@ void show_page_3(void)
         ips200_show_string(42, 236, "R_Gyro:");   
 
         // --- [下半区] 你的 4 个磁力计参数 (双列紧凑布局) ---
-        ips200_draw_line(38, 255, 239, 255, RGB565_SKYBLUE); // 区块横向分割线
-        ips200_show_string(4, 275, "Mag"); 
+        ips200_draw_line(38, 252, 239, 252, RGB565_SKYBLUE); // 区块横向分割线
+        ips200_show_string(4, 258, "Mag"); 
         
         // 左列
-        ips200_show_string(42, 265, "OX:");
-        ips200_show_string(42, 287, "SX:");
+        ips200_show_string(42, 252, "OX:");
+        ips200_show_string(42, 268, "SX:");
         // 右列
-        ips200_show_string(140, 265, "OY:");
-        ips200_show_string(140, 287, "SY:");
+        ips200_show_string(140, 252, "OY:");
+        ips200_show_string(140, 268, "SY:");
+
+        ips200_show_string(4, 292, "LX");
+        ips200_show_string(42, 284, "G:");
+        ips200_show_string(140, 284, "L:");
+        ips200_show_string(42, 300, "Mn:");
+        ips200_show_string(140, 300, "St:");
     }
 
     // ==========================================

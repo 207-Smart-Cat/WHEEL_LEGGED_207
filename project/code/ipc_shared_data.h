@@ -33,6 +33,7 @@ typedef struct {
     
     uint64_t update_mask;    // 【必须升级为 64 位！】
     uint8 param_update_flag; 
+    uint8 wifi_connected;
 } CoreB_Command_t;
 // 绝对地址声明
 extern __no_init CoreA_Status_t core_a_status;
@@ -43,7 +44,9 @@ extern const char *const g_param_names[PARAM_COUNT];
 void IPC_Init_Shared_Memory(void);
 void IPC_Push_Status_From_CoreA(void);
 void IPC_Pull_Status_To_CoreB(void);
-void IPC_Check_And_Apply_Params_To_Core0(void); // Core 0 专用更新函数
+void IPC_Check_And_Apply_Params_To_Core0(void);
+void IPC_Update_Wifi_Status_From_CoreB(uint8 connected);
+uint8 IPC_CoreB_Wifi_Is_Connected(void); // Core 0 专用更新函数
 
 
 // Flash 参数固化与读取接口

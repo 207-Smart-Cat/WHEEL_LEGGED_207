@@ -3,7 +3,7 @@
 
 #include "zf_common_headfile.h"
 #include "pid.h"
-#include "kalman_rm.h"
+#include "imu.h"
 #include "engine.h"
 #include "small_driver_uart_control.h"
 // #include "jump_control.h"
@@ -22,6 +22,7 @@ extern pid_param_t motor_direction;       // 方向PID参数
 extern signed short int Motor_Left, Motor_Right;
 extern float out_speed_l, out_speed_r, out_angle_l, out_angle_r, out_gyro_l, out_gyro_r;
 extern float Turn_Pwm, leg_error;
+extern float leg_dbg_speed_tilt, leg_dbg_x_offset, leg_dbg_x_target, leg_dbg_x_cmd, leg_dbg_tick;
 //******************
 void Balance_init(void);
 void balance_control(void);

@@ -37,4 +37,15 @@ Remote_Status Remote_GetStatus(void);
 
 void Remote_control_callback(void);
 int32_t Remote_GetChannelData(uint8_t ch_index);
+
+extern float remote_dbg_connected;
+extern float remote_dbg_ch1;
+extern float remote_dbg_ch2;
+extern float remote_dbg_ch3;
+extern float remote_dbg_ch4;
+extern float remote_dbg_ch5;
+extern float remote_dbg_ch6;
+extern float remote_dbg_frame_count;
+extern float remote_dbg_raw_state;
+extern float remote_dbg_uart4_isr_count;
 #endif /* _REMOTE_H_ */

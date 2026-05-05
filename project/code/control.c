@@ -1,8 +1,9 @@
 #include "control.h"
 #include "FiveBarLinkageData.h"
-#include "kalman_rm.h"
+#include "imu.h"
 #include "param.h"
-#include "wifi.h"
+#include "ipc_shared_data.h"
+#include "zf_device_imu660rc.h"
 // 鍏ㄥ眬鍙橀噺
 extern float target_velocity;      // 鐩爣閫熷害
 extern float target_angle;         // 鐩爣瑙掑害
@@ -32,7 +33,6 @@ float out_gyro_l  = 0, out_gyro_r  = 0;
 // 鍏朵粬鍙橀噺
 static float balance_last_error = 0.0f;
 static float gyro_last_error = 0.0f;
-extern Attitude_3D_Kalman filter; // 鍗″皵鏇兼护娉㈠櫒
 extern IMU_t IMU_data;            // IMU鏁版嵁
 float roll;              // 鍊炬枩瑙掑害
 int engine_change = 600; // 鍙戝姩鏈哄彉鍖栭噺
@@ -55,27 +55,32 @@ typedef struct
 
 static velocity_loop_state_t g_velocity_forward = {0};
 static float g_leg_speed_tilt_deg = 0.0f;
+float leg_dbg_speed_tilt = 0.0f;
+float leg_dbg_x_offset = 0.0f;
+float leg_dbg_x_target = 0.0f;
+float leg_dbg_x_cmd = 0.0f;
+float leg_dbg_tick = 0.0f;
 
 static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
 {
     const float LEG_DEG_TO_RAD = (PI / 180.0f);
-    const float LEG_X_GAIN = 1.6f;
-    const float LEG_X_LIMIT = 0.018f;
-    const float LEG_X_MIN_STEP = 0.0008f;
+    float x_gain = (leg_x_gain > 0.0f) ? leg_x_gain : Leg_X_Gain_init;
+    float x_limit = (leg_x_limit > 0.0f) ? leg_x_limit : Leg_X_Limit_init;
+    float x_min_step = (leg_x_min_step > 0.0f) ? leg_x_min_step : Leg_X_Min_Step_init;
     float tilt_rad;
     float x_offset;
 
     leg_tilt_deg = constrain_float(leg_tilt_deg, -10.0f, 10.0f);
     leg_height = constrain_float(leg_height, MIN_Y, MAX_Y);
     tilt_rad = leg_tilt_deg * LEG_DEG_TO_RAD;
-    x_offset = LEG_X_GAIN * leg_height * tanf(tilt_rad);
+    x_offset = x_gain * leg_height * tanf(tilt_rad);
 
-    if (fabsf(leg_tilt_deg) > 0.3f && fabsf(x_offset) < LEG_X_MIN_STEP)
+    if (fabsf(leg_tilt_deg) > 0.3f && fabsf(x_offset) < x_min_step)
     {
-        x_offset = (leg_tilt_deg > 0.0f) ? LEG_X_MIN_STEP : -LEG_X_MIN_STEP;
+        x_offset = (leg_tilt_deg > 0.0f) ? x_min_step : -x_min_step;
     }
 
-    return constrain_float(x_offset, -LEG_X_LIMIT, LEG_X_LIMIT);
+    return constrain_float(x_offset, -x_limit, x_limit);
 }
 
 // 妯＄硦瑙勫垯鍙傛暟
@@ -395,9 +400,7 @@ float GyroControl(float target_gyro, float current_gyro) // 角速度环
 
     float gyro_delta = gyro_error - gyro_last_error;
     float gyro_control = +motor_gyro.kp * gyro_error + motor_gyro.ki * gyro_Integral + motor_gyro.kd * gyro_delta;
-    gyro_last_error = gyro_error; // 更新误差
-
-    return -gyro_control; // 返回控制输出
+    gyro_last_error = gyro_error; // 更新误差    return gyro_control; // gyro loop output sign fixed
 }
 
 // 闄愬埗PWM杈撳嚭鑼冨洿
@@ -463,12 +466,32 @@ void balance_control()
     static float Balance_Pwm = 0.0f;
     static uint8_t angle_loop_div = 0;
     static uint8_t speed_loop_div = 0;
+    static uint8_t leg_loop_div = 0;
     float Gyro_Pwm;
-    float raw_gyro_x = IMU_data.gyro[0] - 0.49f;
+    float angle_gyro_x = imu660rc_gyro_transition(imu660rc_gyro_x) - 0.49f;
+    float gyro_loop_x = (float)imu660rc_gyro_x - 0.49f * imu660rc_transition_factor[1];
+
+    if (IPC_CoreB_Wifi_Is_Connected() == 0)
+    {
+        Balance_Pwm = 0.0f;
+        Velocity_Angle_left = 0.0f;
+        Velocity_Angle_right = 0.0f;
+        Turn_Pwm = 0.0f;
+        Motor_Left = 0;
+        Motor_Right = 0;
+        out_speed_l = 0.0f;
+        out_speed_r = 0.0f;
+        out_angle_l = 0.0f;
+        out_angle_r = 0.0f;
+        out_gyro_l = 0.0f;
+        out_gyro_r = 0.0f;
+        small_driver_set_duty(0, 0);
+        return;
+    }
 
     if (First_angle && IMU_ready)
     {
-        target_angle = IMU_data.filter_result.yaw;
+        target_angle = 180.0f;
         First_angle = false;
     }
 
@@ -504,12 +527,13 @@ void balance_control()
             Velocity_Angle_left = Velocity(&g_velocity_forward, now_velocity, target_velocity);
             Velocity_Angle_right = Velocity_Angle_left;
             g_leg_speed_tilt_deg = Velocity_Angle_left;
+            leg_dbg_speed_tilt = g_leg_speed_tilt_deg;
         }
 
-        Balance_Pwm = Balance(roll, raw_gyro_x, 0.0f);
+        Balance_Pwm = Balance(roll, angle_gyro_x, 0.0f);
     }
 
-    Gyro_Pwm = GyroControl(-Balance_Pwm, raw_gyro_x);
+    Gyro_Pwm = GyroControl(Balance_Pwm * imu660rc_transition_factor[1], gyro_loop_x);
     Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
 
     if (jump_position == 1)
@@ -534,6 +558,13 @@ void balance_control()
     out_gyro_r = Gyro_Pwm;
 
     small_driver_set_duty(-Motor_Left, -Motor_Right);
+
+    leg_loop_div++;
+    if (leg_loop_div >= 20)
+    {
+        leg_loop_div = 0;
+        leg_control(&x_current, &y_current);
+    }
 }
 
 // 婊ゆ尝澶勭悊
@@ -575,14 +606,19 @@ void leg_control(float *x, float *y)
     (void)leg_Ki;
     (void)leg_Kd;
 
+    leg_dbg_tick += 1.0f;
+
     const bool leg_adaptive_enable = false; // 主平衡调参阶段先固定腿部，避免腿控扰动主串级 PID。
     if (!leg_adaptive_enable)
     {
-        const float LEG_X_STEP_LIMIT = 0.0012f;
+        float leg_x_step = constrain_float(leg_x_step_limit, 0.0001f, 0.02f);
         float base_x = constrain_float(*x, MIN_X, MAX_X);
         float base_y = constrain_float(*y, MIN_Y, MAX_Y);
         float leg_x_offset = speed_tilt_to_leg_x(g_leg_speed_tilt_deg, base_y);
         float x_target = constrain_float(base_x + leg_x_offset, MIN_X, MAX_X);
+        leg_dbg_speed_tilt = g_leg_speed_tilt_deg;
+        leg_dbg_x_offset = leg_x_offset;
+        leg_dbg_x_target = x_target;
 
         *x = base_x;
         *y = base_y;
@@ -597,8 +633,9 @@ void leg_control(float *x, float *y)
         }
         else
         {
-            x_cmd_last += constrain_float(x_target - x_cmd_last, -LEG_X_STEP_LIMIT, LEG_X_STEP_LIMIT);
+            x_cmd_last += constrain_float(x_target - x_cmd_last, -leg_x_step, leg_x_step);
         }
+        leg_dbg_x_cmd = x_cmd_last;
 
         servo_control(SERVO_LEG_LEFT, x_cmd_last, left_y_cmd_last, &leg1, &leg2);
         servo_control(SERVO_LEG_RIGHT, x_cmd_last, right_y_cmd_last, &leg3, &leg4);

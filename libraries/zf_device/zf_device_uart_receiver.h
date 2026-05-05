@@ -56,8 +56,7 @@
 #define REV_DATA_LEN                        ( 25   )            // SBUSÖ¡³¤
 #define FRAME_STAR                          ( 0X0F )            // Ö¡Í·ÐÅÏ¢
 #define FRAME_END                           ( 0X00 )            // Ö¡Î²ÐÅÏ¢
-#define SBUS_NORMAL_STATE                   ( 0X03 )            // Õý³£×´Ì¬
-#define SBUS_ABNORMAL_STATE                 ( 0X0F )            // Ê§¿Ø×´Ì¬
+#define SBUS_ABNORMAL_STATE                 ( 0X04 )            // Ê§¿Ø×´Ì¬
 
 typedef struct
 {

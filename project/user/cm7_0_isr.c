@@ -30,11 +30,6 @@ void pit0_ch0_isr() // IMU原始数据 1ms 更新，姿态解算 5ms 更新
 {
     static uint8_t attitude_div = 0;
     pit_isr_flag_clear(PIT_CH0);
-
-    PERF_PROBE_HIGH(PERF_PROBE_IMU_RAW);
-    imu_update_raw();
-    PERF_PROBE_LOW(PERF_PROBE_IMU_RAW);
-
     attitude_div++;
     if (attitude_div >= 5)
     {
@@ -59,9 +54,9 @@ void pit0_ch2_isr() //
 void pit0_ch10_isr() // 预留：主平衡控制已迁移到 5ms IMU 中断
 {
     test_pit10_cnt++; // 每次进中断，计数器加 1
-    PERF_PROBE_HIGH(PERF_PROBE_BALANCE);
+//    PERF_PROBE_HIGH(PERF_PROBE_BALANCE);
     balance_control();
-    PERF_PROBE_LOW(PERF_PROBE_BALANCE);
+//    PERF_PROBE_LOW(PERF_PROBE_BALANCE);
     // balance_control() 已改为在 5ms IMU 中断中执行
 //    if (IMU_ready) {
 //        navi_ekf_update(); 
@@ -171,6 +166,10 @@ void gpio_5_exti_isr() // 外部 GPIO_5 中断服务函数
 
 void gpio_6_exti_isr() // 外部 GPIO_6 中断服务函数
 {
+    if (exti_flag_get(IMU660RC_INT2_PIN))
+    {
+        imu660rc_callback();
+    }
 }
 
 void gpio_7_exti_isr() // 外部 GPIO_7 中断服务函数
@@ -345,6 +344,7 @@ void uart4_isr(void)
     if (Cy_SCB_GetRxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_RX_NOT_EMPTY)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_4), CY_SCB_UART_RX_NOT_EMPTY);
+        remote_dbg_uart4_isr_count += 1.0f;
         uart_receiver_handler(); // 无线串口接收中断函数指针，根据初始化时设置的函数进行跳转
     }
     else if (Cy_SCB_GetTxInterruptMask(get_scb_module(UART_4)) & CY_SCB_UART_TX_DONE)

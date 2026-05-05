@@ -1465,12 +1465,6 @@
             <name>$PROJ_DIR$\..\..\code\ipc_shared_data.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\kalman_rm.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\kalman_rm.h</name>
-        </file>
-        <file>
             <name>$PROJ_DIR$\..\..\code\matrix.c</name>
         </file>
         <file>
@@ -2381,6 +2375,12 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\..\libraries\zf_device\zf_device_imu660rb.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\..\libraries\zf_device\zf_device_imu660rc.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\..\libraries\zf_device\zf_device_imu660rc.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\..\libraries\zf_device\zf_device_imu963ra.c</name>

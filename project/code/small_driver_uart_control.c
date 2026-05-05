@@ -1,4 +1,21 @@
 #include "small_driver_uart_control.h"
+#include "ipc_shared_data.h"
+#include "param.h"
+#define MOTOR_STARTUP_DUTY_STEP (120)
+#define MOTOR_DUTY_MAX_ABS      (MAX_DUTY * (PWM_DUTY_MAX / 100))
+
+static int16 motor_duty_abs_limit(int16 target, int16 limit_abs)
+{
+    if (target > limit_abs)
+    {
+        return limit_abs;
+    }
+    if (target < -limit_abs)
+    {
+        return (int16)(-limit_abs);
+    }
+    return target;
+}
 
 small_device_value_struct motor_value;      // 定义通讯参数结构体
 
@@ -76,6 +93,37 @@ void uart_control_callback(void)
 //-------------------------------------------------------------------------------------------------------------------
 void small_driver_set_duty(int16 left_duty, int16 right_duty)
 {
+    static uint8 motor_output_enabled = 0;
+    static int16 startup_duty_limit = 0;
+
+    if (IPC_CoreB_Wifi_Is_Connected() == 0)
+    {
+        left_duty = 0;
+        right_duty = 0;
+        motor_output_enabled = 0;
+        startup_duty_limit = 0;
+    }
+    else
+    {
+        if (motor_output_enabled == 0)
+        {
+            motor_output_enabled = 1;
+            startup_duty_limit = 0;
+        }
+
+        if (startup_duty_limit < MOTOR_DUTY_MAX_ABS)
+        {
+            startup_duty_limit += MOTOR_STARTUP_DUTY_STEP;
+            if (startup_duty_limit > MOTOR_DUTY_MAX_ABS)
+            {
+                startup_duty_limit = MOTOR_DUTY_MAX_ABS;
+            }
+        }
+
+        left_duty = motor_duty_abs_limit(left_duty, startup_duty_limit);
+        right_duty = motor_duty_abs_limit(right_duty, startup_duty_limit);
+    }
+
     motor_value.send_data_buffer[0] = 0xA5;                                         // 配置帧头
 
     motor_value.send_data_buffer[1] = 0X01;                                         // 配置功能字

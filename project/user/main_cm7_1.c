@@ -36,6 +36,7 @@ int main(void)
     pit_ms_init(PIT_IPS, 50);
 //    // =================================WIFI模块初始化======================
      wifi_init();
+     IPC_Update_Wifi_Status_From_CoreB(wifi_is_connected);
      pit_ms_init(PIT_WiFi, 20);
     //=================================共享缓存以及Flash部分模块初始化===============
     pit_ms_init(PIT_IPC, 5);
@@ -53,6 +54,7 @@ int main(void)
         wifi_process_loop();                    //wifi接收数据解析
         wifi_report_task();
         wifi_auto_reconnect_task();
+        IPC_Update_Wifi_Status_From_CoreB(wifi_is_connected);
         VOFA_UART_Process();
 
         system_delay_ms(1);
