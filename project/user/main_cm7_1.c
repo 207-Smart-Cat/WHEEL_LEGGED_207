@@ -5,11 +5,11 @@
 #include "vofa_protocol.h"
 // **************************** 核间通信区域 ****************************
 // 将 Core A 的状态数据放在 0x28001000
-#pragma location = 0x28001000
-__no_init CoreA_Status_t core_a_status; 
+#pragma location = IPC_CORE_A_SHARED_ADDR
+__no_init CoreA_Status_t core_a_status;
 
 // 将 Core B 的指令数据放在 0x28001200 (往后偏移512字节，预留充足空间)
-#pragma location = 0x28001200
+#pragma location = IPC_CORE_B_SHARED_ADDR
 __no_init CoreB_Command_t core_b_cmd;
 
 // **************************** 宏定义区域 ****************************
@@ -27,7 +27,7 @@ int main(void)
 {
     clock_init(SYSTEM_CLOCK_250M); 	// 时钟配置及系统初始化<务必保留>
     debug_info_init();                  // 调试串口信息初始化
-     
+
     // 此处编写用户代码 例如外设初始化代码等
     interrupt_global_disable(); // 初始化外设之前先关闭中断
     flash_init();
@@ -43,7 +43,7 @@ int main(void)
     IPC_Load_Params_From_Flash();
     //=================================串口调参初始化======================
     VOFA_UART_Init();
-    
+
 
     interrupt_global_enable(0);// 在初始化后使能中断
     // 此处编写用户代码 例如外设初始化代码等

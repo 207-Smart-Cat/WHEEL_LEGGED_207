@@ -3,9 +3,9 @@
     <Tool>
         <Name>linker</Name>
         <Parent>
-            <Path>D:\learnplace\Git_BalanceCar\CYT4BB7\project\iar\project_config\Debug_m7_0\Exe\cyt4bb7_cm_7_0.out</Path>
+            <Path>E:\CYT4BB7\project\iar\project_config\Debug_m7_0\Exe\cyt4bb7_cm_7_0.out</Path>
             <Output>
-                <Path>D:\learnplace\Git_BalanceCar\CYT4BB7\project\iar\Debug_m7_0\List\cyt4bb7_cm_7_0.map</Path>
+                <Path>E:\CYT4BB7\project\iar\Debug_m7_0\List\cyt4bb7_cm_7_0.map</Path>
             </Output>
         </Parent>
         <Parent>
@@ -15,9 +15,9 @@
             </Output>
         </Parent>
         <Parent>
-            <Path>E:\CYT4BB7\project\iar\project_config\Debug_m7_0\Exe\cyt4bb7_cm_7_0.out</Path>
+            <Path>D:\learnplace\Git_BalanceCar\CYT4BB7\project\iar\project_config\Debug_m7_0\Exe\cyt4bb7_cm_7_0.out</Path>
             <Output>
-                <Path>E:\CYT4BB7\project\iar\Debug_m7_0\List\cyt4bb7_cm_7_0.map</Path>
+                <Path>D:\learnplace\Git_BalanceCar\CYT4BB7\project\iar\Debug_m7_0\List\cyt4bb7_cm_7_0.map</Path>
             </Output>
         </Parent>
     </Tool>

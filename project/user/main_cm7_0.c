@@ -16,11 +16,11 @@
 // 在 CM7_0 和 CM7_1 中都需要加入这段代码
 
 // 将 Core A 的状态数据放在 0x28001000
-#pragma location = 0x28001000
+#pragma location = IPC_CORE_A_SHARED_ADDR
 __no_init CoreA_Status_t core_a_status;
 
 // 将 Core B 的指令数据放在 0x28001200 (往后偏移512字节，预留充足空间)
-#pragma location = 0x28001200
+#pragma location = IPC_CORE_B_SHARED_ADDR
 __no_init CoreB_Command_t core_b_cmd;
 
 // **************************** 宏定义区域 ****************************
@@ -90,24 +90,24 @@ int main(void)
 //
 //    // 修改：将 PIT_Balance 从 3ms 改为 10ms 以匹配 ENCODER_DT (0.01f)
 //    // 注意：如果是平衡控制强制要求 3ms，则需修改导航的 ENCODER_DT 为 0.03f 并在 3ms 中断分频调用
-    pit_ms_init(PIT_Balance, 1); 
+    pit_ms_init(PIT_Balance, 1);
 ////    jump_stop = 1; // 在 control.c 中，jump_stop=1 会让 PID 参数全置 0
     interrupt_global_enable(0);
-//    
+//
     system_delay_ms(1000); // 额外等待1秒，确保卡尔曼完全静止收敛
-//    
+//
 //    // === 3. 重置导航原点 (0,0) ===
 //    Navi_Data_Set_Origin();
-//    
+//
 //    // === 4. 切断电机动力，开启纯推车模式 ===
-   
-    
-    
+
+
+
 
   interrupt_global_enable(0); // 在初始化后使能中断
 
   system_delay_ms(1000);
-  
+
 
   while (true)
   {
@@ -122,7 +122,7 @@ int main(void)
     IPC_Push_Status_From_CoreA();
 
     // Core0 main-loop debug output disabled for balance timing test.
-    //printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);    
+    //printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);
    // printf("Target Angle:%f\n",target_angle);
     // printf("%f,%f",temp_a,temp_b);
     // printf("V: %d \n",motor_value.receive_left_speed_data);
@@ -132,7 +132,7 @@ int main(void)
     // printf("stand: %f \n",target_motor_Stand);
     // printf("target_v: %f \n",target_velocity);
 //    printf("cnt: %d \n",test_pit10_cnt);
-    
+
     system_delay_ms(1);
   }
 }

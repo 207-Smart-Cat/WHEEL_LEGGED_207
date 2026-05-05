@@ -1,13 +1,13 @@
-# WiFi and Parameter Usage Notes
+﻿# WiFi 和参数使用注意事项
 
-本文档记录当前项目的 WiFi 使用方式、VOFA 调参协议、增加参数时必须修改的位置，以及目前已经发现的限制。
+本文记录当前项目的 WiFi 使用方式、VOFA 调参协议、增加参数时需要修改的位置，以及参数系统的限制。
 
 ## WiFi 使用方式
 
-### 1. 基本配置位置
+### 基本配置位置
 
-- WiFi 配置文件：`project/code/wifi.h`
-- WiFi 实现文件：`project/code/wifi.c`
+- WiFi 配置：`project/code/wifi.h`
+- WiFi 实现：`project/code/wifi.c`
 - Core 1 主循环：`project/user/main_cm7_1.c`
 
 常用配置在 `wifi.h`：
@@ -20,12 +20,12 @@
 #define WIFI_PASSWORD_TEST  "12345678"
 ```
 
-`WIFI_PROTOCOL_MODE` 含义：
+`WIFI_PROTOCOL_MODE`：
 
 - `0`：TCP
 - `1`：UDP，当前默认
 
-### 2. 当前默认模式
+### 当前默认模式
 
 当前默认：
 
@@ -40,11 +40,9 @@ wifi_mode_t current_wifi_mode = WIFI_MODE_SILENT;
 - 不影响 `LOG_Printf()` 输出日志。
 - 不影响参数读取、参数下发、参数保存。
 
-注意：`WIFI_MODE_SILENT` 只关闭 `wifi_report_task()` 的周期数据，不代表 WiFi 完全静默。`LOG_Printf()` 在 WiFi 已连接时仍会走 WiFi 发送。
+注意：`WIFI_MODE_SILENT` 只关闭 `wifi_report_task()` 的周期数据，不代表 WiFi 完全静默。`LOG_Printf()` 在 WiFi 已连接时仍可能走 WiFi 发送。
 
-### 3. WiFi 主循环任务
-
-Core 1 主循环中当前相关任务：
+### Core 1 主循环任务
 
 ```c
 wifi_process_loop();
@@ -58,13 +56,13 @@ IPC_Update_Wifi_Status_From_CoreB(wifi_is_connected);
 
 - `wifi_process_loop()`：接收 WiFi 数据并交给 `VOFA_Protocol_Parse()`。
 - `wifi_report_task()`：按当前 WiFi 模式发送波形、图像或日志。
-- `wifi_health_check_task()`：当前禁用主动探测，避免误判重连。
+- `wifi_health_check_task()`：当前不主动探测，避免误判 WiFi-SPI 正常忙状态为断线。
 - `wifi_auto_reconnect_task()`：仅在 `wifi_is_connected == 0` 后尝试重连。
-- `IPC_Update_Wifi_Status_From_CoreB()`：把 WiFi 连接状态同步给 Core 0，Core 0 据此决定是否允许电机输出。
+- `IPC_Update_Wifi_Status_From_CoreB()`：把 WiFi 状态同步给 Core 0，Core 0 据此决定是否允许电机输出。
 
-### 4. WiFi 重连注意事项
+### WiFi 重连注意事项
 
-当前重连机制主要依赖发送失败：
+当前重连主要依赖发送失败：
 
 ```text
 WiFi 发送失败累计达到阈值
@@ -75,19 +73,19 @@ WiFi 发送失败累计达到阈值
 注意：
 
 - 默认静默模式下没有周期发送，所以物理拔掉 WiFi 模块不一定会立刻被发现。
-- 不建议在小车上电运行时热插拔 WiFi 模块。
+- 不建议在小车运行时热插拔 WiFi 模块。
 - 如果 WiFi 模块异常，优先复位小车或复位 WiFi 模块。
 - 不要简单用 `WIFI_SPI_INT_PIN` 低电平判断断线，该引脚在模块忙或正常通信时也可能为低，容易误判。
 
 ## VOFA / WiFi 指令
 
-所有参数调节最终进入：
+所有调参指令最终进入：
 
 ```c
 VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
 ```
 
-### 1. 模式切换：`AA EE`
+### 模式切换：`AA EE`
 
 格式：
 
@@ -104,7 +102,7 @@ AA EE mode
 
 如果当前已经在 `WIFI_MODE_WAVE`，再次下发 `AA EE 01` 会切换 `wave_format`。
 
-### 2. 通道显示切换：`AA FF`
+### 通道显示切换：`AA FF`
 
 格式：
 
@@ -114,7 +112,7 @@ AA FF channel
 
 `channel` 范围是 `1` 到 `5`，对应 `channel_show[0]` 到 `channel_show[4]`。
 
-### 3. 单参数下发：`AA C2`
+### 单参数下发：`AA C2`
 
 格式：
 
@@ -129,7 +127,7 @@ AA C2 param_id float_little_endian
 - float 使用小端字节序。
 - 当前 `AA C2` 单参数下发没有校验和。
 
-代码里会转换为：
+代码转换关系：
 
 ```c
 index = param_id - 1;
@@ -138,7 +136,7 @@ core_b_cmd.update_mask |= (1ULL << index);
 core_b_cmd.param_update_flag = 1;
 ```
 
-### 4. 保存参数到 Flash：`AA C3`
+### 保存参数到 Flash：`AA C3`
 
 格式：
 
@@ -155,7 +153,7 @@ abs(core_a_status.right_pwm_duty) > 1000
 
 如果电机还在明显输出，则拒绝保存。
 
-### 5. 批量下发所有参数：`AA C4`
+### 批量下发所有参数：`AA C4`
 
 格式：
 
@@ -170,7 +168,7 @@ AA C4 [PARAM_COUNT 个 float] checksum
 - 当前 payload 长度是 `45 * 4 = 180` 字节。
 - 当前整帧长度是 `180 + 3 = 183` 字节。
 
-### 6. 读取当前参数：`AA C5`
+### 读取当前参数：`AA C5`
 
 格式：
 
@@ -198,15 +196,11 @@ project/code/param_registry.def
 
 1. 在 `project/code/param.c` 第一段添加运行时变量。
 
-示例：
-
 ```c
 float new_param = 0.0f;
 ```
 
 2. 在 `project/code/param.c` 第二段添加默认值。
-
-示例：
 
 ```c
 const float New_Param_init = 0.0f;
@@ -214,16 +208,12 @@ const float New_Param_init = 0.0f;
 
 3. 在 `project/code/param.h` 声明运行时变量和默认值。
 
-示例：
-
 ```c
 extern float new_param;
 extern const float New_Param_init;
 ```
 
 4. 在 `project/code/param_registry.def` 最后追加一行。
-
-示例：
 
 ```c
 PARAM_ITEM(P_NEW_PARAM, new_param, New_Param_init, "New_Param")
@@ -255,20 +245,19 @@ VOFA param_id = param_registry.def 中的顺序号，从 1 开始
 
 ## 当前参数系统限制
 
-### 1. 当前参数数量
-
-当前：
+### 当前参数数量
 
 ```text
 PARAM_COUNT = 45
 ```
 
-### 2. VOFA 回传缓冲限制
+### VOFA 回传缓冲限制
 
-`vofa_protocol.c` 当前有两个固定缓冲：
+`vofa_protocol.c` 当前使用统一参数帧缓冲：
 
 ```c
-uint8 tx_buf[200];
+#define VOFA_PARAM_FRAME_BUF_SIZE   (256)
+#define VOFA_PARAM_MAX_COUNT        (63)
 ```
 
 一帧参数长度：
@@ -277,26 +266,15 @@ uint8 tx_buf[200];
 PARAM_COUNT * 4 + 3
 ```
 
-因此当前 200 字节缓冲最多支持：
+当前 256 字节缓冲最多支持：
 
 ```text
-floor((200 - 3) / 4) = 49 个参数
+floor((256 - 3) / 4) = 63 个参数
 ```
 
-也就是说，在不改缓冲区的情况下，最多只能再追加 4 个参数。
+代码中已经加入 `VOFA_PARAM_MAX_COUNT (63)` 编译期保护。超过 63 个参数前，需要同时扩大参数帧缓冲并重做 `CoreB_Command_t.update_mask`。
 
-如果参数数量超过 49，需要同步修改：
-
-- `VOFA_Send_Params_To_Wifi()` 里的 `tx_buf[200]`
-- `VOFA_Protocol_Parse()` 中 `AA C5` 分支里的 `tx_buf[200]`
-
-建议改成至少：
-
-```c
-uint8 tx_buf[256];
-```
-
-### 3. UART / WiFi 接收缓冲限制
+### UART / WiFi 接收缓冲限制
 
 `vofa_protocol.c`：
 
@@ -317,7 +295,7 @@ PARAM_COUNT * 4 + 3 <= 256
 PARAM_COUNT <= 63
 ```
 
-### 4. update_mask 限制
+### update_mask 限制
 
 `CoreB_Command_t` 里使用：
 
@@ -325,17 +303,11 @@ PARAM_COUNT <= 63
 uint64_t update_mask;
 ```
 
-所以最多只能可靠表示 64 个参数。
+所以最多只能可靠表示 64 个参数。当前代码按最多 63 个参数设计，因为 `param_id` 从 1 开始，且避免 `1ULL << 64` 这类风险。
 
-当前 `IPC_Check_And_Apply_Params_To_Core0()` 使用：
+如果 `PARAM_COUNT >= 64`，继续增加参数会有位移风险，必须改成多段 mask 或全量更新机制。
 
-```c
-1ULL << i
-```
-
-如果 `PARAM_COUNT >= 64`，继续增加参数会有位移风险。超过 63 个参数前必须改成多段 mask 或者改成全量更新机制。
-
-### 5. Flash 保存格式
+### Flash 保存格式
 
 当前 Flash 保存格式：
 
@@ -353,11 +325,10 @@ PARAM_COUNT + 2
 
 注意：
 
-- `ipc_shared_data.c` 里的 `PARAM_DATA_LENGTH (19)` 是旧常量，目前实际保存读取没有使用它。
-- 后续建议删除或改名，避免误导。
+- `PARAM_DATA_LENGTH (19)` 已删除。
 - 当前 Flash 没有参数版本号，也没有保存 `PARAM_COUNT`。
 
-### 6. 改参数表后的 Flash 风险
+### 改参数表后的 Flash 风险
 
 安全操作：
 
@@ -375,64 +346,20 @@ PARAM_COUNT + 2
 
 ## 当前检查发现的问题
 
-### 1. `PARAM_DATA_LENGTH` 已过期
-
-位置：
-
-```text
-project/code/ipc_shared_data.c
-```
-
-当前：
-
-```c
-#define PARAM_DATA_LENGTH (19)
-```
-
-实际保存和读取已经使用：
-
-```c
-PARAM_COUNT + 2
-```
-
-结论：`PARAM_DATA_LENGTH` 是过期常量，建议后续删除，避免误导。
-
-### 2. `balance_zero_offset` 没有进入参数表
-
-`param.c` 中存在：
-
-```c
-float balance_zero_offset = 8.0f;
-const float Balance_Zero_Offset_init = 0.0f;
-```
-
-但 `param_registry.def` 中没有 `balance_zero_offset`。
-
-结论：
-
-- 它不能通过 VOFA/WiFi 调节。
-- 它不会保存到 Flash。
-- 它不会出现在 `FLASH LOAD RESULT`。
-- 当前它只是代码内部变量。
-
-如果以后要远程调机械零点，需要把它追加到 `param_registry.def` 最后，不要插入中间。
-
-### 3. 参数回传缓冲已经接近上限
-
-当前 45 个参数，200 字节回传缓冲最多支持 49 个参数。
-
-结论：再加参数时优先把 `tx_buf[200]` 改大。
-
-### 4. Flash 格式缺少版本号
+### 1. Flash 格式缺少版本号
 
 当前只靠头尾判断 Flash 是否有效。
 
 结论：短期可用，但长期建议加入参数版本号或参数数量字段。
 
+### 2. 参数回传缓冲已扩展
+
+当前 45 个参数，256 字节回传缓冲最多支持 63 个参数。
+
+结论：短期继续追加参数是安全的；接近 63 个参数时必须重做缓冲和 `update_mask`。
+
 ## 建议后续优化顺序
 
-1. 删除或废弃 `PARAM_DATA_LENGTH`。
-2. 把 VOFA 参数回传缓冲从 200 改到 256。
-3. 给 Flash 参数格式加入版本号和 `PARAM_COUNT`。
-4. 如果需要，把 `balance_zero_offset` 追加到参数表最后。
-5. 当参数接近 64 个时，重做 `update_mask`。
+1. 给 Flash 参数格式加入版本号和 `PARAM_COUNT`。
+2. 当参数接近 64 个时，重做 `update_mask`。
+3. 按功能继续清理旧调试字段和无效参数。
