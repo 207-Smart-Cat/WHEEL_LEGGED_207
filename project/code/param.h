@@ -29,7 +29,6 @@ extern const float servo_alpha;
 extern float target_velocity;    // 目标速度
 extern float target_angle;       // 目标角度
 extern float target_motor_Stand; // 目标电机角度
-extern float balance_zero_offset; // 平衡零点补偿
 extern float x_current, y_current;
 extern float leg_x_gain, leg_x_limit, leg_x_min_step, leg_x_step_limit;
 
@@ -48,7 +47,7 @@ extern const float Q_yaw_init, Q_pr_init, Q_bias_init, R_yaw_init, R_pr_init;
 extern const float Speed_p_init, Speed_i_init, Speed_d_init;
 extern const float Angle_p_init, Angle_i_init, Angle_d_init;
 extern const float Gyro_p_init, Gyro_i_init, Gyro_d_init;
-extern const float Target_Velocity_init, Target_Angle_init, Target_Motor_Stand_init, Balance_Zero_Offset_init;
+extern const float Target_Velocity_init, Target_Angle_init, Target_Motor_Stand_init;
 extern const float Leg_Kp_init, Leg_Ki_init, Leg_Kd_init;
 extern const float X_Current_init, Y_Current_init;
 extern const float Leg_X_Gain_init, Leg_X_Limit_init, Leg_X_Min_Step_init, Leg_X_Step_Limit_init;

@@ -10,7 +10,6 @@
 float target_velocity = 0;
 float target_angle = 180.0f;
 float target_motor_Stand = 0;
-float balance_zero_offset = 8.0f;
 float x_current = 0, y_current = 0.04;
 float leg_x_gain = 1.6f, leg_x_limit = 0.018f, leg_x_min_step = 0.0008f, leg_x_step_limit = 0.0012f;
 float mag_offset_x = -0.080f, mag_offset_y = 0.040f;
@@ -37,7 +36,7 @@ const float Speed_p_init = 0.025f,  Speed_i_init = 0.0002f, Speed_d_init = 0.0f;
 const float Angle_p_init = 12.3999f, Angle_i_init = 0.15f,  Angle_d_init = 0.15f;
 const float Gyro_p_init  = 15.0f,   Gyro_i_init  = 0.0f,   Gyro_d_init  = 0.0f;
 
-const float Target_Velocity_init = 0.0f, Target_Angle_init = 180.0f, Target_Motor_Stand_init = 0.0f, Balance_Zero_Offset_init = 0.0f;
+const float Target_Velocity_init = 0.0f, Target_Angle_init = 180.0f, Target_Motor_Stand_init = 0.0f;
 
 const float Leg_Kp_init = 0.0f,    Leg_Ki_init = 0.0f,    Leg_Kd_init = 0.0f;
 const float X_Current_init = 0.0f, Y_Current_init = 0.05f;

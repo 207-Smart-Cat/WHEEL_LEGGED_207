@@ -53,6 +53,7 @@ int main(void)
        screen_display_process();               //屏幕显示
         wifi_process_loop();                    //wifi接收数据解析
         wifi_report_task();
+        wifi_health_check_task();
         wifi_auto_reconnect_task();
         IPC_Update_Wifi_Status_From_CoreB(wifi_is_connected);
         VOFA_UART_Process();

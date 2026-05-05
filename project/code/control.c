@@ -495,7 +495,7 @@ void balance_control()
         First_angle = false;
     }
 
-    roll = IMU_data.filter_result.roll - balance_zero_offset;
+    roll = IMU_data.filter_result.roll;
 
     if (jump_stop == 1)
     {

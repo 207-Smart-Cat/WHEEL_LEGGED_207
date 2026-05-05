@@ -12,6 +12,8 @@
 // 宏定义和缓冲区
 #define WIFI_RX_BUF_SIZE    256         
 #define WIFI_MAX_RETRY      5           
+#define WIFI_SEND_FAIL_LIMIT        10
+#define WIFI_RECONNECT_COOLDOWN_TICKS 100
 uint8 wifi_spi_receive_data[WIFI_RX_BUF_SIZE];          
 static uint32 data_length;                       
 
@@ -31,6 +33,15 @@ static uint8 wifi_fifo_buffer[512];       // WiFi 专属底层 FIFO 数组
 fifo_struct wifi_data_fifo;               // WiFi 专属 FIFO 结构体
 static uint8 wifi_parse_buffer[512];      // 拼装完的完整数据包缓冲区
 
+static void wifi_mark_disconnected(const char *reason)
+{
+    wifi_is_connected = 0;
+    wifi_error_count = 0;
+    wifi_reconnect_cooldown = WIFI_RECONNECT_COOLDOWN_TICKS;
+    fifo_clear(&wifi_data_fifo);
+    printf("\r\n[SYS] WiFi Connection Lost: %s. Entering Auto-Reconnect Mode...\r\n", reason);
+}
+
 uint8 WIFI_Send_Buffer_Checked(const uint8 *data, uint32 len, uint8 flush_now)
 {
     if (data == NULL || len == 0)
@@ -46,11 +57,9 @@ uint8 WIFI_Send_Buffer_Checked(const uint8 *data, uint32 len, uint8 flush_now)
     if (wifi_spi_send_buffer((uint8 *)data, len) != 0)
     {
         wifi_error_count++;
-        if (wifi_error_count > 10)
+        if (wifi_error_count >= WIFI_SEND_FAIL_LIMIT)
         {
-            wifi_is_connected = 0;
-            wifi_reconnect_cooldown = 100;
-            printf("\r\n[SYS] WiFi Connection Lost! Entering Auto-Reconnect Mode...\r\n");
+            wifi_mark_disconnected("send failed");
         }
         return 1;
     }
@@ -63,6 +72,15 @@ uint8 WIFI_Send_Buffer_Checked(const uint8 *data, uint32 len, uint8 flush_now)
     }
 #endif
     return 0;
+}
+
+/**
+ * @brief WiFi low-rate health check
+ * @note Silent mode has no periodic send, so this probe is needed for hot-plug reconnect.
+ */
+void wifi_health_check_task(void)
+{
+    // Disabled: INT low and UDP send-now can be normal while WiFi-SPI is connected.
 }
 /**
  * @brief WiFi模块初始化并连接 (带超时限制)
@@ -128,6 +146,11 @@ void wifi_init(void)
  */
 void wifi_process_loop(void)
 {
+    if (wifi_is_connected == 0)
+    {
+        return;
+    }
+
     // 1. 读取零碎数据，扔进 FIFO 存起来
     data_length = wifi_spi_read_buffer(wifi_spi_receive_data, WIFI_RX_BUF_SIZE);
     if(data_length > 0)

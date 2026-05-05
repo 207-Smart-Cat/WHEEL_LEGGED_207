@@ -113,7 +113,6 @@ void IPC_Check_And_Apply_Params_To_Core0(void) {
 // ====================================================================
 #define PARAM_FLASH_SECTION  (0)  // 选用靠后的扇区
 #define PARAM_FLASH_PAGE     (95)    
-#define PARAM_DATA_LENGTH    (19)   // 保存 19 个数据（含头尾）
 
 // ====================================================================
 // 功能 1：真正操作硬件，把参数写入 Flash (Core B 调用)

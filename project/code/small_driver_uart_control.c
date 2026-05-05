@@ -4,6 +4,11 @@
 #define MOTOR_STARTUP_DUTY_STEP (120)
 #define MOTOR_DUTY_MAX_ABS      (MAX_DUTY * (PWM_DUTY_MAX / 100))
 
+static uint8 motor_output_is_allowed(void)
+{
+    return (IPC_CoreB_Wifi_Is_Connected() != 0);
+}
+
 static int16 motor_duty_abs_limit(int16 target, int16 limit_abs)
 {
     if (target > limit_abs)
@@ -15,6 +20,30 @@ static int16 motor_duty_abs_limit(int16 target, int16 limit_abs)
         return (int16)(-limit_abs);
     }
     return target;
+}
+
+static void motor_safety_reset(uint8 *enabled, int16 *startup_limit)
+{
+    *enabled = 0;
+    *startup_limit = 0;
+}
+
+static void motor_startup_ramp(uint8 *enabled, int16 *startup_limit)
+{
+    if (*enabled == 0)
+    {
+        *enabled = 1;
+        *startup_limit = 0;
+    }
+
+    if (*startup_limit < MOTOR_DUTY_MAX_ABS)
+    {
+        *startup_limit += MOTOR_STARTUP_DUTY_STEP;
+        if (*startup_limit > MOTOR_DUTY_MAX_ABS)
+        {
+            *startup_limit = MOTOR_DUTY_MAX_ABS;
+        }
+    }
 }
 
 small_device_value_struct motor_value;      // 定义通讯参数结构体
@@ -96,30 +125,15 @@ void small_driver_set_duty(int16 left_duty, int16 right_duty)
     static uint8 motor_output_enabled = 0;
     static int16 startup_duty_limit = 0;
 
-    if (IPC_CoreB_Wifi_Is_Connected() == 0)
+    if (motor_output_is_allowed() == 0)
     {
         left_duty = 0;
         right_duty = 0;
-        motor_output_enabled = 0;
-        startup_duty_limit = 0;
+        motor_safety_reset(&motor_output_enabled, &startup_duty_limit);
     }
     else
     {
-        if (motor_output_enabled == 0)
-        {
-            motor_output_enabled = 1;
-            startup_duty_limit = 0;
-        }
-
-        if (startup_duty_limit < MOTOR_DUTY_MAX_ABS)
-        {
-            startup_duty_limit += MOTOR_STARTUP_DUTY_STEP;
-            if (startup_duty_limit > MOTOR_DUTY_MAX_ABS)
-            {
-                startup_duty_limit = MOTOR_DUTY_MAX_ABS;
-            }
-        }
-
+        motor_startup_ramp(&motor_output_enabled, &startup_duty_limit);
         left_duty = motor_duty_abs_limit(left_duty, startup_duty_limit);
         right_duty = motor_duty_abs_limit(right_duty, startup_duty_limit);
     }
