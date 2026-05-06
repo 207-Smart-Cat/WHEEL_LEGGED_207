@@ -3,9 +3,6 @@
 
 #include "zf_common_headfile.h"
 #include "pid.h"
-#include"control.h"
-
-
 #define PWM_1              (TCPWM_CH13_P00_3)//左2 900向上 +
 #define PWM_2              (TCPWM_CH12_P05_3)//左1 改到 P05_3 测试
 #define PWM_3              (TCPWM_CH11_P01_1)//右1 900向上 -

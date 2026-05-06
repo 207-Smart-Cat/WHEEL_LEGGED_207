@@ -25,6 +25,7 @@
 #include "navigation_action.h"
 
 #include "imu.h"
+#include "jump_control.h"
 
 
 
@@ -434,8 +435,7 @@ void navi_execute_integrated_action(uint8_t point_idx) {
         case WP_TYPE_JUMP: // --- 跳跃/台阶动作 ---
             is_action_busy = 1;
 //            action_locked_yaw = robot_pose.yaw;
-//            jump_process_control(&x_current,&y_current);
-            system_delay_ms(100);
+            jump_start();
             break;
 
         case WP_TYPE_MINE_SWEEP: // // 今年新增：定点排雷运动逻辑预留

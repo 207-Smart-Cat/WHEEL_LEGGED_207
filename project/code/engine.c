@@ -1,5 +1,7 @@
 #include "engine.h"
 
+extern float target_motor_Stand;
+
 typedef struct
 {
     uint32 pwm_channel;
@@ -146,6 +148,12 @@ void engine_init(int pwm1, int pwm2)
     pwm_init(PWM_2, FREQ, g_pwm_out_2);
     pwm_init(PWM_3, FREQ, g_pwm_out_3);
     pwm_init(PWM_4, FREQ, g_pwm_out_4);
+}
+
+void engine_maintain(int pwm1, int pwm2)
+{
+    engine_left_maintain(pwm1, pwm2);
+    engine_right_maintain(pwm1, pwm2);
 }
 
 void engine_left_maintain(int pwm1, int pwm2)

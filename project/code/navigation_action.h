@@ -52,6 +52,6 @@ extern ActionSequence_t action_seq;
 extern uint8_t is_action_busy; 
 
 void navi_parse_global_path(void);
-void navi_action_manager(uint8_t curr_idx);
+void Navi_Action_Manager(uint8_t curr_idx);
 
 #endif // NAVIGATION_ACTION_H_

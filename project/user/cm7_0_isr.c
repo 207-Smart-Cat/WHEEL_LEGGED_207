@@ -7,6 +7,8 @@
 #include "ipc_shared_data.h"
 #include "control.h"
 #include "remote.h"
+#include "jump_control.h"
+#include "navigation_action.h"
 // 引入主函数中的定时标志位
 extern uint8 IPS200_flag;
 extern uint8 Motor_Control_flag;
@@ -85,8 +87,20 @@ void pit0_ch13_isr() // 舵机控制，固定周期执行
     pit_isr_flag_clear(PIT_CH13);
 }
 
-void pit0_ch14_isr() // 定时器通道 14 周期中断服务函数
+void pit0_ch14_isr() // 跳跃动作状态机 1ms
 {
+    static uint8 jump_was_active = 0;
+    uint8 jump_active;
+    extern float x_current, y_current;
+
+    jump_process_control(&x_current, &y_current);
+    jump_active = jump_is_active();
+    if (jump_was_active && !jump_active)
+    {
+        is_action_busy = 0;
+    }
+    jump_was_active = jump_active;
+
     pit_isr_flag_clear(PIT_CH14);
 }
 
@@ -320,7 +334,17 @@ void uart2_isr(void)
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);
 
         // 【名花有主】：电机驱动的解析函数必须放在串口 2 这里！
-        uart_control_callback();
+        if (!jump_should_suspend_encoder())
+        {
+            uart_control_callback();
+        }
+        else
+        {
+            uint8 discard_data;
+            while (uart_query_byte(SMALL_DRIVER_UART, &discard_data))
+            {
+            }
+        }
     }
     else if (Cy_SCB_GetTxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_TX_DONE)
     {

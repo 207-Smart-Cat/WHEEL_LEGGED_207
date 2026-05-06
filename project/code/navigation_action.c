@@ -1,5 +1,6 @@
 #include "navigation_action.h"
 #include "navigation_data_handling.h"
+#include "jump_control.h"
 
 // ==================== 实例化状态机变量 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -68,6 +69,7 @@ static void Navi_Action_FSM_Update(uint8_t target_idx, double distance) {
             y_current = 0.04f;         // 压低重心
             target_motor_Stand = 3.0f; // 身体前倾
             if (distance < 0.1f || action_fsm.state_timer_ms > 2000) {
+                jump_start();
                 action_fsm.state = FSM_JUMP_TAKEOFF;
                 action_fsm.state_timer_ms = 0;
             }
@@ -76,7 +78,7 @@ static void Navi_Action_FSM_Update(uint8_t target_idx, double distance) {
         case FSM_JUMP_TAKEOFF:
             y_current = 0.14f;         // 爆发起跳
             target_velocity = 900;
-            if (action_fsm.state_timer_ms > 50) { 
+            if (jump_state == JUMP_AIR_RETRACT || action_fsm.state_timer_ms > 200) { 
                 action_fsm.state = FSM_JUMP_AIRBORNE;
                 action_fsm.state_timer_ms = 0;
                 action_fsm.is_airborne_expect = 1; // 告诉EKF抛弃里程计
@@ -85,7 +87,7 @@ static void Navi_Action_FSM_Update(uint8_t target_idx, double distance) {
 
         case FSM_JUMP_AIRBORNE:
             y_current = 0.05f;         // 空中收腿
-            if (fabsf(filter_data.accel[2]) > 2.0f * GRAVITY || action_fsm.state_timer_ms > 600) {
+            if (jump_state == JUMP_RECOVER || action_fsm.state_timer_ms > 600) {
                 action_fsm.state = FSM_JUMP_LANDING;
                 action_fsm.state_timer_ms = 0;
                 action_fsm.is_airborne_expect = 0; // 告诉EKF恢复
@@ -96,7 +98,7 @@ static void Navi_Action_FSM_Update(uint8_t target_idx, double distance) {
             y_current = 0.04f;                    //屈腿缓冲
             target_velocity = 400;
             target_motor_Stand = 1.6f;
-            if (action_fsm.state_timer_ms > 300) { 
+            if (!jump_is_active() && action_fsm.state_timer_ms > 300) { 
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
                 y_current = 0.08f;     
