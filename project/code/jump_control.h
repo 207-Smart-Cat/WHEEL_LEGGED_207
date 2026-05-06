@@ -9,7 +9,6 @@ typedef enum
     JUMP_PREPARE,
     JUMP_BURST,
     JUMP_AIR_RETRACT,
-    JUMP_PRE_BUFFER,
     JUMP_EXE_BUFFER,
     JUMP_RECOVER
 } JumpState;

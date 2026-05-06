@@ -7,13 +7,13 @@
 
 #define JUMP_PREPARE_X       (0.00f)
 #define JUMP_PREPARE_Y       (0.03f)
-#define JUMP_BURST_PWM_1     (1050)
-#define JUMP_BURST_PWM_2     (1050)
+#define JUMP_BURST_PWM_1     (1200)
+#define JUMP_SERVO_SUM       (1500)
+#define JUMP_SERVO_MIN_PWM   (300)
+#define JUMP_SERVO_MAX_PWM   (1200)
 #define JUMP_AIR_RETRACT_X   (0.00f)
 #define JUMP_AIR_RETRACT_Y   (0.03f)
-#define JUMP_PRE_BUFFER_X    (0.00f)
-#define JUMP_PRE_BUFFER_Y    (0.05f)
-#define JUMP_EXE_BUFFER_X    (-0.01f)
+#define JUMP_EXE_BUFFER_X    (+0.01f)
 #define JUMP_EXE_BUFFER_Y    (0.05f)
 #define JUMP_RECOVER_X       (0.00f)
 #define JUMP_RECOVER_Y       (0.04f)
@@ -21,10 +21,9 @@
 #define JUMP_PREPARE_MS      (50U)
 #define JUMP_BURST_MS        (130U)
 #define JUMP_AIR_RETRACT_MS  (80U)
-#define JUMP_PRE_BUFFER_MS   (50U)
 #define JUMP_LANDING_MAX_MS  (600U)
-#define JUMP_RECOVER_MS      (200U)
-#define JUMP_LAND_ACCEL_G    (3.0f)
+#define JUMP_RECOVER_MS      (50U)
+#define JUMP_LAND_ACCEL_G    (1.0f)
 
 volatile JumpState jump_state = JUMP_FREE;
 volatile uint8 jump_engine_suspend = 0;
@@ -45,17 +44,41 @@ static void jump_set_state(JumpState next_state)
     jump_state_elapsed_ms = 0;
 }
 
-static void jump_drive_leg(float x, float y)
+static int jump_limit_pwm1(int pwm1)
 {
-    int left_1;
-    int left_2;
-    int right_1;
-    int right_2;
+    if (pwm1 < JUMP_SERVO_MIN_PWM)
+    {
+        return JUMP_SERVO_MIN_PWM;
+    }
+    if (pwm1 > JUMP_SERVO_MAX_PWM)
+    {
+        return JUMP_SERVO_MAX_PWM;
+    }
+    return pwm1;
+}
 
-    servo_control(SERVO_LEG_LEFT, x, y, &left_1, &left_2);
-    servo_control(SERVO_LEG_RIGHT, x, y, &right_1, &right_2);
-    engine_left_maintain(left_1, left_2);
-    engine_right_maintain(right_1, right_2);
+static void jump_drive_symmetric_pwm(int pwm1)
+{
+    int pwm2;
+
+    pwm1 = jump_limit_pwm1(pwm1);
+    pwm2 = JUMP_SERVO_SUM - pwm1;
+
+    pwm_set_duty(PWM_1, pwm1);
+    pwm_set_duty(PWM_3, pwm1);
+    pwm_set_duty(PWM_2, pwm2);
+    pwm_set_duty(PWM_4, pwm2);
+}
+
+static void jump_drive_symmetric_xy(float x, float y)
+{
+    int leg1;
+    int leg2;
+    int pwm1;
+
+    servo_control(SERVO_LEG_LEFT, x, y, &leg1, &leg2);
+    pwm1 = (leg1 + (JUMP_SERVO_SUM - leg2)) / 2;
+    jump_drive_symmetric_pwm(pwm1);
 }
 
 void jump_start(void)
@@ -98,7 +121,7 @@ void jump_process_control(float *current_x, float *current_y)
         case JUMP_PREPARE:
             *current_x = JUMP_PREPARE_X;
             *current_y = JUMP_PREPARE_Y;
-            jump_drive_leg(*current_x, *current_y);
+            jump_drive_symmetric_xy(*current_x, *current_y);
             if (jump_state_elapsed_ms >= JUMP_PREPARE_MS)
             {
                 jump_set_state(JUMP_BURST);
@@ -106,8 +129,7 @@ void jump_process_control(float *current_x, float *current_y)
             break;
 
         case JUMP_BURST:
-            engine_left_maintain(JUMP_BURST_PWM_1, JUMP_BURST_PWM_2);
-            engine_right_maintain(JUMP_BURST_PWM_1, JUMP_BURST_PWM_2);
+            jump_drive_symmetric_pwm(JUMP_BURST_PWM_1);
             if (jump_state_elapsed_ms >= JUMP_BURST_MS)
             {
                 jump_set_state(JUMP_AIR_RETRACT);
@@ -117,18 +139,8 @@ void jump_process_control(float *current_x, float *current_y)
         case JUMP_AIR_RETRACT:
             *current_x = JUMP_AIR_RETRACT_X;
             *current_y = JUMP_AIR_RETRACT_Y;
-            jump_drive_leg(*current_x, *current_y);
+            jump_drive_symmetric_xy(*current_x, *current_y);
             if (jump_state_elapsed_ms >= JUMP_AIR_RETRACT_MS)
-            {
-                jump_set_state(JUMP_PRE_BUFFER);
-            }
-            break;
-
-        case JUMP_PRE_BUFFER:
-            *current_x = JUMP_PRE_BUFFER_X;
-            *current_y = JUMP_PRE_BUFFER_Y;
-            jump_drive_leg(*current_x, *current_y);
-            if (jump_state_elapsed_ms >= JUMP_PRE_BUFFER_MS)
             {
                 jump_set_state(JUMP_EXE_BUFFER);
             }
@@ -137,9 +149,11 @@ void jump_process_control(float *current_x, float *current_y)
         case JUMP_EXE_BUFFER:
             *current_x = JUMP_EXE_BUFFER_X;
             *current_y = JUMP_EXE_BUFFER_Y;
-            jump_drive_leg(*current_x, *current_y);
+            jump_drive_symmetric_xy(*current_x, *current_y);
             if (IMU_data.accel[2] >= JUMP_LAND_ACCEL_G || jump_state_elapsed_ms >= JUMP_LANDING_MAX_MS)
             {
+                jump_set_suspend(0, 0);
+                jump_position = 0;
                 jump_set_state(JUMP_RECOVER);
             }
             break;
@@ -147,7 +161,7 @@ void jump_process_control(float *current_x, float *current_y)
         case JUMP_RECOVER:
             *current_x = JUMP_RECOVER_X;
             *current_y = JUMP_RECOVER_Y;
-            jump_drive_leg(*current_x, *current_y);
+            jump_drive_symmetric_xy(*current_x, *current_y);
             if (jump_state_elapsed_ms >= JUMP_RECOVER_MS)
             {
                 jump_set_suspend(0, 0);
@@ -167,7 +181,7 @@ void jump_process_control(float *current_x, float *current_y)
 
 void jump_abort(void)
 {
-    jump_drive_leg(JUMP_RECOVER_X, JUMP_RECOVER_Y);
+    jump_drive_symmetric_xy(JUMP_RECOVER_X, JUMP_RECOVER_Y);
     jump_set_suspend(0, 0);
     jump_position = 0;
     jump_set_state(JUMP_FREE);
