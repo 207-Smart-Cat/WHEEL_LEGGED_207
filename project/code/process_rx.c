@@ -2,9 +2,15 @@
 
 #define LPF_ALPHA               (0.6f)
 #define delta_T                 (0.005f)
-#define GyroOffset_Xdata        (0.0f)
-#define GyroOffset_Ydata        (0.0f)
-#define GyroOffset_Zdata        (0.0f)
+#define GyroOffset_Xdata        (9.0f)
+#define GyroOffset_Ydata        (-6.2f)
+#define GyroOffset_Zdata        (-0.4f)
+#define AccOffset_Xdata         (-15.0f)
+#define AccOffset_Ydata         (53.0f)
+#define AccOffset_Zdata         (-30.0f)
+#define AccScale_Xdata          (1.000821f)
+#define AccScale_Ydata          (1.002777f)
+#define AccScale_Zdata          (0.994748f)
 #define param_Kp                (0.2f)
 #define param_Ki                (0.0f)
 #define PROCESS_RX_GYRO_INT_LIMIT   (1.0f)
@@ -18,6 +24,20 @@ quater_param_t_rx Q_info;
 euler_param_t_rx eulerAngle;
 icm_param_t_rx icm_data;
 
+float process_rx_gyro_x_dps(float gyro_x_raw)
+{
+    return imu660rc_gyro_transition(gyro_x_raw - GyroOffset_Xdata);
+}
+
+float process_rx_gyro_y_dps(float gyro_y_raw)
+{
+    return imu660rc_gyro_transition(gyro_y_raw - GyroOffset_Ydata);
+}
+
+float process_rx_gyro_z_dps(float gyro_z_raw)
+{
+    return imu660rc_gyro_transition(gyro_z_raw - GyroOffset_Zdata);
+}
 static float normalize_angle_180(float angle)
 {
     while (angle > 180.0f)
@@ -177,13 +197,13 @@ void ICM_getEulerianAngles(void)
                    (float)imu660rc_gyro_y,
                    (float)imu660rc_gyro_z);
 
-    icm_data.acc_x = imu660rc_acc_transition((int16)acc_data[0]);
-    icm_data.acc_y = imu660rc_acc_transition((int16)acc_data[1]);
-    icm_data.acc_z = imu660rc_acc_transition((int16)acc_data[2]);
+    icm_data.acc_x = imu660rc_acc_transition((acc_data[0] - AccOffset_Xdata) * AccScale_Xdata);
+    icm_data.acc_y = imu660rc_acc_transition((acc_data[1] - AccOffset_Ydata) * AccScale_Ydata);
+    icm_data.acc_z = imu660rc_acc_transition((acc_data[2] - AccOffset_Zdata) * AccScale_Zdata);
 
-    icm_data.gyro_x = imu660rc_gyro_transition((int16)(gyro_data[0] - GyroOffset_Xdata)) * DEG_TO_RAD;
-    icm_data.gyro_y = imu660rc_gyro_transition((int16)(gyro_data[1] - GyroOffset_Ydata)) * DEG_TO_RAD;
-    icm_data.gyro_z = imu660rc_gyro_transition((int16)(gyro_data[2] - GyroOffset_Zdata)) * DEG_TO_RAD;
+    icm_data.gyro_x = process_rx_gyro_x_dps(gyro_data[0]) * DEG_TO_RAD;
+    icm_data.gyro_y = process_rx_gyro_y_dps(gyro_data[1]) * DEG_TO_RAD;
+    icm_data.gyro_z = process_rx_gyro_z_dps(gyro_data[2]) * DEG_TO_RAD;
 
     Q_info.q0 = imu660rc_quarternion[3];
     Q_info.q1 = imu660rc_quarternion[0];

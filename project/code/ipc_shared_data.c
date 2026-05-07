@@ -8,6 +8,8 @@
 #include "wifi.h"
 #include "battery_monitor.h"
 #include "remote.h"
+#include "vofa_protocol.h"
+#include "runtime_status.h"
 // --- 1. 绝对地址内存分配 ---
 #pragma location = IPC_CORE_A_SHARED_ADDR
 __no_init CoreA_Status_t core_a_status;
@@ -75,6 +77,9 @@ void IPC_Init_Shared_Memory(void) {
 
     core_b_cmd.update_mask = IPC_Get_All_Param_Mask();
     core_b_cmd.param_update_flag = 1;
+    core_b_cmd.runtime_module_enable_mask = RUNTIME_DEFAULT_MODULE_MASK;
+    core_b_cmd.vehicle_mode = 0;
+    core_b_cmd.runtime_status_valid = 1;
 
     SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -94,6 +99,10 @@ void IPC_Push_Status_From_CoreA(void) {
 
     // 3. 更新时间戳防卡死
     core_a_status.heartbeat++;
+    core_a_status.motor_reason = g_runtime_status.motor_reason;
+    core_a_status.balance_reason = g_runtime_status.balance_reason;
+    core_a_status.servo_reason = g_runtime_status.servo_reason;
+    core_a_status.remote_reason = g_runtime_status.remote_reason;
 
     // 4. 将写好的 Cache 刷进真正的 SRAM 中
     SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
@@ -113,14 +122,11 @@ void IPC_Pull_Status_To_CoreB(void) {
  */
 // Core A 定时器调用的精准更新函数
 void IPC_Update_Wifi_Status_From_CoreB(uint8 connected) {
-    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
-    core_b_cmd.wifi_connected = connected;
-    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    Runtime_Set_Wifi_Connected(connected);
 }
 
 uint8 IPC_CoreB_Wifi_Is_Connected(void) {
-    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
-    return core_b_cmd.wifi_connected;
+    return Runtime_Get_Wifi_Connected();
 }
 void IPC_Check_And_Apply_Params_To_Core0(void) {
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -181,6 +187,7 @@ void IPC_Load_Params_From_Flash(void) {
     if(flash_union_buffer[0].uint32_type == 0x55AA55AA &&
        flash_union_buffer[PARAM_COUNT + 1].uint32_type == 0x11223344)
     {
+        VOFA_Set_Param_Rx_Source(VOFA_PARAM_RX_SRC_FLASH);
         LOG_Printf("\r\n[SYS] Valid parameters found in Flash! Loading to Core A...\r\n");
 
         // 1. 极致精简：用循环把数据从 Flash 全部倒进结构体的数组里
@@ -275,6 +282,10 @@ void IPC_Load_Params_From_Flash(void) {
                F_S(core_b_cmd.params[P_MAG_SCALE_Y]), F_I(core_b_cmd.params[P_MAG_SCALE_Y]), F_D(core_b_cmd.params[P_MAG_SCALE_Y]));
 
         LOG_Printf("=============================================\r\n\r\n");
+        if (VOFA_Get_Param_Log_Detail())
+        {
+            VOFA_Log_Param_Bulk("[SYS] Flash parameters applied", "FLASH_LOAD", PARAM_COUNT);
+        }
 
         // 3. 敲响门铃，让 Core A 一次性全量更新
         core_b_cmd.update_mask = IPC_Get_All_Param_Mask(); // 【关键修改：64个1】
@@ -283,7 +294,12 @@ void IPC_Load_Params_From_Flash(void) {
     }
     else
     {
+        VOFA_Set_Param_Rx_Source(VOFA_PARAM_RX_SRC_DEFAULT);
         LOG_Printf("\r\n[SYS] Flash is empty or invalid. Using default params.\r\n");
+        if (VOFA_Get_Param_Log_Detail())
+        {
+            VOFA_Log_Param_Bulk("[SYS] Default parameters applied", "DEFAULT_LOAD", PARAM_COUNT);
+        }
 
         // ?? 【必须补上这三行救命代码！】
         // 如果 Flash 读取失败，必须敲响门铃，把刚才在 Init 里装填的 _init 出厂默认值强行同步给 Core 0

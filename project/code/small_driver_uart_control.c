@@ -1,12 +1,20 @@
 #include "small_driver_uart_control.h"
 #include "ipc_shared_data.h"
 #include "param.h"
+#include "runtime_status.h"
 #define MOTOR_STARTUP_DUTY_STEP (120)
 #define MOTOR_DUTY_MAX_ABS      (MAX_DUTY * (PWM_DUTY_MAX / 100))
 
 static uint8 motor_output_is_allowed(void)
 {
-    return (IPC_CoreB_Wifi_Is_Connected() != 0);
+    if (IPC_CoreB_Wifi_Is_Connected() == 0)
+    {
+        Runtime_Set_Motor_Reason(RUNTIME_REASON_WIFI_OFF);
+        return 0;
+    }
+
+    Runtime_Set_Motor_Reason(RUNTIME_REASON_NORMAL);
+    return 1;
 }
 
 static int16 motor_duty_abs_limit(int16 target, int16 limit_abs)
@@ -134,6 +142,10 @@ void small_driver_set_duty(int16 left_duty, int16 right_duty)
     else
     {
         motor_startup_ramp(&motor_output_enabled, &startup_duty_limit);
+        if (startup_duty_limit < MOTOR_DUTY_MAX_ABS)
+        {
+            Runtime_Set_Motor_Reason(RUNTIME_REASON_STARTUP_RAMP);
+        }
         left_duty = motor_duty_abs_limit(left_duty, startup_duty_limit);
         right_duty = motor_duty_abs_limit(right_duty, startup_duty_limit);
     }

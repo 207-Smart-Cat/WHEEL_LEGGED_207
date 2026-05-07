@@ -4,6 +4,8 @@
 #include "param.h"
 #include "ipc_shared_data.h"
 #include "zf_device_imu660rc.h"
+#include "runtime_status.h"
+#include "process_rx.h"
 // 鍏ㄥ眬鍙橀噺
 extern float target_velocity;      // 鐩爣閫熷害
 extern float target_angle;         // 鐩爣瑙掑害
@@ -400,7 +402,8 @@ float GyroControl(float target_gyro, float current_gyro) // 角速度环
 
     float gyro_delta = gyro_error - gyro_last_error;
     float gyro_control = +motor_gyro.kp * gyro_error + motor_gyro.ki * gyro_Integral + motor_gyro.kd * gyro_delta;
-    gyro_last_error = gyro_error; // 更新误差    return gyro_control; // gyro loop output sign fixed
+    gyro_last_error = gyro_error; // 更新误差
+    return gyro_control; // gyro loop output sign fixed
 }
 
 // 闄愬埗PWM杈撳嚭鑼冨洿
@@ -468,11 +471,11 @@ void balance_control()
     static uint8_t speed_loop_div = 0;
     static uint8_t leg_loop_div = 0;
     float Gyro_Pwm;
-    float angle_gyro_x = imu660rc_gyro_transition(imu660rc_gyro_x) - 0.49f;
-    float gyro_loop_x = (float)imu660rc_gyro_x - 0.49f * imu660rc_transition_factor[1];
+    float raw_gyro_x = process_rx_gyro_x_dps((float)imu660rc_gyro_x);
 
     if (IPC_CoreB_Wifi_Is_Connected() == 0)
     {
+        Runtime_Set_Balance_Reason(RUNTIME_REASON_WIFI_OFF);
         Balance_Pwm = 0.0f;
         Velocity_Angle_left = 0.0f;
         Velocity_Angle_right = 0.0f;
@@ -488,7 +491,7 @@ void balance_control()
         small_driver_set_duty(0, 0);
         return;
     }
-
+    Runtime_Set_Balance_Reason(RUNTIME_REASON_NORMAL);
     if (First_angle && IMU_ready)
     {
         target_angle = 180.0f;
@@ -530,10 +533,10 @@ void balance_control()
             leg_dbg_speed_tilt = g_leg_speed_tilt_deg;
         }
 
-        Balance_Pwm = Balance(roll, angle_gyro_x, 0.0f);
+        Balance_Pwm = Balance(roll, raw_gyro_x, 0.0f);
     }
 
-    Gyro_Pwm = GyroControl(Balance_Pwm * imu660rc_transition_factor[1], gyro_loop_x);
+    Gyro_Pwm = GyroControl(Balance_Pwm, raw_gyro_x);
     Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
 
     if (jump_position == 1)
@@ -608,6 +611,45 @@ void leg_control(float *x, float *y)
 
     leg_dbg_tick += 1.0f;
 
+    if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_SERVO))
+    {
+        float base_x = constrain_float(*x, MIN_X, MAX_X);
+        float base_y = constrain_float(*y, MIN_Y, MAX_Y);
+        extern const float servo_alpha;
+        Runtime_Set_Servo_Reason(RUNTIME_REASON_SERVO_OFF);
+
+        servo_control(SERVO_LEG_LEFT, base_x, base_y, &leg1, &leg2);
+        servo_control(SERVO_LEG_RIGHT, base_x, base_y, &leg3, &leg4);
+
+        if (is_first_run)
+        {
+            leg1_last = leg1;
+            leg2_last = leg2;
+            leg3_last = leg3;
+            leg4_last = leg4;
+            x_cmd_last = base_x;
+            is_first_run = false;
+        }
+
+        leg1 = (int)(leg1 * servo_alpha + leg1_last * (1.0f - servo_alpha));
+        leg2 = (int)(leg2 * servo_alpha + leg2_last * (1.0f - servo_alpha));
+        leg3 = (int)(leg3 * servo_alpha + leg3_last * (1.0f - servo_alpha));
+        leg4 = (int)(leg4 * servo_alpha + leg4_last * (1.0f - servo_alpha));
+
+        engine_left_maintain(leg1, leg2);
+        engine_right_maintain(leg3, leg4);
+
+        leg1_last = leg1;
+        leg2_last = leg2;
+        leg3_last = leg3;
+        leg4_last = leg4;
+        leg_error = 0.0f;
+        leg_dbg_speed_tilt = 0.0f;
+        leg_dbg_x_offset = 0.0f;
+        leg_dbg_x_target = base_x;
+        leg_dbg_x_cmd = base_x;
+        return;
+    }
     const bool leg_adaptive_enable = false; // 主平衡调参阶段先固定腿部，避免腿控扰动主串级 PID。
     if (!leg_adaptive_enable)
     {
@@ -616,6 +658,7 @@ void leg_control(float *x, float *y)
         float base_y = constrain_float(*y, MIN_Y, MAX_Y);
         float leg_x_offset = speed_tilt_to_leg_x(g_leg_speed_tilt_deg, base_y);
         float x_target = constrain_float(base_x + leg_x_offset, MIN_X, MAX_X);
+        Runtime_Set_Servo_Reason(RUNTIME_REASON_SERVO_FIXED);
         leg_dbg_speed_tilt = g_leg_speed_tilt_deg;
         leg_dbg_x_offset = leg_x_offset;
         leg_dbg_x_target = x_target;

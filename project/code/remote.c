@@ -1,6 +1,7 @@
 #include "remote.h"
 #include "imu.h"
 #include "param.h"
+#include "runtime_status.h"
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
@@ -152,11 +153,23 @@ void Remote_control_callback(void)
     float yaw_stick;
 
     Remote_Update();
+    if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_REMOTE))
+    {
+        Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_OFF);
+        if (remote_drive_active)
+        {
+            remote_drive_active = false;
+            target_velocity = 0.0f;
+            target_angle = 180.0f;
+        }
+        return;
+    }
 
     if (Remote_GetStatus() == REMOTE_CONNECTED)
     {
         if (Remote_GetChannelData(5) > 1000)
         {
+            Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
             if (!remote_drive_active)
             {
                 remote_drive_active = true;
@@ -173,18 +186,26 @@ void Remote_control_callback(void)
 
             target_velocity = (Remote_GetChannelData(2) - REMOTE_SAFE_VALUE_CH2) / 689.0f * 800.0f;
         }
-        else if (remote_drive_active)
+        else
+        {
+            Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_STANDBY);
+            if (remote_drive_active)
+            {
+                remote_drive_active = false;
+                target_velocity = 0.0f;
+                target_angle = 180.0f;
+            }
+        }
+    }
+    else
+    {
+        Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_LOST);
+        if (remote_drive_active)
         {
             remote_drive_active = false;
             target_velocity = 0.0f;
             target_angle = 180.0f;
         }
-    }
-    else if (remote_drive_active)
-    {
-        remote_drive_active = false;
-        target_velocity = 0.0f;
-        target_angle = 180.0f;
     }
 }
 

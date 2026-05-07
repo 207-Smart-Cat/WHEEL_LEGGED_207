@@ -26,6 +26,10 @@ typedef struct {
 #include "status_registry.def"
 #undef STATUS_ITEM
     uint32 heartbeat;
+    uint8 motor_reason;
+    uint8 balance_reason;
+    uint8 servo_reason;
+    uint8 remote_reason;
 
     // 【优化】用数组统一管理真实的参数！
     float act_params[PARAM_COUNT];
@@ -40,6 +44,9 @@ typedef struct {
     uint64_t update_mask;    // 【必须升级为 64 位！】
     uint8 param_update_flag;
     uint8 wifi_connected;
+    uint8 vehicle_mode;
+    uint8 runtime_status_valid;
+    uint32 runtime_module_enable_mask;
 } CoreB_Command_t;
 
 typedef char ipc_param_count_must_not_exceed_63[(PARAM_COUNT <= IPC_PARAM_MAX_COUNT) ? 1 : -1];

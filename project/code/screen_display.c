@@ -6,6 +6,8 @@
 #include "navigation_data_handling.h"
 #include "wifi.h"
 #include "param.h"
+#include "vofa_protocol.h"
+#include "runtime_status.h"
 // ** 全局变量区域 **
 uint8 IPS200_flag = 0;      // 屏幕显示flag（PIT中断置位）
 uint8 current_page = 0;     // Monitor 子页面索引 (0/1/2)
@@ -41,6 +43,8 @@ typedef enum {
     UI_SCREEN_PARAM_PAGE,
     UI_SCREEN_PARAM_SELECT,
     UI_SCREEN_PARAM_EDIT,
+    UI_SCREEN_PARAM_ADJUST,
+    UI_SCREEN_PARAM_DIRECT,
     UI_SCREEN_WIFI,
     UI_SCREEN_MODULES,
     UI_SCREEN_SYSTEM,
@@ -61,6 +65,13 @@ typedef struct {
     uint16_t press_ticks;
     uint8_t long_sent;
 } ui_key_state_t;
+
+typedef struct {
+    const char *name;
+    const ParamID_e *items;
+    uint8_t count;
+} ui_param_group_t;
+
 // ================= 16x16 Chinese glyphs for setup UI ==============
 typedef struct {
     uint16_t code;
@@ -206,6 +217,7 @@ static const uint16_t UI_TEXT_T_WIFI_SILENT[] = {0x9759, 0x9ED8, 0x0000};
 static const uint16_t UI_TEXT_T_WIFI_WAVE[] = {0x6CE2, 0x5F62, 0x0000};
 static const uint16_t UI_TEXT_T_WIFI_IMAGE[] = {0x56FE, 0x50CF, 0x0000};
 static const uint16_t UI_TEXT_T_WIFI_LOG[] = {0x65E5, 0x5FD7, 0x0000};
+static const uint16_t UI_TEXT_T_MODULE_MOTOR[] = {0x7535, 0x673A, 0x8F93, 0x51FA, 0x0000};
 static const uint16_t UI_TEXT_T_MODULE_BALANCE[] = {0x5E73, 0x8861, 0x63A7, 0x5236, 0x0000};
 static const uint16_t UI_TEXT_T_MODULE_SERVO[] = {0x8235, 0x673A, 0x63A7, 0x5236, 0x0000};
 static const uint16_t UI_TEXT_T_MODULE_REMOTE[] = {0x9065, 0x63A7, 0x63A5, 0x7BA1, 0x0000};
@@ -384,6 +396,67 @@ void screen_display_init(void)
     gpio_init(UI_KEY_BACK_PIN, GPI, 1, GPI_PULL_UP);
 }
 
+void screen_boot_begin(void)
+{
+    ips200_clear();
+    ips200_show_string(20, 8, "Wheel-Leg Boot");
+    ips200_draw_line(0, 28, 239, 28, RGB565_SKYBLUE);
+    ips200_show_string(8, 42, "Init sequence:");
+    ips200_show_string(8, 292, "P20_2: Skip WiFi");
+}
+
+void screen_boot_show_status(const char *module_name, const char *status)
+{
+    static uint8 row = 0;
+    char line[32];
+
+    if (module_name == NULL)
+    {
+        row = 0;
+        return;
+    }
+
+    if (row >= 8)
+    {
+        row = 0;
+        ips200_clear();
+        ips200_show_string(20, 8, "Wheel-Leg Boot");
+        ips200_draw_line(0, 28, 239, 28, RGB565_SKYBLUE);
+    }
+
+    sprintf(line, "%-12s : %s", module_name, status ? status : "OK");
+    ips200_show_string(8, 66 + row * 24, line);
+    row++;
+}
+
+void screen_boot_show_wifi_attempt(uint8 attempt, uint8 max_retry)
+{
+    char line[32];
+    ips200_show_string(8, 244, "WiFi connecting...");
+    sprintf(line, "Try %d/%d", attempt, max_retry);
+    ips200_show_string(8, 268, line);
+    ips200_show_string(8, 292, "P20_2: Skip WiFi");
+}
+
+uint8 screen_boot_skip_pressed(void)
+{
+    if (gpio_get_level(UI_KEY_BACK_PIN) == 0)
+    {
+        system_delay_ms(20);
+        return (gpio_get_level(UI_KEY_BACK_PIN) == 0) ? 1 : 0;
+    }
+    return 0;
+}
+
+void screen_boot_show_done(uint8 wifi_ready, uint8 wifi_skipped)
+{
+    ips200_show_string(8, 244, wifi_ready ? "WiFi: Connected" : (wifi_skipped ? "WiFi: Skipped" : "WiFi: Offline"));
+    ips200_show_string(8, 268, "Boot complete");
+    ips200_show_string(8, 292, "Enter menu...");
+    system_delay_ms(2000);
+    ips200_clear();
+    force_ui_refresh = 1;
+}
 // ================= 页面 1：运动状态监视 ==============
 void show_page_1(void)
 {
@@ -559,17 +632,22 @@ void show_page_3(void)
 static ui_screen_t ui_screen = UI_SCREEN_HOME;
 static uint8_t ui_home_index = 0;
 static uint8_t ui_mode_index = 0;
-static uint8_t ui_vehicle_mode = 0;
 static uint8_t ui_wifi_index = 0;
 static uint8_t ui_module_index = 0;
 static uint8_t ui_system_index = 0;
 static uint8_t ui_confirm_yes = 0;
 static ui_confirm_action_t ui_confirm_action = UI_ACTION_NONE;
-static uint8_t ui_param_page = 0;
+static uint8_t ui_param_group = 0;
+static uint8_t ui_param_group_top = 0;
 static uint8_t ui_param_row = 0;
+static uint8_t ui_param_top = 0;
 static ParamID_e ui_param_index = P_SPEED_P;
 static ParamID_e ui_edit_param = P_SPEED_P;
 static float ui_edit_value = 0.0f;
+static uint8_t ui_param_edit_choice = 0;
+static uint8_t ui_edit_step_scale_index = 1;
+static uint8_t ui_direct_digits[6] = {0, 0, 0, 0, 0, 0};
+static uint8_t ui_direct_digit_index = 0;
 static ui_key_state_t ui_keys[UI_KEY_COUNT] = {
     {1, 1, 0, 0, 0},
     {1, 1, 0, 0, 0},
@@ -601,14 +679,13 @@ static const char *const k_wifi_names[] = {
 };
 
 static const char *const k_module_names[] = {
+    "Motor Output",
     "Balance Enable",
     "Servo Enable",
     "Remote Enable",
     "Navigation Enable",
     "Debug Output"
 };
-
-static uint8_t ui_module_enabled[] = {1, 1, 1, 0, 0};
 
 static const char *const k_system_items[] = {
     "Save Params Flash",
@@ -643,6 +720,7 @@ static const uint16_t *const k_wifi_texts[] = {
 };
 
 static const uint16_t *const k_module_texts[] = {
+    UI_TEXT_T_MODULE_MOTOR,
     UI_TEXT_T_MODULE_BALANCE,
     UI_TEXT_T_MODULE_SERVO,
     UI_TEXT_T_MODULE_REMOTE,
@@ -650,13 +728,76 @@ static const uint16_t *const k_module_texts[] = {
     UI_TEXT_T_MODULE_DEBUG
 };
 
+static const runtime_module_t k_module_runtime_ids[] = {
+    RUNTIME_MODULE_MOTOR,
+    RUNTIME_MODULE_BALANCE,
+    RUNTIME_MODULE_SERVO,
+    RUNTIME_MODULE_REMOTE,
+    RUNTIME_MODULE_NAVIGATION,
+    RUNTIME_MODULE_DEBUG_OUTPUT
+};
 static const uint16_t *const k_system_texts[] = {
     UI_TEXT_T_SYS_SAVE,
     UI_TEXT_T_SYS_LOAD,
     UI_TEXT_T_SYS_DEFAULT,
     UI_TEXT_T_SYS_WIFI_RESTART,
     UI_TEXT_T_SYS_ABOUT
-};static uint8_t ui_key_raw(ui_key_id_t key)
+};
+static const ParamID_e k_param_group_filter[] = {
+    P_Q_YAW, P_Q_PR, P_Q_BIAS, P_R_YAW, P_R_PR
+};
+
+static const ParamID_e k_param_group_speed[] = {
+    P_SPEED_P, P_SPEED_I, P_SPEED_D, P_TARGET_VELOCITY
+};
+
+static const ParamID_e k_param_group_angle[] = {
+    P_ANGLE_P, P_ANGLE_I, P_ANGLE_D, P_TARGET_ANGLE, P_TARGET_MOTOR_STAND
+};
+
+static const ParamID_e k_param_group_gyro[] = {
+    P_GYRO_P, P_GYRO_I, P_GYRO_D
+};
+
+static const ParamID_e k_param_group_leg[] = {
+    P_LEG_KP, P_LEG_KI, P_LEG_KD, P_X_CURRENT, P_Y_CURRENT,
+    P_LEG_X_GAIN, P_LEG_X_LIMIT, P_LEG_X_MIN_STEP, P_LEG_X_STEP_LIMIT
+};
+
+static const ParamID_e k_param_group_air[] = {
+    P_AIR_ROLL_P, P_AIR_ROLL_I, P_AIR_ROLL_D
+};
+
+static const ParamID_e k_param_group_direction[] = {
+    P_DIR_P, P_DIR_I, P_DIR_D
+};
+
+static const ParamID_e k_param_group_navigation[] = {
+    P_NAV_Q_V, P_NAV_Q_W, P_NAV_Q_BIAS_AX, P_NAV_Q_BIAS_W,
+    P_NAV_R_V_NORMAL, P_NAV_R_V_SLIP, P_NAV_R_W_NORMAL, P_NAV_R_W_SLIP, P_NAV_R_GYRO
+};
+
+static const ParamID_e k_param_group_mag[] = {
+    P_MAG_OFFSET_X, P_MAG_OFFSET_Y, P_MAG_SCALE_X, P_MAG_SCALE_Y
+};
+
+static const ui_param_group_t k_param_groups[] = {
+    {"Filter",    k_param_group_filter,     ARRAY_SIZE(k_param_group_filter)},
+    {"Speed",     k_param_group_speed,      ARRAY_SIZE(k_param_group_speed)},
+    {"Angle",     k_param_group_angle,      ARRAY_SIZE(k_param_group_angle)},
+    {"Gyro",      k_param_group_gyro,       ARRAY_SIZE(k_param_group_gyro)},
+    {"Leg",       k_param_group_leg,        ARRAY_SIZE(k_param_group_leg)},
+    {"Air",       k_param_group_air,        ARRAY_SIZE(k_param_group_air)},
+    {"Direction", k_param_group_direction,  ARRAY_SIZE(k_param_group_direction)},
+    {"Nav",       k_param_group_navigation, ARRAY_SIZE(k_param_group_navigation)},
+    {"Mag",       k_param_group_mag,        ARRAY_SIZE(k_param_group_mag)}
+};
+
+static const float k_edit_step_scales[] = {
+    0.1f, 1.0f, 10.0f, 100.0f, 1000.0f
+};
+
+static uint8_t ui_key_raw(ui_key_id_t key)
 {
     switch (key)
     {
@@ -736,6 +877,11 @@ static void ui_draw_footer_text(const uint16_t *hint)
     ui_show_text(4, 304, hint);
 }
 
+static void ui_draw_footer_text_str(const char *hint)
+{
+    ips200_draw_line(0, 298, 239, 298, RGB565_SKYBLUE);
+    ips200_show_string(4, 304, hint);
+}
 
 static void ui_draw_text_list(const uint16_t *const *items, uint8_t count, uint8_t selected, uint8_t top, uint8_t rows)
 {
@@ -799,11 +945,17 @@ static float ui_param_step(ParamID_e id)
 
 static void ui_send_param_update(ParamID_e id, float value)
 {
+    VOFA_Set_Param_Rx_Source(VOFA_PARAM_RX_SRC_SCREEN);
     IPC_Request_Param_Update(id, value);
+    if (VOFA_Get_Param_Log_Detail())
+    {
+        VOFA_Log_Param_Update((uint8)(id + 1), g_param_names[id], value, "SCREEN_EDIT");
+    }
 }
 
 static void ui_restore_default_params(void)
 {
+    VOFA_Set_Param_Rx_Source(VOFA_PARAM_RX_SRC_DEFAULT);
     __disable_irq();
 #define PARAM_ITEM(id, runtime_var, init_val, display_name) core_b_cmd.params[id] = init_val;
 #include "param_registry.def"
@@ -812,6 +964,10 @@ static void ui_restore_default_params(void)
     core_b_cmd.param_update_flag = 1;
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     __enable_irq();
+    if (VOFA_Get_Param_Log_Detail())
+    {
+        VOFA_Log_Param_Bulk("[SCREEN] Default parameters applied", "SCREEN_DEFAULT", PARAM_COUNT);
+    }
 }
 
 static void ui_draw_home(void)
@@ -820,9 +976,11 @@ static void ui_draw_home(void)
     ui_draw_title_text(UI_TEXT_T_TITLE_HOME);
 
     uint8_t wifi_idx = ((uint8_t)current_wifi_mode < ARRAY_SIZE(k_wifi_texts)) ? (uint8_t)current_wifi_mode : 0;
+    uint8_t mode_idx = Runtime_Get_Vehicle_Mode();
+    if (mode_idx >= ARRAY_SIZE(k_mode_texts)) mode_idx = 0;
     ui_show_text(8, 34, UI_TEXT_T_CURRENT);
     ui_show_text(48, 34, UI_TEXT_T_TITLE_MODE);
-    ui_show_text(128, 34, k_mode_texts[ui_vehicle_mode]);
+    ui_show_text(128, 34, k_mode_texts[mode_idx]);
     ui_show_text(8, 52, UI_TEXT_T_TITLE_WIFI);
     ui_show_text(88, 52, k_wifi_texts[wifi_idx]);
     ui_show_text(150, 52, wifi_is_connected ? UI_TEXT_T_CONNECTED : UI_TEXT_T_NOT_CONNECTED);
@@ -833,7 +991,7 @@ static void ui_draw_home(void)
     ui_show_text(8, 88, UI_TEXT_T_REMOTE);
     ui_show_text(56, 88, core_a_status.remote_connected > 0.5f ? UI_TEXT_T_NORMAL : UI_TEXT_T_WAIT);
     ui_show_text(120, 88, UI_TEXT_T_MOTOR);
-    ui_show_text(168, 88, wifi_is_connected ? UI_TEXT_T_ALLOW : UI_TEXT_T_LOCK);
+    ui_show_text(168, 88, (wifi_is_connected && Runtime_Is_Module_Enabled(RUNTIME_MODULE_MOTOR)) ? UI_TEXT_T_ALLOW : UI_TEXT_T_LOCK);
 
     for (uint8_t i = 0; i < ARRAY_SIZE(k_home_texts); i++)
     {
@@ -851,90 +1009,181 @@ static void ui_draw_mode(void)
     ui_draw_footer_text(UI_TEXT_T_HINT_SET);
 }
 
-static uint8_t ui_param_page_count(void)
+static uint8_t ui_param_group_count(void)
 {
-    return (uint8_t)((PARAM_COUNT + UI_PARAM_ROWS - 1) / UI_PARAM_ROWS);
+    return (uint8_t)ARRAY_SIZE(k_param_groups);
 }
 
-static uint8_t ui_param_page_start(uint8_t page)
+static void ui_param_keep_visible(uint8_t selected, uint8_t *top, uint8_t count)
 {
-    return (uint8_t)(page * UI_PARAM_ROWS);
-}
-
-static uint8_t ui_param_page_count_items(uint8_t page)
-{
-    uint8_t start = ui_param_page_start(page);
-    uint8_t remain = (uint8_t)(PARAM_COUNT - start);
-    return (remain > UI_PARAM_ROWS) ? UI_PARAM_ROWS : remain;
-}
-
-static ParamID_e ui_param_id_from_page_row(uint8_t page, uint8_t row)
-{
-    return (ParamID_e)(ui_param_page_start(page) + row);
-}
-
-static void ui_draw_param_page_common(uint8_t select_mode)
-{
-    char line[32];
-    const float *p = screen_get_param_values();
-    uint8_t count = ui_param_page_count_items(ui_param_page);
-    uint8_t start = ui_param_page_start(ui_param_page);
-
-    ui_draw_title_text(UI_TEXT_T_TITLE_PARAM);
-    sprintf(line, "Page:%d/%d", ui_param_page + 1, ui_param_page_count());
-    ips200_show_string(150, 8, line);
-
-    for (uint8_t row = 0; row < UI_PARAM_ROWS; row++)
+    if (count <= UI_PARAM_ROWS)
     {
-        uint8_t idx = start + row;
-        if (idx < PARAM_COUNT)
-        {
-            char marker = (select_mode && row == ui_param_row) ? '>' : ' ';
-            sprintf(line, "%c%02d %-14s", marker, idx + 1, g_param_names[idx]);
-            ips200_show_string(4, 36 + row * 32, line);
-            sprintf(line, "% .5f", p[idx]);
-            ips200_show_string(130, 36 + row * 32, line);
-        }
+        *top = 0;
+        return;
     }
 
-    if (select_mode)
+    if (selected < *top)
     {
-        ui_draw_footer_text(UI_TEXT_T_HINT_EDIT);
+        *top = selected;
     }
-    else
+    else if (selected >= (*top + UI_PARAM_ROWS))
     {
-        ui_draw_footer_text(UI_TEXT_T_HINT_HOME);
+        *top = (uint8_t)(selected - UI_PARAM_ROWS + 1);
     }
+}
+
+static ParamID_e ui_param_id_from_group_index(uint8_t group, uint8_t index)
+{
+    if (group >= ARRAY_SIZE(k_param_groups))
+    {
+        return P_SPEED_P;
+    }
+    if (index >= k_param_groups[group].count)
+    {
+        index = 0;
+    }
+    return k_param_groups[group].items[index];
 }
 
 static void ui_draw_param_page(void)
 {
-    ui_draw_param_page_common(0);
+    char line[32];
+    uint8_t group_count = ui_param_group_count();
+
+    ui_draw_title_text(UI_TEXT_T_TITLE_PARAM);
+    ips200_show_string(138, 8, "Groups");
+    ui_param_keep_visible(ui_param_group, &ui_param_group_top, group_count);
+
+    for (uint8_t row = 0; row < UI_PARAM_ROWS; row++)
+    {
+        uint8_t idx = ui_param_group_top + row;
+        if (idx < group_count)
+        {
+            char marker = (idx == ui_param_group) ? '>' : ' ';
+            sprintf(line, "%c%02d %-12s %2d", marker, idx + 1, k_param_groups[idx].name, k_param_groups[idx].count);
+            ips200_show_string(8, 36 + row * 32, line);
+        }
+    }
+
+    ui_draw_footer_text_str("UP/DN group  OK list  BACK home");
 }
 
 static void ui_draw_param_select(void)
 {
-    ui_draw_param_page_common(1);
+    char line[32];
+    const float *p = screen_get_param_values();
+    const ui_param_group_t *group = &k_param_groups[ui_param_group];
+
+    ui_draw_title_text(UI_TEXT_T_TITLE_PARAM);
+    sprintf(line, "%s %d/%d", group->name, ui_param_row + 1, group->count);
+    ips200_show_string(96, 8, line);
+    ui_param_keep_visible(ui_param_row, &ui_param_top, group->count);
+
+    for (uint8_t row = 0; row < UI_PARAM_ROWS; row++)
+    {
+        uint8_t item_index = ui_param_top + row;
+        if (item_index < group->count)
+        {
+            ParamID_e id = group->items[item_index];
+            char marker = (item_index == ui_param_row) ? '>' : ' ';
+            sprintf(line, "%c%02d %-13s", marker, (int)id + 1, g_param_names[id]);
+            ips200_show_string(4, 36 + row * 32, line);
+            sprintf(line, "% .5f", p[id]);
+            ips200_show_string(132, 36 + row * 32, line);
+        }
+    }
+
+    ui_draw_footer_text_str("UP/DN param  OK edit  BACK group");
 }
 
 static void ui_draw_param_edit(void)
 {
     char line[32];
-    float step = ui_param_step(ui_edit_param);
+    const float *p = screen_get_param_values();
+
     ui_draw_title_text(UI_TEXT_T_TITLE_EDIT);
-    sprintf(line, "ID:%02d", (int)ui_edit_param + 1);
-    ips200_show_string(8, 44, line);
-    sprintf(line, "Name:%s", g_param_names[ui_edit_param]);
-    ips200_show_string(8, 72, line);
-    sprintf(line, "Value:% .6f", ui_edit_value);
-    ips200_show_string(8, 110, line);
-    sprintf(line, "Step:% .6f", step);
-    ips200_show_string(8, 138, line);
-    ui_show_text(8, 176, UI_TEXT_T_HINT_EDITING);
-    ips200_show_string(8, 198, "Long UP/DN x10");
-    ui_draw_footer_text(UI_TEXT_T_HINT_APPLY);
+    sprintf(line, "ID:%02d  %s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
+    ips200_show_string(8, 42, line);
+    sprintf(line, "Now:% .6f", p[ui_edit_param]);
+    ips200_show_string(8, 76, line);
+    sprintf(line, "Edit:% .6f", ui_edit_value);
+    ips200_show_string(8, 104, line);
+
+    ips200_show_string(20, 152, ui_param_edit_choice == 0 ? "> Add/Sub Adjust" : "  Add/Sub Adjust");
+    ips200_show_string(20, 188, ui_param_edit_choice == 1 ? "> Direct Set" : "  Direct Set");
+    ui_draw_footer_text_str("UP/DN choose  OK enter  BACK list");
 }
 
+static void ui_draw_param_adjust(void)
+{
+    char line[32];
+    float base_step = ui_param_step(ui_edit_param);
+    float step = base_step * k_edit_step_scales[ui_edit_step_scale_index];
+
+    ui_draw_title_text(UI_TEXT_T_TITLE_EDIT);
+    sprintf(line, "ID:%02d  %s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
+    ips200_show_string(8, 42, line);
+    sprintf(line, "Value:% .6f", ui_edit_value);
+    ips200_show_string(8, 82, line);
+    sprintf(line, "Base:% .6f", base_step);
+    ips200_show_string(8, 118, line);
+    sprintf(line, "[Scale x%.1f]", k_edit_step_scales[ui_edit_step_scale_index]);
+    ips200_show_string(8, 154, line);
+    sprintf(line, "Step:% .6f", step);
+    ips200_show_string(8, 186, line);
+    ui_draw_footer_text_str("UP/DN +/-  OK scale  HoldOK save");
+}
+
+static void ui_direct_reset_digits(void)
+{
+    for (uint8_t i = 0; i < ARRAY_SIZE(ui_direct_digits); i++)
+    {
+        ui_direct_digits[i] = 0;
+    }
+    ui_direct_digit_index = 0;
+}
+
+static float ui_direct_digits_to_value(void)
+{
+    return (float)ui_direct_digits[0] * 100.0f +
+           (float)ui_direct_digits[1] * 10.0f +
+           (float)ui_direct_digits[2] +
+           (float)ui_direct_digits[3] * 0.1f +
+           (float)ui_direct_digits[4] * 0.01f +
+           (float)ui_direct_digits[5] * 0.001f;
+}
+
+static void ui_direct_build_string(char *line)
+{
+    sprintf(line, "%d%d%d.%d%d%d",
+            ui_direct_digits[0], ui_direct_digits[1], ui_direct_digits[2],
+            ui_direct_digits[3], ui_direct_digits[4], ui_direct_digits[5]);
+}
+
+static uint8_t ui_direct_digit_x_offset(void)
+{
+    return (ui_direct_digit_index < 3) ? ui_direct_digit_index : (uint8_t)(ui_direct_digit_index + 1);
+}
+
+static void ui_draw_param_direct(void)
+{
+    char line[32];
+    uint8_t cursor_x;
+
+    ui_draw_title_text(UI_TEXT_T_TITLE_EDIT);
+    sprintf(line, "ID:%02d  %s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
+    ips200_show_string(8, 42, line);
+    ips200_show_string(8, 78, "Direct Set: 000.000");
+    ui_direct_build_string(line);
+    ips200_show_string(72, 122, line);
+    cursor_x = (uint8_t)(72 + ui_direct_digit_x_offset() * 8);
+    ips200_show_string(cursor_x, 142, "^");
+    sprintf(line, "Value:% .6f", ui_direct_digits_to_value());
+    ips200_show_string(8, 174, line);
+    sprintf(line, "Digit:%d/6", ui_direct_digit_index + 1);
+    ips200_show_string(8, 202, line);
+    ui_draw_footer_text_str("UP/DN digit  OK next  HoldOK save");
+}
 static void ui_draw_wifi(void)
 {
     ui_draw_title_text(UI_TEXT_T_TITLE_WIFI);
@@ -951,7 +1200,7 @@ static void ui_draw_modules(void)
     for (uint8_t i = 0; i < ARRAY_SIZE(k_module_texts); i++)
     {
         ui_show_text_selected(4, 42 + i * 32, i == ui_module_index, k_module_texts[i]);
-        ips200_show_string(170, 42 + i * 32, ui_module_enabled[i] ? "ON" : "OFF");
+        ips200_show_string(170, 42 + i * 32, Runtime_Is_Module_Enabled(k_module_runtime_ids[i]) ? "ON" : "OFF");
     }
     ui_show_text(8, 222, UI_TEXT_T_SOFT_ONLY);
     ui_draw_footer_text(UI_TEXT_T_HINT_TOGGLE);
@@ -1024,7 +1273,7 @@ static void ui_handle_mode(ui_key_event_t events[UI_KEY_COUNT])
     }
     else if (events[UI_KEY_OK])
     {
-        ui_vehicle_mode = ui_mode_index;
+        Runtime_Set_Vehicle_Mode(ui_mode_index);
         ui_set_screen(UI_SCREEN_HOME);
     }
     else if (events[UI_KEY_BACK])
@@ -1053,22 +1302,23 @@ static void ui_handle_monitor(ui_key_event_t events[UI_KEY_COUNT])
 
 static void ui_handle_param_page(ui_key_event_t events[UI_KEY_COUNT])
 {
-    uint8_t page_count = ui_param_page_count();
+    uint8_t group_count = ui_param_group_count();
     if (events[UI_KEY_UP])
     {
-        ui_param_page = (ui_param_page == 0) ? (page_count - 1) : (ui_param_page - 1);
-        ui_param_row = 0;
+        ui_param_group = (ui_param_group == 0) ? (group_count - 1) : (ui_param_group - 1);
+        ui_param_keep_visible(ui_param_group, &ui_param_group_top, group_count);
         ui_set_screen(UI_SCREEN_PARAM_PAGE);
     }
     else if (events[UI_KEY_DOWN])
     {
-        ui_param_page = (ui_param_page + 1) % page_count;
-        ui_param_row = 0;
+        ui_param_group = (ui_param_group + 1) % group_count;
+        ui_param_keep_visible(ui_param_group, &ui_param_group_top, group_count);
         ui_set_screen(UI_SCREEN_PARAM_PAGE);
     }
     else if (events[UI_KEY_OK])
     {
         ui_param_row = 0;
+        ui_param_top = 0;
         ui_set_screen(UI_SCREEN_PARAM_SELECT);
     }
     else if (events[UI_KEY_BACK])
@@ -1079,23 +1329,27 @@ static void ui_handle_param_page(ui_key_event_t events[UI_KEY_COUNT])
 
 static void ui_handle_param_select(ui_key_event_t events[UI_KEY_COUNT])
 {
-    uint8_t count = ui_param_page_count_items(ui_param_page);
+    uint8_t count = k_param_groups[ui_param_group].count;
     if (events[UI_KEY_UP])
     {
         ui_param_row = (ui_param_row == 0) ? (count - 1) : (ui_param_row - 1);
+        ui_param_keep_visible(ui_param_row, &ui_param_top, count);
         ui_set_screen(UI_SCREEN_PARAM_SELECT);
     }
     else if (events[UI_KEY_DOWN])
     {
         ui_param_row = (ui_param_row + 1) % count;
+        ui_param_keep_visible(ui_param_row, &ui_param_top, count);
         ui_set_screen(UI_SCREEN_PARAM_SELECT);
     }
     else if (events[UI_KEY_OK])
     {
         const float *p = screen_get_param_values();
-        ui_param_index = ui_param_id_from_page_row(ui_param_page, ui_param_row);
+        ui_param_index = ui_param_id_from_group_index(ui_param_group, ui_param_row);
         ui_edit_param = ui_param_index;
         ui_edit_value = p[ui_edit_param];
+        ui_param_edit_choice = 0;
+        ui_edit_step_scale_index = 1;
         ui_set_screen(UI_SCREEN_PARAM_EDIT);
     }
     else if (events[UI_KEY_BACK])
@@ -1106,27 +1360,23 @@ static void ui_handle_param_select(ui_key_event_t events[UI_KEY_COUNT])
 
 static void ui_handle_param_edit(ui_key_event_t events[UI_KEY_COUNT])
 {
-    float step = ui_param_step(ui_edit_param);
-    if (events[UI_KEY_UP] == UI_EVENT_LONG || events[UI_KEY_DOWN] == UI_EVENT_LONG)
+    if (events[UI_KEY_UP] || events[UI_KEY_DOWN])
     {
-        step *= 10.0f;
-    }
-
-    if (events[UI_KEY_UP])
-    {
-        ui_edit_value -= step;
-        ui_set_screen(UI_SCREEN_PARAM_EDIT);
-    }
-    else if (events[UI_KEY_DOWN])
-    {
-        ui_edit_value += step;
+        ui_param_edit_choice = ui_param_edit_choice ? 0 : 1;
         ui_set_screen(UI_SCREEN_PARAM_EDIT);
     }
     else if (events[UI_KEY_OK])
     {
-        ui_send_param_update(ui_edit_param, ui_edit_value);
-        ui_param_index = ui_edit_param;
-        ui_set_screen(UI_SCREEN_PARAM_SELECT);
+        if (ui_param_edit_choice == 0)
+        {
+            ui_edit_step_scale_index = 1;
+            ui_set_screen(UI_SCREEN_PARAM_ADJUST);
+        }
+        else
+        {
+            ui_direct_reset_digits();
+            ui_set_screen(UI_SCREEN_PARAM_DIRECT);
+        }
     }
     else if (events[UI_KEY_BACK])
     {
@@ -1134,6 +1384,66 @@ static void ui_handle_param_edit(ui_key_event_t events[UI_KEY_COUNT])
     }
 }
 
+static void ui_handle_param_adjust(ui_key_event_t events[UI_KEY_COUNT])
+{
+    float step = ui_param_step(ui_edit_param) * k_edit_step_scales[ui_edit_step_scale_index];
+
+    if (events[UI_KEY_UP])
+    {
+        ui_edit_value -= step;
+        ui_set_screen(UI_SCREEN_PARAM_ADJUST);
+    }
+    else if (events[UI_KEY_DOWN])
+    {
+        ui_edit_value += step;
+        ui_set_screen(UI_SCREEN_PARAM_ADJUST);
+    }
+    else if (events[UI_KEY_OK] == UI_EVENT_LONG)
+    {
+        ui_send_param_update(ui_edit_param, ui_edit_value);
+        ui_param_index = ui_edit_param;
+        ui_set_screen(UI_SCREEN_PARAM_SELECT);
+    }
+    else if (events[UI_KEY_OK])
+    {
+        ui_edit_step_scale_index = (ui_edit_step_scale_index + 1) % ARRAY_SIZE(k_edit_step_scales);
+        ui_set_screen(UI_SCREEN_PARAM_ADJUST);
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        ui_set_screen(UI_SCREEN_PARAM_EDIT);
+    }
+}
+
+static void ui_handle_param_direct(ui_key_event_t events[UI_KEY_COUNT])
+{
+    if (events[UI_KEY_UP])
+    {
+        ui_direct_digits[ui_direct_digit_index] = (uint8_t)((ui_direct_digits[ui_direct_digit_index] + 9) % 10);
+        ui_set_screen(UI_SCREEN_PARAM_DIRECT);
+    }
+    else if (events[UI_KEY_DOWN])
+    {
+        ui_direct_digits[ui_direct_digit_index] = (uint8_t)((ui_direct_digits[ui_direct_digit_index] + 1) % 10);
+        ui_set_screen(UI_SCREEN_PARAM_DIRECT);
+    }
+    else if (events[UI_KEY_OK] == UI_EVENT_LONG)
+    {
+        ui_edit_value = ui_direct_digits_to_value();
+        ui_send_param_update(ui_edit_param, ui_edit_value);
+        ui_param_index = ui_edit_param;
+        ui_set_screen(UI_SCREEN_PARAM_SELECT);
+    }
+    else if (events[UI_KEY_OK])
+    {
+        ui_direct_digit_index = (uint8_t)((ui_direct_digit_index + 1) % ARRAY_SIZE(ui_direct_digits));
+        ui_set_screen(UI_SCREEN_PARAM_DIRECT);
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        ui_set_screen(UI_SCREEN_PARAM_EDIT);
+    }
+}
 static void ui_handle_wifi(ui_key_event_t events[UI_KEY_COUNT])
 {
     if (events[UI_KEY_UP])
@@ -1171,7 +1481,7 @@ static void ui_handle_modules(ui_key_event_t events[UI_KEY_COUNT])
     }
     else if (events[UI_KEY_OK])
     {
-        ui_module_enabled[ui_module_index] = !ui_module_enabled[ui_module_index];
+        Runtime_Toggle_Module(k_module_runtime_ids[ui_module_index]);
         ui_set_screen(UI_SCREEN_MODULES);
     }
     else if (events[UI_KEY_BACK])
@@ -1199,6 +1509,11 @@ static void ui_handle_system(ui_key_event_t events[UI_KEY_COUNT])
             ui_confirm_action = (ui_system_index == 0) ? UI_ACTION_SAVE_FLASH : ((ui_system_index == 1) ? UI_ACTION_LOAD_FLASH : UI_ACTION_DEFAULT_PARAMS);
             ui_confirm_yes = 0;
             ui_set_screen(UI_SCREEN_CONFIRM);
+        }
+        else if (ui_system_index == 3)
+        {
+            wifi_request_reconnect();
+            ui_set_screen(UI_SCREEN_WIFI);
         }
     }
     else if (events[UI_KEY_BACK])
@@ -1247,7 +1562,9 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         case UI_SCREEN_MONITOR:     ui_handle_monitor(events); break;
         case UI_SCREEN_PARAM_PAGE:  ui_handle_param_page(events); break;
         case UI_SCREEN_PARAM_SELECT: ui_handle_param_select(events); break;
-        case UI_SCREEN_PARAM_EDIT:  ui_handle_param_edit(events); break;
+        case UI_SCREEN_PARAM_EDIT:   ui_handle_param_edit(events); break;
+        case UI_SCREEN_PARAM_ADJUST: ui_handle_param_adjust(events); break;
+        case UI_SCREEN_PARAM_DIRECT: ui_handle_param_direct(events); break;
         case UI_SCREEN_WIFI:        ui_handle_wifi(events); break;
         case UI_SCREEN_MODULES:     ui_handle_modules(events); break;
         case UI_SCREEN_SYSTEM:      ui_handle_system(events); break;
@@ -1279,6 +1596,12 @@ static void ui_render(void)
             break;
         case UI_SCREEN_PARAM_EDIT:
             ui_draw_param_edit();
+            break;
+        case UI_SCREEN_PARAM_ADJUST:
+            ui_draw_param_adjust();
+            break;
+        case UI_SCREEN_PARAM_DIRECT:
+            ui_draw_param_direct();
             break;
         case UI_SCREEN_WIFI:
             ui_draw_wifi();

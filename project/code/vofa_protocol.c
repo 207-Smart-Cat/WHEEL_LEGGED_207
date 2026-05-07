@@ -3,6 +3,7 @@
 #include "small_driver_uart_control.h"
 #include "wifi.h"
 #include "ipc_shared_data.h" // 必须包含 IPC 头文件
+#include "runtime_status.h"
 
 // 引入定义在 wifi.c 中的全局状态变量
 extern wifi_mode_t current_wifi_mode;
@@ -22,6 +23,109 @@ typedef union {
 
 
 
+static uint8 g_param_log_detail_enable = 0;
+static vofa_param_rx_source_t g_param_rx_source = VOFA_PARAM_RX_SRC_UART;
+
+static const char *VOFA_Param_Rx_Source_Name(vofa_param_rx_source_t source)
+{
+    switch (source)
+    {
+        case VOFA_PARAM_RX_SRC_WIFI:    return "WIFI";
+        case VOFA_PARAM_RX_SRC_SCREEN:  return "SCREEN";
+        case VOFA_PARAM_RX_SRC_FLASH:   return "FLASH";
+        case VOFA_PARAM_RX_SRC_DEFAULT: return "DEFAULT";
+        case VOFA_PARAM_RX_SRC_UART:
+        default:                        return "UART";
+    }
+}
+
+void VOFA_Set_Param_Rx_Source(vofa_param_rx_source_t source)
+{
+    g_param_rx_source = source;
+}
+
+void VOFA_Set_Param_Log_Detail(uint8 enable)
+{
+    g_param_log_detail_enable = (enable != 0) ? 1 : 0;
+}
+
+uint8 VOFA_Get_Param_Log_Detail(void)
+{
+    return g_param_log_detail_enable;
+}
+
+void VOFA_Log_Param_Update(uint8 param_id, const char *name, float value, const char *cmd)
+{
+    if (g_param_log_detail_enable)
+    {
+        LOG_Printf("[Core 1] Param '%s' set to %.4f        src=%s cmd=%s id=%d\r\n",
+                   name, value, VOFA_Param_Rx_Source_Name(g_param_rx_source), cmd, param_id);
+    }
+    else
+    {
+        LOG_Printf("[Core 1] Param '%s' set to %.4f\r\n", name, value);
+    }
+}
+
+void VOFA_Log_Param_Bulk(const char *message, const char *cmd, uint16 count)
+{
+    if (g_param_log_detail_enable)
+    {
+        LOG_Printf("%s        src=%s cmd=%s count=%d\r\n",
+                   message, VOFA_Param_Rx_Source_Name(g_param_rx_source), cmd, count);
+    }
+    else
+    {
+        LOG_Printf("%s\r\n", message);
+    }
+}
+
+void VOFA_Log_Param_Command(const char *message, const char *cmd)
+{
+    if (g_param_log_detail_enable)
+    {
+        LOG_Printf("%s        src=%s cmd=%s\r\n",
+                   message, VOFA_Param_Rx_Source_Name(g_param_rx_source), cmd);
+    }
+    else
+    {
+        LOG_Printf("%s\r\n", message);
+    }
+}
+
+static const char *VOFA_Runtime_Module_Name(runtime_module_t module)
+{
+    switch (module)
+    {
+        case RUNTIME_MODULE_MOTOR:        return "Motor";
+        case RUNTIME_MODULE_BALANCE:      return "Balance";
+        case RUNTIME_MODULE_SERVO:        return "Servo";
+        case RUNTIME_MODULE_REMOTE:       return "Remote";
+        case RUNTIME_MODULE_NAVIGATION:   return "Navigation";
+        case RUNTIME_MODULE_DEBUG_OUTPUT: return "DebugOutput";
+        default:                          return "Unknown";
+    }
+}
+
+static void VOFA_Log_Runtime_Status(void)
+{
+    IPC_Pull_Status_To_CoreB();
+    Runtime_Sync_From_IPC();
+    LOG_Printf("[RUNTIME] mode=%d wifi=%d mask=0x%02X\r\n",
+               Runtime_Get_Vehicle_Mode(), Runtime_Get_Wifi_Connected(), (unsigned int)g_runtime_status.module_enable_mask);
+    LOG_Printf("[RUNTIME] reason motor=%s balance=%s servo=%s remote=%s\r\n",
+               Runtime_Reason_Name((runtime_reason_t)core_a_status.motor_reason),
+               Runtime_Reason_Name((runtime_reason_t)core_a_status.balance_reason),
+               Runtime_Reason_Name((runtime_reason_t)core_a_status.servo_reason),
+               Runtime_Reason_Name((runtime_reason_t)core_a_status.remote_reason));
+    for (uint8 module = 0; module < RUNTIME_MODULE_COUNT; module++)
+    {
+        LOG_Printf("[RUNTIME] id=%d %-12s %s\r\n",
+                   module,
+                   VOFA_Runtime_Module_Name((runtime_module_t)module),
+                   Runtime_Is_Module_Enabled((runtime_module_t)module) ? "ON" : "OFF");
+    }
+}
 static uint8 VOFA_Calc_Checksum(const uint8 *data, uint32 len)
 {
     uint8 sum = 0;
@@ -121,6 +225,98 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
         }
 
         // ========================================================
+        // 协议 1.6: 参数日志详细模式切换 (AA E1 00/01/02)
+        // 00 简洁模式, 01 详细模式, 02 切换模式
+        // ========================================================
+        else if((i + 2) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xE1)
+        {
+            uint8 mode = rx_buffer[i + 2];
+            if (mode == 0x00)
+            {
+                VOFA_Set_Param_Log_Detail(0);
+            }
+            else if (mode == 0x01)
+            {
+                VOFA_Set_Param_Log_Detail(1);
+            }
+            else if (mode == 0x02)
+            {
+                VOFA_Set_Param_Log_Detail(VOFA_Get_Param_Log_Detail() ? 0 : 1);
+            }
+
+            VOFA_Log_Param_Command(VOFA_Get_Param_Log_Detail() ? "[PARAM LOG] detail mode" : "[PARAM LOG] brief mode", "E1_LOG");
+            i += 2; continue;
+        }
+
+
+        // ========================================================
+        // 协议 1.7: 运行状态控制 (AA E2)
+        // AA E2 00              查询全部运行状态
+        // AA E2 01 id enable    设置模块开关，id=0..5，enable=0/1
+        // AA E2 02 mode         设置小车模式，mode=0..3
+        // AA E2 03 id           翻转模块开关，id=0..5
+        // ========================================================
+        else if((i + 2) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xE2)
+        {
+            uint8 cmd = rx_buffer[i + 2];
+
+            if (cmd == 0x00)
+            {
+                VOFA_Log_Runtime_Status();
+                i += 2; continue;
+            }
+            else if (cmd == 0x01 && (i + 4) < data_length)
+            {
+                uint8 module = rx_buffer[i + 3];
+                uint8 enable = rx_buffer[i + 4] ? 1 : 0;
+                if (module < RUNTIME_MODULE_COUNT)
+                {
+                    Runtime_Set_Module_Enabled((runtime_module_t)module, enable);
+                    LOG_Printf("[RUNTIME] %s set to %s\r\n",
+                               VOFA_Runtime_Module_Name((runtime_module_t)module),
+                               enable ? "ON" : "OFF");
+                }
+                else
+                {
+                    LOG_Printf("[RUNTIME] invalid module id=%d\r\n", module);
+                }
+                i += 4; continue;
+            }
+            else if (cmd == 0x02 && (i + 3) < data_length)
+            {
+                uint8 mode = rx_buffer[i + 3];
+                if (mode <= 3)
+                {
+                    Runtime_Set_Vehicle_Mode(mode);
+                    LOG_Printf("[RUNTIME] vehicle mode set to %d\r\n", mode);
+                }
+                else
+                {
+                    LOG_Printf("[RUNTIME] invalid vehicle mode=%d\r\n", mode);
+                }
+                i += 3; continue;
+            }
+            else if (cmd == 0x03 && (i + 3) < data_length)
+            {
+                uint8 module = rx_buffer[i + 3];
+                if (module < RUNTIME_MODULE_COUNT)
+                {
+                    Runtime_Toggle_Module((runtime_module_t)module);
+                    LOG_Printf("[RUNTIME] %s toggled to %s\r\n",
+                               VOFA_Runtime_Module_Name((runtime_module_t)module),
+                               Runtime_Is_Module_Enabled((runtime_module_t)module) ? "ON" : "OFF");
+                }
+                else
+                {
+                    LOG_Printf("[RUNTIME] invalid module id=%d\r\n", module);
+                }
+                i += 3; continue;
+            }
+
+            LOG_Printf("[RUNTIME] invalid E2 command\r\n");
+            i += 2; continue;
+        }
+        // ========================================================
         // 协议 2: 动作控制 (AA C1) - 保持不变
         // ========================================================
         else if((i + 5) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC1)
@@ -160,7 +356,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
 
             IPC_Request_Param_Update((ParamID_e)index, temp_float.f_val);
 
-            LOG_Printf("[Core 1] Param '%s' set to %.4f\r\n", g_param_names[index], temp_float.f_val);
+            VOFA_Log_Param_Update(param_id, g_param_names[index], temp_float.f_val, "C2_SINGLE");
 
             i += 6; continue;
         }
@@ -171,7 +367,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
         else if((i + 3) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC3 &&
                 rx_buffer[i+2] == 0x88 && rx_buffer[i+3] == 0x55)
         {
-            LOG_Printf("\r\n[VOFA] Received SAVE TO FLASH command!\r\n");
+            VOFA_Log_Param_Command("\r\n[VOFA] Received SAVE TO FLASH command!", "C3_SAVE");
 
             SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
 
@@ -217,7 +413,9 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
                 __enable_irq();
 
-                LOG_Printf("[VOFA] All %d Parameters Updated Successfully!\r\n", PARAM_COUNT);
+                char bulk_msg[64];
+                sprintf(bulk_msg, "[VOFA] All %d Parameters Updated Successfully!", PARAM_COUNT);
+                VOFA_Log_Param_Bulk(bulk_msg, "C4_BULK", PARAM_COUNT);
             }
             else
             {
@@ -235,7 +433,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
         else if((i + 3) < data_length && rx_buffer[i] == 0xAA && rx_buffer[i+1] == 0xC5 &&
                 rx_buffer[i+2] == 0x88 && rx_buffer[i+3] == 0x55)
         {
-            LOG_Printf("\r\n[VOFA] Received PARAM REQUEST (AA C5)! Sending...\r\n");
+            VOFA_Log_Param_Command("\r\n[VOFA] Received PARAM REQUEST (AA C5)! Sending...", "C5_READ");
 
             uint8 tx_buf[VOFA_PARAM_FRAME_BUF_SIZE];
             uint32 total_len;
@@ -347,6 +545,7 @@ void VOFA_UART_Process(void)
         system_delay_ms(2);
         fifo_data_count = fifo_used(&uart_data_fifo);
         fifo_read_buffer(&uart_data_fifo, fifo_get_data, &fifo_data_count, FIFO_READ_AND_CLEAN);
+        VOFA_Set_Param_Rx_Source(VOFA_PARAM_RX_SRC_UART);
         VOFA_Protocol_Parse(fifo_get_data, fifo_data_count);
     }
 }

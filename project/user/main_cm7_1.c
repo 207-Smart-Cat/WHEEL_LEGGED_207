@@ -31,18 +31,30 @@ int main(void)
     // 此处编写用户代码 例如外设初始化代码等
     interrupt_global_disable(); // 初始化外设之前先关闭中断
     flash_init();
-    //=================================屏幕初始化============================
+    //=================================屏幕初始化与启动状态显示============================
     screen_display_init();
+    screen_boot_begin();
+    screen_boot_show_status(NULL, NULL);
+    screen_boot_show_status("Flash", "OK");
+    screen_boot_show_status("Screen", "OK");
     pit_ms_init(PIT_IPS, 50);
-//    // =================================WIFI模块初始化======================
-     wifi_init();
-     IPC_Update_Wifi_Status_From_CoreB(wifi_is_connected);
-     pit_ms_init(PIT_WiFi, 20);
+
+    // =================================WIFI模块初始化======================
+    wifi_init_with_skip(1);
+    IPC_Update_Wifi_Status_From_CoreB(wifi_control_is_ready());
+    screen_boot_show_status("WiFi", wifi_is_connected ? "OK" : "SKIP");
+    pit_ms_init(PIT_WiFi, 20);
+
     //=================================共享缓存以及Flash部分模块初始化===============
     pit_ms_init(PIT_IPC, 5);
+    screen_boot_show_status("IPC", "OK");
     IPC_Load_Params_From_Flash();
+    screen_boot_show_status("Params", "OK");
+
     //=================================串口调参初始化======================
     VOFA_UART_Init();
+    screen_boot_show_status("VOFA", "OK");
+    screen_boot_show_done(wifi_is_connected, (wifi_is_connected == 0 && wifi_control_is_ready()));
 
 
     interrupt_global_enable(0);// 在初始化后使能中断
@@ -55,7 +67,7 @@ int main(void)
         wifi_report_task();
         wifi_health_check_task();
         wifi_auto_reconnect_task();
-        IPC_Update_Wifi_Status_From_CoreB(wifi_is_connected);
+        IPC_Update_Wifi_Status_From_CoreB(wifi_control_is_ready());
         VOFA_UART_Process();
 
         system_delay_ms(1);

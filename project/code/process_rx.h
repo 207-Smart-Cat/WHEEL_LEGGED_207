@@ -53,5 +53,8 @@ void process_rx_calc_6axis_quaternion(float acc_x, float acc_y, float acc_z,
                                       euler_param_t_rx *euler);
 void imu_rx_init(void);
 void ICM_getEulerianAngles(void);
+float process_rx_gyro_x_dps(float gyro_x_raw);
+float process_rx_gyro_y_dps(float gyro_y_raw);
+float process_rx_gyro_z_dps(float gyro_z_raw);
 
 #endif

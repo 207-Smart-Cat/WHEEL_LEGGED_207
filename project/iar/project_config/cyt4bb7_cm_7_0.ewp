@@ -1209,6 +1209,12 @@
             <name>$PROJ_DIR$\..\..\code\remote.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\runtime_status.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\runtime_status.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\screen_display.c</name>
         </file>
         <file>

@@ -2,28 +2,31 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h> // 用于支持 LOG_Printf 的可变参数
-#include "small_driver_uart_control.h" 
+#include "small_driver_uart_control.h"
 #include "imu.h"
 #include "control.h"
 #include "vofa_protocol.h"
 #include "ipc_shared_data.h"
 #include "navigation_data_handling.h"
+#include "screen_display.h"
 
 // 宏定义和缓冲区
-#define WIFI_RX_BUF_SIZE    256         
-#define WIFI_MAX_RETRY      5           
+#define WIFI_RX_BUF_SIZE    256
+#define WIFI_MAX_RETRY      5
 #define WIFI_SEND_FAIL_LIMIT        10
 #define WIFI_RECONNECT_COOLDOWN_TICKS 100
-uint8 wifi_spi_receive_data[WIFI_RX_BUF_SIZE];          
-static uint32 data_length;                       
+uint8 wifi_spi_receive_data[WIFI_RX_BUF_SIZE];
+static uint32 data_length;
 
 // ================= 全局状态变量 =================
-wifi_mode_t current_wifi_mode = WIFI_MODE_SILENT;         
-uint8 wave_format = 1; 
-uint8 channel_show[5] = {1, 1, 1, 0, 0}; 
-volatile uint8 WIFI_Send_flag = 0;               
+wifi_mode_t current_wifi_mode = WIFI_MODE_SILENT;
+uint8 wave_format = 1;
+uint8 channel_show[5] = {1, 1, 1, 0, 0};
+volatile uint8 WIFI_Send_flag = 0;
 
 uint8 wifi_is_connected = 0; // 标记 WiFi 是否通关成功 (0:未连接, 1:已连接)
+static uint8 wifi_run_without_connection = 0; // 1 表示用户允许未连接 WiFi 也允许运行
+static uint8 wifi_reconnect_enabled = 0;      // 1 表示允许后台重连尝试
 
 // ================= 断线重连与防粘包专用变量 =================
 static uint16 wifi_error_count = 0;       // 连续发送失败计数器
@@ -36,10 +39,51 @@ static uint8 wifi_parse_buffer[512];      // 拼装完的完整数据包缓冲区
 static void wifi_mark_disconnected(const char *reason)
 {
     wifi_is_connected = 0;
+    wifi_run_without_connection = 1;
+    wifi_reconnect_enabled = 1;
     wifi_error_count = 0;
     wifi_reconnect_cooldown = WIFI_RECONNECT_COOLDOWN_TICKS;
     fifo_clear(&wifi_data_fifo);
     printf("\r\n[SYS] WiFi Connection Lost: %s. Entering Auto-Reconnect Mode...\r\n", reason);
+}
+static void wifi_skip_connection(void)
+{
+    wifi_is_connected = 0;
+    wifi_run_without_connection = 1;
+    wifi_reconnect_enabled = 0;
+    wifi_error_count = 0;
+    wifi_reconnect_cooldown = 0;
+    fifo_clear(&wifi_data_fifo);
+}
+static uint8 wifi_wait_retry_or_skip(uint8 allow_skip, uint16 wait_ms)
+{
+    while (wait_ms > 0)
+    {
+        if (allow_skip && screen_boot_skip_pressed())
+        {
+            wifi_skip_connection();
+            return 1;
+        }
+        system_delay_ms(10);
+        wait_ms = (wait_ms > 10) ? (wait_ms - 10) : 0;
+    }
+    return 0;
+}
+
+uint8 wifi_control_is_ready(void)
+{
+    return (wifi_is_connected || wifi_run_without_connection) ? 1 : 0;
+}
+
+void wifi_request_reconnect(void)
+{
+    wifi_is_connected = 0;
+    wifi_run_without_connection = 1;
+    wifi_reconnect_enabled = 1;
+    wifi_error_count = 0;
+    wifi_reconnect_cooldown = 0;
+    fifo_clear(&wifi_data_fifo);
+    printf("\r\n[WIFI] Manual reconnect requested.\r\n");
 }
 
 uint8 WIFI_Send_Buffer_Checked(const uint8 *data, uint32 len, uint8 flush_now)
@@ -83,62 +127,109 @@ void wifi_health_check_task(void)
     // Disabled: INT low and UDP send-now can be normal while WiFi-SPI is connected.
 }
 /**
- * @brief WiFi模块初始化并连接 (带超时限制)
+ * @brief WiFi模块初始化并连接，允许启动阶段按 P20_2 跳过。
  */
-void wifi_init(void)
+uint8 wifi_init_with_skip(uint8 allow_skip)
 {
     uint8 wifi_spi_test_buffer[] = "Wheel-Leg Robot Online!\r\n";
     uint8 retry_count = 0;
-    
-    // 初始化 WiFi 的 FIFO (防 VOFA+ 数据碎片化)
+
     fifo_init(&wifi_data_fifo, FIFO_DATA_8BIT, wifi_fifo_buffer, sizeof(wifi_fifo_buffer));
-    
-    wifi_is_connected = 0; 
-    
-    // 1. 初始化并连接热点
-    while(wifi_spi_init(WIFI_SSID_TEST, WIFI_PASSWORD_TEST))
+    wifi_is_connected = 0;
+    wifi_run_without_connection = 0;
+    wifi_reconnect_enabled = 0;
+
+    while(1)
     {
-        printf("\r\n connect wifi failed. retry: %d \r\n", retry_count + 1);
-        system_delay_ms(100); 
+        screen_boot_show_wifi_attempt((uint8)(retry_count + 1), WIFI_MAX_RETRY);
+        if (allow_skip && screen_boot_skip_pressed())
+        {
+            printf("\r\n WiFi skipped by user before init.\r\n");
+            wifi_skip_connection();
+            return 0;
+        }
+
+        if(wifi_spi_init(WIFI_SSID_TEST, WIFI_PASSWORD_TEST) == 0)
+        {
+            break;
+        }
+
         retry_count++;
+        printf("\r\n connect wifi failed. retry: %d \r\n", retry_count);
+
         if(retry_count >= WIFI_MAX_RETRY)
         {
             printf("\r\n WiFi Init Timeout! Skip WiFi. \r\n");
-            return; 
+            wifi_skip_connection();
+            return 0;
+        }
+        if (wifi_wait_retry_or_skip(allow_skip, 100))
+        {
+            printf("\r\n WiFi skipped by user.\r\n");
+            return 0;
         }
     }
-    
+
     printf("\r\n module version:%s", wifi_spi_version);
     printf("\r\n module mac    :%s", wifi_spi_mac_addr);
     printf("\r\n module ip     :%s", wifi_spi_ip_addr_port);
 
-    // 2. 建立TCP/UDP连接
     retry_count = 0;
     if(0 == WIFI_SPI_AUTO_CONNECT)
     {
-        while(wifi_spi_socket_connect(WIFI_PROTOCOL_STR, WIFI_TARGET_IP, WIFI_TARGET_PORT, WIFI_LOCAL_PORT))
+        while(1)
         {
-            printf("\r\n Connect %s Servers error, try again.", WIFI_PROTOCOL_STR);
-            system_delay_ms(100);
-            
+            screen_boot_show_wifi_attempt((uint8)(retry_count + 1), WIFI_MAX_RETRY);
+            if (allow_skip && screen_boot_skip_pressed())
+            {
+                printf("\r\n WiFi socket skipped by user before connect.\r\n");
+                wifi_skip_connection();
+                return 0;
+            }
+
+            if(wifi_spi_socket_connect(WIFI_PROTOCOL_STR, WIFI_TARGET_IP, WIFI_TARGET_PORT, WIFI_LOCAL_PORT) == 0)
+            {
+                break;
+            }
+
             retry_count++;
+            printf("\r\n Connect %s Servers error, try again.", WIFI_PROTOCOL_STR);
+
             if(retry_count >= WIFI_MAX_RETRY)
             {
                 printf("\r\n %s Socket Timeout! Skip WiFi Log.\r\n", WIFI_PROTOCOL_STR);
-                return; 
+                wifi_skip_connection();
+                return 0;
+            }
+            if (wifi_wait_retry_or_skip(allow_skip, 100))
+            {
+                printf("\r\n WiFi socket skipped by user.\r\n");
+                return 0;
             }
         }
     }
 
-    // 3. 发送握手数据
-    if(!wifi_spi_send_buffer(wifi_spi_test_buffer, sizeof(wifi_spi_test_buffer) - 1)) 
+    if(!wifi_spi_send_buffer(wifi_spi_test_buffer, sizeof(wifi_spi_test_buffer) - 1))
     {
         printf("\r\n wifi init & send success.\r\n");
         wifi_error_count = 0;
-        wifi_is_connected = 1; // 三关全部通过，赋予 WiFi 发送权限
+        wifi_is_connected = 1;
+        wifi_run_without_connection = 0;
+        wifi_reconnect_enabled = 0;
     }
-    
+    else
+    {
+        wifi_skip_connection();
+        return 0;
+    }
+
     seekfree_assistant_interface_init(SEEKFREE_ASSISTANT_WIFI_SPI);
+    return wifi_is_connected;
+}
+
+void wifi_init(void)
+{
+    (void)wifi_init_with_skip(0);
 }
 
 /**
@@ -157,20 +248,21 @@ void wifi_process_loop(void)
     {
         fifo_write_buffer(&wifi_data_fifo, wifi_spi_receive_data, data_length);
     }
-    
+
     // 2. 检查 FIFO 里的数据量，看是否凑够了一句话
-    uint32 fifo_data_count = fifo_used(&wifi_data_fifo); 
+    uint32 fifo_data_count = fifo_used(&wifi_data_fifo);
     if(fifo_data_count >= 3) // 至少大于最短指令长度
     {
         // 稍微等 2 毫秒，让后续的碎片数据到达拼成一整帧
-        system_delay_ms(2); 
-        
+        system_delay_ms(2);
+
         fifo_data_count = fifo_used(&wifi_data_fifo);
-        
+
         // 把拼装好的完整数据一口气提取出来，并清空 FIFO
-        fifo_read_buffer(&wifi_data_fifo, wifi_parse_buffer, &fifo_data_count, FIFO_READ_AND_CLEAN); 
-        
+        fifo_read_buffer(&wifi_data_fifo, wifi_parse_buffer, &fifo_data_count, FIFO_READ_AND_CLEAN);
+
         // 送去给大统领解析
+        VOFA_Set_Param_Rx_Source(VOFA_PARAM_RX_SRC_WIFI);
         VOFA_Protocol_Parse(wifi_parse_buffer, fifo_data_count);
     }
 }
@@ -182,6 +274,7 @@ void wifi_process_loop(void)
 void wifi_auto_reconnect_task(void)
 {
     if (wifi_is_connected == 1) return;
+    if (wifi_reconnect_enabled == 0) return;
 
     if (wifi_reconnect_cooldown > 0)
     {
@@ -199,23 +292,25 @@ void wifi_auto_reconnect_task(void)
             printf("\r\n[WIFI] Auto-Reconnect Success!!!\r\n");
             wifi_error_count = 0;
             wifi_is_connected = 1; // 恢复连接，复活！
-            
+            wifi_run_without_connection = 0;
+            wifi_reconnect_enabled = 0;
+
             // ========================================================
             // 【新增体验优化】重连成功后，主动把当前 RAM 里的真实参数推给电脑！
             // 坚决不读 Flash，而是把刚调好的参数同步给 VOFA+
             // ========================================================
-            IPC_Pull_Status_To_CoreB(); 
+            IPC_Pull_Status_To_CoreB();
             VOFA_Send_Params_To_Wifi(core_a_status.act_params);
             printf("[WIFI] Current RAM Params Synced to PC!\r\n");
             // ========================================================
 
-            return; 
+            return;
         }
     }
 
     // 重连失败，进入长冷却期 (大约半秒到1秒，取决于你的主循环速度)
     printf("\r\n[WIFI] Reconnect Failed. Cooldown for next attempt...\r\n");
-    wifi_reconnect_cooldown = 500; 
+    wifi_reconnect_cooldown = 500;
 }
 
 /**
@@ -226,7 +321,7 @@ void wifi_report_task(void)
     if(WIFI_Send_flag)
     {
         WIFI_Send_flag = 0;
-        
+
         // --- 掉线保护：如果断线了，不要尝试发波形，浪费时间 ---
         if(wifi_is_connected == 0) return;
 
@@ -235,26 +330,26 @@ void wifi_report_task(void)
             case WIFI_MODE_WAVE:
                 if(wave_format == 0) // ============ HEX 模式 ============
                 {
-                    uint8 idx = 0; 
-                    
-                    if(channel_show[0]) 
+                    uint8 idx = 0;
+
+                    if(channel_show[0])
                     {
                         seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.yaw;
                         seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.pitch;
                         seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.roll;
                     }
-                    if(channel_show[1]) 
+                    if(channel_show[1])
                     {
                         seekfree_assistant_oscilloscope_data.data[idx++] = motor_value.receive_left_speed_data;
                         seekfree_assistant_oscilloscope_data.data[idx++] = motor_value.receive_right_speed_data;
                     }
-                    if(channel_show[2]) 
+                    if(channel_show[2])
                     {
                         seekfree_assistant_oscilloscope_data.data[idx++] = (float)Motor_Left;
                         seekfree_assistant_oscilloscope_data.data[idx++] = (float)Motor_Right;
                     }
-                    
-                    if(channel_show[3]) 
+
+                    if(channel_show[3])
                     {
                         // 【修复：通过 IPC 状态机安全读取导航数据】
                         seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.nav_x;
@@ -264,7 +359,7 @@ void wifi_report_task(void)
                         seekfree_assistant_oscilloscope_data.data[idx++] = core_a_status.nav_w;
                     }
 
-                    if(channel_show[4]) 
+                    if(channel_show[4])
                     {
                         // 【新增：通过 IPC 状态机安全读取串级 PID 输出】
                         // 你可以根据需要随时在这里增删你想看的变量
@@ -276,40 +371,40 @@ void wifi_report_task(void)
                     }
 
 
-                    seekfree_assistant_oscilloscope_data.channel_num = idx; 
-                    if(idx > 0) 
+                    seekfree_assistant_oscilloscope_data.channel_num = idx;
+                    if(idx > 0)
                     {
                         seekfree_assistant_oscilloscope_send(&seekfree_assistant_oscilloscope_data);
                         #if (WIFI_PROTOCOL_MODE == 1)
-                        wifi_spi_udp_send_now(); 
+                        wifi_spi_udp_send_now();
                         #endif
                     }
                 }
                 else // ============ 文本 (TEXT) 模式 ============
                 {
-                    char text_buffer[300] = {0}; 
-                    char temp[64];               
-                    
+                    char text_buffer[300] = {0};
+                    char temp[64];
+
                     if(channel_show[0] && !channel_show[1] && !channel_show[2] && !channel_show[3] && !channel_show[4])
                     {
                         sprintf(text_buffer, "%.2f,%.2f,%.2f\r\n", core_a_status.yaw, core_a_status.pitch, core_a_status.roll);
                         WIFI_Send_Buffer_Checked((uint8*)text_buffer, strlen(text_buffer), 1);
                         break;
                     }
-                    
-                    
-                    if(channel_show[0]) 
+
+
+                    if(channel_show[0])
                     {
                         sprintf(temp, "Y:%.2f P:%.2f R:%.2f  ", core_a_status.yaw, core_a_status.pitch, core_a_status.roll);
-                        strcat(text_buffer, temp); 
+                        strcat(text_buffer, temp);
                     }
                     // ... channel 1 和 2 保持你的原样 ...
-                    if(channel_show[1]) 
+                    if(channel_show[1])
                     {
                         sprintf(temp, "L_Spd:%d R_Spd:%d  ", motor_value.receive_left_speed_data, motor_value.receive_right_speed_data);
                         strcat(text_buffer, temp);
                     }
-                    if(channel_show[2]) 
+                    if(channel_show[2])
                     {
                         sprintf(temp, "L_PWM:%d R_PWM:%d  ", Motor_Left, Motor_Right);
                         strcat(text_buffer, temp);
@@ -318,8 +413,8 @@ void wifi_report_task(void)
                     if(channel_show[3])
                     {
                         // 【修复：安全读取导航文本】
-                        sprintf(temp, "x:%.3f y:%.3f yaw:%.2f v:%.3f w:%.3f ", 
-                                core_a_status.nav_x, core_a_status.nav_y, core_a_status.yaw, 
+                        sprintf(temp, "x:%.3f y:%.3f yaw:%.2f v:%.3f w:%.3f ",
+                                core_a_status.nav_x, core_a_status.nav_y, core_a_status.yaw,
                                 core_a_status.nav_v, core_a_status.nav_w);
                         strcat(text_buffer, temp);
                     }
@@ -327,14 +422,14 @@ void wifi_report_task(void)
                     if(channel_show[4])
                     {
                         // 【新增：安全读取 PID 文本】
-                        sprintf(temp, "SpdL:%.1f AngL:%.1f GyrL:%.1f Turn:%.1f ", 
-                                core_a_status.pid_out_speed_l, core_a_status.pid_out_angle_l, 
+                        sprintf(temp, "SpdL:%.1f AngL:%.1f GyrL:%.1f Turn:%.1f ",
+                                core_a_status.pid_out_speed_l, core_a_status.pid_out_angle_l,
                                 core_a_status.pid_out_gyro_l, core_a_status.pid_out_turn);
                         strcat(text_buffer, temp);
                     }
-                    
 
-                    if(strlen(text_buffer) > 0) 
+
+                    if(strlen(text_buffer) > 0)
                     {
                         strcat(text_buffer, "\r\n");
                         WIFI_Send_Buffer_Checked((uint8*)text_buffer, strlen(text_buffer), 1);
@@ -349,7 +444,7 @@ void wifi_report_task(void)
                 WIFI_Send_Buffer_Checked((uint8*)"System Running OK...\r\n", 22, 1);
                 break;
             default:
-                break; 
+                break;
         }
     }
 }
@@ -359,15 +454,15 @@ void wifi_report_task(void)
 // ====================================================================
 void LOG_Printf(const char *format, ...)
 {
-    char log_buf[256]; 
-    
+    char log_buf[256];
+
     va_list args;
     va_start(args, format);
     vsnprintf(log_buf, sizeof(log_buf), format, args);
     va_end(args);
 
     // 1. 物理串口：始终盲发
-    printf("%s", log_buf); 
+    printf("%s", log_buf);
 
     // 2. WiFi 通道与掉线检测
     if (wifi_is_connected == 1)
