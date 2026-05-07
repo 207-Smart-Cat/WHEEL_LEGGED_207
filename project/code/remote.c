@@ -2,9 +2,12 @@
 #include "imu.h"
 #include "param.h"
 #include "runtime_status.h"
+#include "jump_control.h"
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
+#define REMOTE_CH6_JUMP_THRESHOLD 1000
+#define REMOTE_CH6_JUMP_ARM_FRAMES 10
 // ------------------- 内部结构体定义 -------------------
 // 将数据结构体定义在 .c 文件中，实现对外隐藏（封装）
 typedef struct
@@ -20,6 +23,10 @@ static Remote_CtrlData_t s_RemoteData = {
                 REMOTE_SAFE_VALUE_CHother, REMOTE_SAFE_VALUE_CHother, REMOTE_SAFE_VALUE_CHother}};
 
 static bool remote_drive_active = false;
+static uint8 remote_ch6_initialized = 0;
+static uint8 remote_ch6_last_high = 0;
+static uint8 remote_ch6_low_count = 0;
+static uint8 remote_jump_armed = 0;
 
 float remote_dbg_connected = 0.0f;
 float remote_dbg_ch1 = REMOTE_SAFE_VALUE_CH1;
@@ -31,6 +38,9 @@ float remote_dbg_ch6 = REMOTE_SAFE_VALUE_CHother;
 float remote_dbg_frame_count = 0.0f;
 float remote_dbg_raw_state = 0.0f;
 float remote_dbg_uart4_isr_count = 0.0f;
+
+static void Remote_CheckJumpTrigger(void);
+static void Remote_ResetJumpTrigger(void);
 
 static void Remote_UpdateDebugValues(void)
 {
@@ -59,6 +69,7 @@ void Remote_Init(void)
     s_RemoteData.channel[4] = REMOTE_SAFE_VALUE_CHother;
     s_RemoteData.channel[5] = REMOTE_SAFE_VALUE_CHother;
     Remote_UpdateDebugValues();
+    Remote_ResetJumpTrigger();
     target_angle = 180.0f;
 }
 
@@ -148,6 +159,49 @@ int32_t Remote_GetChannelData(uint8_t ch_index) // 通道序号，用于外部访问
     }
 }
 
+static void Remote_ResetJumpTrigger(void)
+{
+    remote_ch6_initialized = 0;
+    remote_ch6_last_high = 0;
+    remote_ch6_low_count = 0;
+    remote_jump_armed = 0;
+}
+
+static void Remote_CheckJumpTrigger(void)
+{
+    uint8 ch6_high = (Remote_GetChannelData(6) > REMOTE_CH6_JUMP_THRESHOLD) ? 1 : 0;
+
+    if (!ch6_high)
+    {
+        if (remote_ch6_low_count < REMOTE_CH6_JUMP_ARM_FRAMES)
+        {
+            remote_ch6_low_count++;
+        }
+        if (remote_ch6_low_count >= REMOTE_CH6_JUMP_ARM_FRAMES)
+        {
+            remote_jump_armed = 1;
+        }
+    }
+    else
+    {
+        remote_ch6_low_count = 0;
+    }
+
+    if (!remote_ch6_initialized)
+    {
+        remote_ch6_last_high = ch6_high;
+        remote_ch6_initialized = 1;
+        return;
+    }
+
+    if (remote_jump_armed && ch6_high && !remote_ch6_last_high)
+    {
+        jump_start();
+        remote_jump_armed = 0;
+    }
+
+    remote_ch6_last_high = ch6_high;
+}
 void Remote_control_callback(void)
 {
     float yaw_stick;
@@ -156,6 +210,7 @@ void Remote_control_callback(void)
     if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_REMOTE))
     {
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_OFF);
+        Remote_ResetJumpTrigger();
         if (remote_drive_active)
         {
             remote_drive_active = false;
@@ -167,6 +222,7 @@ void Remote_control_callback(void)
 
     if (Remote_GetStatus() == REMOTE_CONNECTED)
     {
+        Remote_CheckJumpTrigger();
         if (Remote_GetChannelData(5) > 1000)
         {
             Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
@@ -200,6 +256,7 @@ void Remote_control_callback(void)
     else
     {
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_LOST);
+        Remote_ResetJumpTrigger();
         if (remote_drive_active)
         {
             remote_drive_active = false;

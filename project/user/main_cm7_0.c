@@ -31,6 +31,7 @@ __no_init CoreB_Command_t core_b_cmd;
 #define PIT_Remote (PIT_CH12)
 #define PIT_Engine (PIT_CH13)
 #define PIT_IPC (PIT_CH11)
+#define PIT_Jump (PIT_CH14)
 #define LED1 (P19_0)
 #define IMU_ACC_RAW_VOFA_TEST_MODE (0)
 // **************************** 全局变量区域 ****************************
@@ -53,7 +54,7 @@ extern float temp_a, temp_b;
 // 外部变量引入
 extern RobotState_t robot_pose;
 extern bool IMU_ready;
-extern int jump_stop;
+extern volatile int jump_stop;
 
 extern uint32_t test_pit10_cnt;
 
@@ -146,6 +147,7 @@ int main(void)
   //=================================舵机初始化======================
   // pit_ms_init(PIT_Engine, 20); // leg_control now runs from balance_control 20ms divider
   pit_ms_init(PIT_IPC, 10); // 双核参数同步 10ms 周期检查
+  pit_ms_init(PIT_Jump, 1); // 跳跃动作状态机 1ms 周期
 
 //  // === 1. 导航系统初始化 ===
 //    navi_data_init();

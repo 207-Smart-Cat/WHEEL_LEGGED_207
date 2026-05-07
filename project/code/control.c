@@ -6,6 +6,7 @@
 #include "zf_device_imu660rc.h"
 #include "runtime_status.h"
 #include "process_rx.h"
+#include "jump_control.h"
 // 全局变量
 extern float target_velocity;      // 目标速度
 extern float target_angle;         // 目标角度
@@ -39,8 +40,8 @@ extern IMU_t IMU_data;            // IMU数据
 float roll;              // 倾斜角度
 int engine_change = 600; // 发动机变化量
 //=======================未加入Jump Camera时的临时动作====================================
-int jump_stop = 0;
-int jump_position = 0;
+volatile int jump_stop = 0;
+volatile int jump_position = 0;
 float border = 94;
 bool First_angle = true;
 bool IMU_ready = false;
@@ -500,11 +501,26 @@ void balance_control()
 
     roll = IMU_data.filter_result.roll;
 
-    if (jump_stop == 1)
+    if (jump_should_suspend_engine())
     {
+        Runtime_Set_Balance_Reason(RUNTIME_REASON_BALANCE_OFF);
         PidChange(&motor_speed, 0, 0, 0);
         PidChange(&motor_Stand, 0, 0, 0);
         PidChange(&motor_gyro, 0, 0, 0);
+        Balance_Pwm = 0.0f;
+        Velocity_Angle_left = 0.0f;
+        Velocity_Angle_right = 0.0f;
+        Turn_Pwm = 0.0f;
+        Motor_Left = 0;
+        Motor_Right = 0;
+        out_speed_l = 0.0f;
+        out_speed_r = 0.0f;
+        out_angle_l = 0.0f;
+        out_angle_r = 0.0f;
+        out_gyro_l = 0.0f;
+        out_gyro_r = 0.0f;
+        small_driver_set_duty(0, 0);
+        return;
     }
     else
     {

@@ -9,13 +9,9 @@ typedef struct
     uint16 logical_max;
 } servo_channel_cal_t;
 
-// 实测 4 路物理位置：
-// PWM_1 左前，PWM_2 右前，PWM_3 右后，PWM_4 左后
-// 实测从中位打到较小占空比时：
-// PWM_1/PWM_3 向上，PWM_2/PWM_4 向下
-// 因此 reverse 不能按“左边/右边”分，而要按实际通道分。
-// FiveBarLinkageData.c 中 servo_control() 输出顺序仍按 pwm1 / pwm2 进入，
-// 这里仅负责把每条腿的两个逻辑舵机映射到正确物理通道。
+// Physical servo mapping: PWM_1=left-front, PWM_2=right-front, PWM_3=right-rear, PWM_4=left-rear.
+// Reverse flags follow physical channel direction, not logical left/right side.
+// FiveBarLinkageData.c still outputs logical pwm1/pwm2 for each leg.
 static const servo_channel_cal_t k_left_servo_1 = {PWM_4, 1, 0, 250, 1230};
 static const servo_channel_cal_t k_left_servo_2 = {PWM_1, 1, 0, 250, 1230};
 static const servo_channel_cal_t k_right_servo_1 = {PWM_3, 0, 0, 250, 1230};
@@ -148,6 +144,11 @@ void engine_init(int pwm1, int pwm2)
     pwm_init(PWM_4, FREQ, g_pwm_out_4);
 }
 
+void engine_maintain(int pwm1, int pwm2)
+{
+    engine_left_maintain(pwm1, pwm2);
+    engine_right_maintain(pwm1, pwm2);
+}
 void engine_left_maintain(int pwm1, int pwm2)
 {
     pwm1 = (int)auu((uint32)pwm1);
