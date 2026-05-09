@@ -33,13 +33,55 @@ typedef enum {
     WIFI_MODE_IMAGE  = 2,   // 模式2：图像回传（发给图传上位机）
     WIFI_MODE_LOG    = 3    // 模式3：日志模式（发文本调试信息）
 } wifi_mode_t;
+#define WIFI_WAVE_MAX_SELECTED 6
+#define WIFI_WAVE_EMPTY_SLOT   0xFF
 
+typedef enum {
+    WIFI_WAVE_VAR_ROLL = 0,
+    WIFI_WAVE_VAR_PITCH,
+    WIFI_WAVE_VAR_YAW,
+    WIFI_WAVE_VAR_LEFT_SPEED,
+    WIFI_WAVE_VAR_RIGHT_SPEED,
+    WIFI_WAVE_VAR_LEFT_PWM,
+    WIFI_WAVE_VAR_RIGHT_PWM,
+    WIFI_WAVE_VAR_SPD_OUT_L,
+    WIFI_WAVE_VAR_SPD_OUT_R,
+    WIFI_WAVE_VAR_ANG_OUT_L,
+    WIFI_WAVE_VAR_ANG_OUT_R,
+    WIFI_WAVE_VAR_GYR_OUT_L,
+    WIFI_WAVE_VAR_GYR_OUT_R,
+    WIFI_WAVE_VAR_TURN_OUT,
+    WIFI_WAVE_VAR_LEG_OUT,
+    WIFI_WAVE_VAR_LEG_SPEED_TILT,
+    WIFI_WAVE_VAR_LEG_X_OFFSET,
+    WIFI_WAVE_VAR_LEG_X_TARGET,
+    WIFI_WAVE_VAR_LEG_TICK,
+    WIFI_WAVE_VAR_BATTERY,
+    WIFI_WAVE_VAR_COUNT
+} wifi_wave_var_t;
+
+
+typedef enum {
+    WIFI_BOOT_STATE_NONE = 0,
+    WIFI_BOOT_STATE_CONNECTED,
+    WIFI_BOOT_STATE_SKIPPED,
+    WIFI_BOOT_STATE_FAILED
+} wifi_boot_state_t;
 // --- 外部变量声明 ---
 extern wifi_mode_t current_wifi_mode;
 extern volatile uint8 WIFI_Send_flag;
 extern uint8 wifi_is_connected; // 供外部查询 WiFi 是否在线
+extern uint8 wifi_wave_selected_count;
+extern uint8 wifi_wave_selected[WIFI_WAVE_MAX_SELECTED];
 
 // --- API 函数声明 ---
+const char *wifi_wave_var_name(wifi_wave_var_t id);
+float wifi_wave_get_value(wifi_wave_var_t id);
+uint8 wifi_wave_is_selected(uint8 id);
+uint8 wifi_wave_toggle_selected(uint8 id);
+void wifi_wave_enter_mode(void);
+void wifi_wave_send_var_map(void);
+uint8 wifi_wave_set_selected_ids(const uint8 *ids, uint8 count);
 void wifi_init(void);
 uint8 wifi_init_with_skip(uint8 allow_skip);
 void wifi_process_loop(void);   // 负责接收指令（包含切换模式的指令）
@@ -48,6 +90,8 @@ void wifi_health_check_task(void); // 静默模式下的低频在线检测
 void wifi_auto_reconnect_task(void); // 【新增】断线自动重连状态机
 void wifi_request_reconnect(void);
 uint8 wifi_control_is_ready(void);
+wifi_boot_state_t wifi_get_boot_state(void);
+const char *wifi_get_boot_state_text(void);
 uint8 WIFI_Send_Buffer_Checked(const uint8 *data, uint32 len, uint8 flush_now);
 void LOG_Printf(const char *format, ...);
 

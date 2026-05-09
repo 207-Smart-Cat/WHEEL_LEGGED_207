@@ -1,17 +1,4 @@
-#include "zf_common_headfile.h"
-#include "small_driver_uart_control.h"
-#include "imu.h"
-#include "engine.h"
-#include "control.h"
-#include "wifi.h"
-#include "remote.h"
-#include "screen_display.h"
-#include "ipc_shared_data.h"
-#include "param.h"
-#include "navigation_data_handling.h"
-#include "navigation_tracking.h"
-#include "battery_monitor.h"
-#include "zf_device_imu660rc.h"
+#include "app_headfile.h"
 
 // **************************** 核间通信区域 ****************************
 // 在 CM7_0 和 CM7_1 中都需要加入这段代码
@@ -178,6 +165,12 @@ int main(void)
   {
     static uint8_t battery_update_div = 0;
     // 此处编写需要循环执行的代码
+    if (IPC_Consume_Motor_Zero_Request_Core0())
+    {
+        small_driver_zero_calibration_start();
+    }
+    small_driver_zero_calibration_task();
+
     battery_update_div++;
     if (battery_update_div >= 100)
     {

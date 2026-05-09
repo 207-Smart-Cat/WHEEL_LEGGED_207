@@ -2,8 +2,17 @@
 #include "ipc_shared_data.h"
 #include "param.h"
 #include "runtime_status.h"
-#define MOTOR_STARTUP_DUTY_STEP (120)
-#define MOTOR_DUTY_MAX_ABS      (MAX_DUTY * (PWM_DUTY_MAX / 100))
+#define MOTOR_STARTUP_DUTY_STEP      (120)
+#define MOTOR_DUTY_MAX_ABS           (MAX_DUTY * (PWM_DUTY_MAX / 100))
+#define MOTOR_ZERO_WAIT_MIN_MS       (2000U)
+#define MOTOR_ZERO_WAIT_TIMEOUT_MS   (5000U)
+#define MOTOR_ZERO_SETTLE_MS         (200U)
+
+static volatile motor_zero_state_t motor_zero_state = MOTOR_ZERO_STATE_IDLE;
+static volatile uint8 motor_zero_rx_seen = 0;
+static volatile uint8 motor_zero_speed_seen = 0;
+static volatile uint8 motor_startup_ramp_reset_request = 0;
+static uint16 motor_zero_elapsed_ms = 0;
 
 static uint8 motor_output_is_allowed(void)
 {
@@ -54,6 +63,87 @@ static void motor_startup_ramp(uint8 *enabled, int16 *startup_limit)
     }
 }
 
+void small_driver_request_startup_ramp_reset(void)
+{
+    motor_startup_ramp_reset_request = 1;
+}
+
+uint8 small_driver_zero_calibration_is_active(void)
+{
+    return (motor_zero_state == MOTOR_ZERO_STATE_WAIT_REPLY || motor_zero_state == MOTOR_ZERO_STATE_SETTLE) ? 1 : 0;
+}
+
+motor_zero_state_t small_driver_zero_calibration_state(void)
+{
+    return motor_zero_state;
+}
+
+void small_driver_zero_calibration_start(void)
+{
+    uint8 set_zero_cmd[7];
+
+    if (small_driver_zero_calibration_is_active())
+    {
+        return;
+    }
+
+    motor_zero_rx_seen = 0;
+    motor_zero_speed_seen = 0;
+    motor_zero_elapsed_ms = 0;
+    motor_zero_state = MOTOR_ZERO_STATE_WAIT_REPLY;
+    IPC_Update_Motor_Zero_State_From_Core0((uint8)motor_zero_state);
+
+    small_driver_set_duty(0, 0);
+
+    set_zero_cmd[0] = 0xA5;
+    set_zero_cmd[1] = 0x03;
+    set_zero_cmd[2] = 0x00;
+    set_zero_cmd[3] = 0x00;
+    set_zero_cmd[4] = 0x00;
+    set_zero_cmd[5] = 0x00;
+    set_zero_cmd[6] = set_zero_cmd[0] + set_zero_cmd[1] + set_zero_cmd[2] + set_zero_cmd[3] + set_zero_cmd[4] + set_zero_cmd[5];
+    uart_write_buffer(SMALL_DRIVER_UART, set_zero_cmd, 7);
+
+    small_driver_get_speed();
+}
+
+void small_driver_zero_calibration_task(void)
+{
+    if (motor_zero_state == MOTOR_ZERO_STATE_IDLE || motor_zero_state == MOTOR_ZERO_STATE_DONE || motor_zero_state == MOTOR_ZERO_STATE_TIMEOUT)
+    {
+        return;
+    }
+
+    if (motor_zero_elapsed_ms < 0xFFFFU)
+    {
+        motor_zero_elapsed_ms++;
+    }
+
+    if (motor_zero_state == MOTOR_ZERO_STATE_WAIT_REPLY)
+    {
+        if (motor_zero_elapsed_ms >= MOTOR_ZERO_WAIT_MIN_MS && motor_zero_rx_seen && motor_zero_speed_seen)
+        {
+            motor_zero_elapsed_ms = 0;
+            motor_zero_state = MOTOR_ZERO_STATE_SETTLE;
+        }
+        else if (motor_zero_elapsed_ms >= MOTOR_ZERO_WAIT_TIMEOUT_MS)
+        {
+            motor_zero_state = MOTOR_ZERO_STATE_TIMEOUT;
+            small_driver_request_startup_ramp_reset();
+        }
+    }
+    else if (motor_zero_state == MOTOR_ZERO_STATE_SETTLE)
+    {
+        if (motor_zero_elapsed_ms >= MOTOR_ZERO_SETTLE_MS)
+        {
+            motor_zero_state = MOTOR_ZERO_STATE_DONE;
+            small_driver_request_startup_ramp_reset();
+        }
+    }
+
+    IPC_Update_Motor_Zero_State_From_Core0((uint8)motor_zero_state);
+}
+
 small_device_value_struct motor_value;      // 定义通讯参数结构体
 
 
@@ -70,6 +160,10 @@ void uart_control_callback(void)
 
     if(uart_query_byte(SMALL_DRIVER_UART, &receive_data))                                   // 接收串口数据
     {
+        if (small_driver_zero_calibration_is_active())
+        {
+            motor_zero_rx_seen = 1;
+        }
         if(receive_data == 0xA5 && motor_value.receive_data_buffer[0] != 0xA5)              // 判断是否收到帧头 并且 当前接收内容中是否正确包含帧头
         {
             motor_value.receive_data_count = 0;                                             // 未收到帧头或者未正确包含帧头则重新接收
@@ -97,6 +191,8 @@ void uart_control_callback(void)
                         motor_value.receive_left_speed_data  = (((int)motor_value.receive_data_buffer[2] << 8) | (int)motor_value.receive_data_buffer[3]);  // 拟合左侧电机转速数据
 
                         motor_value.receive_right_speed_data = (((int)motor_value.receive_data_buffer[4] << 8) | (int)motor_value.receive_data_buffer[5]);  // 拟合右侧电机转速数据
+
+                        motor_zero_speed_seen = 1;
                     }
 
                     motor_value.receive_data_count = 0;                                     // 清除缓冲区计数值
@@ -133,7 +229,19 @@ void small_driver_set_duty(int16 left_duty, int16 right_duty)
     static uint8 motor_output_enabled = 0;
     static int16 startup_duty_limit = 0;
 
-    if (motor_output_is_allowed() == 0)
+    if (motor_startup_ramp_reset_request)
+    {
+        motor_safety_reset(&motor_output_enabled, &startup_duty_limit);
+        motor_startup_ramp_reset_request = 0;
+    }
+
+    if (small_driver_zero_calibration_is_active())
+    {
+        left_duty = 0;
+        right_duty = 0;
+        motor_safety_reset(&motor_output_enabled, &startup_duty_limit);
+    }
+    else if (motor_output_is_allowed() == 0)
     {
         left_duty = 0;
         right_duty = 0;

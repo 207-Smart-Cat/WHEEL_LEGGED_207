@@ -4,10 +4,11 @@
 #include "wifi.h"
 #include "ipc_shared_data.h" // 必须包含 IPC 头文件
 #include "runtime_status.h"
+#include "jump_control.h"
+#include "vehicle_supervisor.h"
 
 // 引入定义在 wifi.c 中的全局状态变量
 extern wifi_mode_t current_wifi_mode;
-extern uint8 wave_format;
 extern uint8 channel_show[5];
 
 #define VOFA_PARAM_FRAME_BUF_SIZE   (256)
@@ -15,6 +16,128 @@ extern uint8 channel_show[5];
 
 typedef char vofa_param_count_must_not_exceed_63[(PARAM_COUNT <= VOFA_PARAM_MAX_COUNT) ? 1 : -1];
 typedef char vofa_param_frame_buffer_must_fit[(PARAM_COUNT * sizeof(float) + 3 <= VOFA_PARAM_FRAME_BUF_SIZE) ? 1 : -1];
+static uint8 VOFA_Text_Is_Space(uint8 ch)
+{
+    return (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') ? 1 : 0;
+}
+static uint8 VOFA_Text_To_Upper(uint8 ch)
+{
+    if (ch >= 'a' && ch <= 'z')
+    {
+        return (uint8)(ch - 32);
+    }
+    return ch;
+}
+
+static uint8 VOFA_Text_Match_Wave(const uint8 *rx_buffer, uint32 data_length, uint32 *pos)
+{
+    uint32 i = 0;
+    while (i < data_length && VOFA_Text_Is_Space(rx_buffer[i]))
+    {
+        i++;
+    }
+
+    if ((i + 4) > data_length)
+    {
+        return 0;
+    }
+
+    if (VOFA_Text_To_Upper(rx_buffer[i]) != 'W' || VOFA_Text_To_Upper(rx_buffer[i + 1]) != 'A' || VOFA_Text_To_Upper(rx_buffer[i + 2]) != 'V' || VOFA_Text_To_Upper(rx_buffer[i + 3]) != 'E')
+    {
+        return 0;
+    }
+
+    *pos = i + 4;
+    return 1;
+}
+
+static uint8 VOFA_Parse_Wave_Text_Command(uint8 *rx_buffer, uint32 data_length)
+{
+    uint32 pos;
+    uint8 ids[WIFI_WAVE_MAX_SELECTED + 1];
+    uint8 count = 0;
+
+    if (!VOFA_Text_Match_Wave(rx_buffer, data_length, &pos))
+    {
+        return 0;
+    }
+
+    while (pos < data_length && VOFA_Text_Is_Space(rx_buffer[pos]))
+    {
+        pos++;
+    }
+
+    if (pos < data_length && rx_buffer[pos] == '?')
+    {
+        wifi_wave_send_var_map();
+        return 1;
+    }
+
+    if ((pos + 3) <= data_length && VOFA_Text_To_Upper(rx_buffer[pos]) == 'O' && VOFA_Text_To_Upper(rx_buffer[pos + 1]) == 'F' && VOFA_Text_To_Upper(rx_buffer[pos + 2]) == 'F')
+    {
+        current_wifi_mode = WIFI_MODE_SILENT;
+        LOG_Printf("[WAVE] OFF, enter silent mode\r\n");
+        return 1;
+    }
+
+    while (pos < data_length)
+    {
+        uint16 value = 0;
+        uint8 has_digit = 0;
+
+        while (pos < data_length && (VOFA_Text_Is_Space(rx_buffer[pos]) || rx_buffer[pos] == ','))
+        {
+            pos++;
+        }
+
+        if (pos >= data_length || rx_buffer[pos] == '\0')
+        {
+            break;
+        }
+
+        if (rx_buffer[pos] == '\r' || rx_buffer[pos] == '\n')
+        {
+            break;
+        }
+
+        while (pos < data_length && rx_buffer[pos] >= '0' && rx_buffer[pos] <= '9')
+        {
+            has_digit = 1;
+            value = (uint16)(value * 10 + (rx_buffer[pos] - '0'));
+            pos++;
+        }
+
+        if (!has_digit)
+        {
+            LOG_Printf("[WAVE] invalid command. Use WAVE? for help\r\n");
+            return 1;
+        }
+
+        if (count >= WIFI_WAVE_MAX_SELECTED)
+        {
+            LOG_Printf("[WAVE] too many vars, max %d\r\n", WIFI_WAVE_MAX_SELECTED);
+            return 1;
+        }
+
+        ids[count++] = (uint8)value;
+    }
+
+    if (count == 0)
+    {
+        wifi_wave_send_var_map();
+        return 1;
+    }
+
+    count = wifi_wave_set_selected_ids(ids, count);
+    if (count == 0)
+    {
+        LOG_Printf("[WAVE] invalid id. Use WAVE? for map\r\n");
+        return 1;
+    }
+
+    LOG_Printf("[WAVE] selected %d vars, enter wave mode\r\n", count);
+    return 1;
+}
 
 typedef union {
     float f_val;
@@ -107,6 +230,36 @@ static const char *VOFA_Runtime_Module_Name(runtime_module_t module)
     }
 }
 
+static const char *VOFA_Jump_State_Name(uint8 state)
+{
+    switch ((JumpState)state)
+    {
+        case JUMP_FREE:        return "FREE";
+        case JUMP_PREPARE:     return "PREPARE";
+        case JUMP_BURST:       return "BURST";
+        case JUMP_AIR_RETRACT: return "AIR_RETRACT";
+        case JUMP_EXE_BUFFER:  return "BUFFER";
+        case JUMP_RECOVER:     return "RECOVER";
+        default:               return "UNKNOWN";
+    }
+}
+
+static const char *VOFA_Jump_Block_Name(uint8 reason)
+{
+    switch ((JumpTriggerBlockReason)reason)
+    {
+        case JUMP_BLOCK_NONE:           return "NONE";
+        case JUMP_BLOCK_STARTED:        return "STARTED";
+        case JUMP_BLOCK_BUSY:           return "BUSY";
+        case JUMP_BLOCK_REMOTE_OFF:     return "REMOTE_OFF";
+        case JUMP_BLOCK_REMOTE_LOST:    return "REMOTE_LOST";
+        case JUMP_BLOCK_REMOTE_STANDBY: return "REMOTE_STANDBY";
+        case JUMP_BLOCK_NOT_ARMED:      return "NOT_ARMED";
+        case JUMP_BLOCK_NO_EDGE:        return "NO_EDGE";
+        default:                        return "UNKNOWN";
+    }
+}
+
 static void VOFA_Log_Runtime_Status(void)
 {
     IPC_Pull_Status_To_CoreB();
@@ -118,6 +271,11 @@ static void VOFA_Log_Runtime_Status(void)
                Runtime_Reason_Name((runtime_reason_t)core_a_status.balance_reason),
                Runtime_Reason_Name((runtime_reason_t)core_a_status.servo_reason),
                Runtime_Reason_Name((runtime_reason_t)core_a_status.remote_reason));
+    LOG_Printf("[RUNTIME] jump state=%s elapsed=%d trigger=%lu block=%s\r\n",
+               VOFA_Jump_State_Name(jump_dbg_state),
+               jump_dbg_elapsed_ms,
+               jump_dbg_trigger_count,
+               VOFA_Jump_Block_Name(jump_dbg_trigger_block_reason));
     for (uint8 module = 0; module < RUNTIME_MODULE_COUNT; module++)
     {
         LOG_Printf("[RUNTIME] id=%d %-12s %s\r\n",
@@ -126,6 +284,7 @@ static void VOFA_Log_Runtime_Status(void)
                    Runtime_Is_Module_Enabled((runtime_module_t)module) ? "ON" : "OFF");
     }
 }
+
 static uint8 VOFA_Calc_Checksum(const uint8 *data, uint32 len)
 {
     uint8 sum = 0;
@@ -190,6 +349,8 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
 {
     if(data_length == 0 || rx_buffer == NULL) return;
 
+    if (VOFA_Parse_Wave_Text_Command(rx_buffer, data_length)) return;
+
     for(uint32 i = 0; i < data_length; i++)
     {
         // ========================================================
@@ -202,12 +363,8 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             {
                 if(target_mode == WIFI_MODE_WAVE)
                 {
-                    if(current_wifi_mode != WIFI_MODE_WAVE)
-                    {
-                        current_wifi_mode = WIFI_MODE_WAVE;
-                        LOG_Printf("\r\n >>> Enter WAVE Mode <<< \r\n");
-                    }
-                    else wave_format ^= 1;
+                    wifi_wave_enter_mode();
+                    LOG_Printf("\r\n >>> Enter WAVE Mode <<< \r\n");
                 }
                 else current_wifi_mode = (wifi_mode_t)target_mode;
             }
@@ -326,7 +483,11 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             if(sum_check == rx_buffer[i + 5])
             {
                 uint8 cmd_id = rx_buffer[i + 2];
-                if(cmd_id == 0x01) LOG_Printf("\r\n [VOFA] KILL SWITCH! \r\n");
+                if(cmd_id == 0x01)
+                {
+                    Vehicle_Emergency_Stop(VEHICLE_EVENT_SOURCE_WIFI);
+                    LOG_Printf("\r\n [VOFA] KILL SWITCH! \r\n");
+                }
                 else if(cmd_id == 0x02) LOG_Printf("\r\n [VOFA] STAY STILL! \r\n");
                 i += 5; continue;
             }

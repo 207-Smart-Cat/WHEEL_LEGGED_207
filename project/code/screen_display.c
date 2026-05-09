@@ -8,6 +8,7 @@
 #include "param.h"
 #include "vofa_protocol.h"
 #include "runtime_status.h"
+#include "vehicle_supervisor.h"
 // ** 全局变量区域 **
 uint8 IPS200_flag = 0;      // 屏幕显示flag（PIT中断置位）
 uint8 current_page = 0;     // Monitor 子页面索引 (0/1/2)
@@ -20,6 +21,7 @@ uint8 force_ui_refresh = 1;
 #define UI_KEY_BACK_PIN     P20_2
 #define UI_KEY_COUNT        (4)
 #define UI_LONG_PRESS_TICKS (16)   // 16 * 50ms = 800ms
+#define UI_EMERGENCY_COMBO_TICKS (60) // 60 * 50ms = 3s
 #define UI_PARAM_ROWS       (7)
 #define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
 
@@ -46,6 +48,7 @@ typedef enum {
     UI_SCREEN_PARAM_ADJUST,
     UI_SCREEN_PARAM_DIRECT,
     UI_SCREEN_WIFI,
+    UI_SCREEN_WIFI_WAVE_SELECT,
     UI_SCREEN_MODULES,
     UI_SCREEN_SYSTEM,
     UI_SCREEN_CONFIRM
@@ -228,6 +231,7 @@ static const uint16_t UI_TEXT_T_SYS_SAVE[] = {0x4FDD, 0x5B58, 0x53C2, 0x6570, 0x
 static const uint16_t UI_TEXT_T_SYS_LOAD[] = {0x8BFB, 0x53D6, 0x53C2, 0x6570, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_DEFAULT[] = {0x6062, 0x590D, 0x9ED8, 0x8BA4, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_WIFI_RESTART[] = {0x0057, 0x0069, 0x0046, 0x0069, 0x91CD, 0x542F, 0x9884, 0x7559, 0x0000};
+static const uint16_t UI_TEXT_T_SYS_MOTOR_ZERO[] = {0x004D, 0x006F, 0x0074, 0x006F, 0x0072, 0x0020, 0x005A, 0x0065, 0x0072, 0x006F, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_ABOUT[] = {0x5173, 0x4E8E, 0x0000};
 static const uint16_t UI_TEXT_T_FLASH_CONFIRM[] = {0x0046, 0x006C, 0x0061, 0x0073, 0x0068, 0x64CD, 0x4F5C, 0x9700, 0x8981, 0x786E, 0x8BA4, 0x0000};
 static const uint16_t UI_TEXT_T_CONFIRM_CHANGE[] = {0x53EF, 0x80FD, 0x6539, 0x53D8, 0x53C2, 0x6570, 0x0000};
@@ -402,7 +406,7 @@ void screen_boot_begin(void)
     ips200_show_string(20, 8, "Wheel-Leg Boot");
     ips200_draw_line(0, 28, 239, 28, RGB565_SKYBLUE);
     ips200_show_string(8, 42, "Init sequence:");
-    ips200_show_string(8, 292, "P20_2: Skip WiFi");
+    ips200_show_string(8, 292, "P20_2: Cancel WiFi");
 }
 
 void screen_boot_show_status(const char *module_name, const char *status)
@@ -416,7 +420,7 @@ void screen_boot_show_status(const char *module_name, const char *status)
         return;
     }
 
-    if (row >= 8)
+    if (row >= 9)
     {
         row = 0;
         ips200_clear();
@@ -435,9 +439,13 @@ void screen_boot_show_wifi_attempt(uint8 attempt, uint8 max_retry)
     ips200_show_string(8, 244, "WiFi connecting...");
     sprintf(line, "Try %d/%d", attempt, max_retry);
     ips200_show_string(8, 268, line);
-    ips200_show_string(8, 292, "P20_2: Skip WiFi");
+    ips200_show_string(8, 292, "P20_2: Cancel WiFi");
 }
 
+uint8 screen_boot_skip_is_down(void)
+{
+    return (gpio_get_level(UI_KEY_BACK_PIN) == 0) ? 1 : 0;
+}
 uint8 screen_boot_skip_pressed(void)
 {
     if (gpio_get_level(UI_KEY_BACK_PIN) == 0)
@@ -451,8 +459,8 @@ uint8 screen_boot_skip_pressed(void)
 void screen_boot_show_done(uint8 wifi_ready, uint8 wifi_skipped)
 {
     ips200_show_string(8, 244, wifi_ready ? "WiFi: Connected" : (wifi_skipped ? "WiFi: Skipped" : "WiFi: Offline"));
-    ips200_show_string(8, 268, "Boot complete");
-    ips200_show_string(8, 292, "Enter menu...");
+    ips200_show_string(8, 268, "Boot complete, wait 2s");
+    ips200_show_string(8, 292, wifi_ready ? "Enter menu..." : "Menu:System WiFi reconnect");
     system_delay_ms(2000);
     ips200_clear();
     force_ui_refresh = 1;
@@ -633,6 +641,8 @@ static ui_screen_t ui_screen = UI_SCREEN_HOME;
 static uint8_t ui_home_index = 0;
 static uint8_t ui_mode_index = 0;
 static uint8_t ui_wifi_index = 0;
+static uint8_t ui_wave_var_index = 0;
+static uint8_t ui_wave_var_top = 0;
 static uint8_t ui_module_index = 0;
 static uint8_t ui_system_index = 0;
 static uint8_t ui_confirm_yes = 0;
@@ -648,6 +658,8 @@ static uint8_t ui_param_edit_choice = 0;
 static uint8_t ui_edit_step_scale_index = 1;
 static uint8_t ui_direct_digits[6] = {0, 0, 0, 0, 0, 0};
 static uint8_t ui_direct_digit_index = 0;
+static uint16_t ui_emergency_combo_ticks = 0;
+static uint8_t ui_emergency_combo_fired = 0;
 static ui_key_state_t ui_keys[UI_KEY_COUNT] = {
     {1, 1, 0, 0, 0},
     {1, 1, 0, 0, 0},
@@ -692,6 +704,7 @@ static const char *const k_system_items[] = {
     "Load Params Flash",
     "Restore Defaults",
     "WiFi Restart TODO",
+    "Motor Set Zero",
     "About"
 };
 
@@ -741,6 +754,7 @@ static const uint16_t *const k_system_texts[] = {
     UI_TEXT_T_SYS_LOAD,
     UI_TEXT_T_SYS_DEFAULT,
     UI_TEXT_T_SYS_WIFI_RESTART,
+    UI_TEXT_T_SYS_MOTOR_ZERO,
     UI_TEXT_T_SYS_ABOUT
 };
 static const ParamID_e k_param_group_filter[] = {
@@ -792,6 +806,8 @@ static const ui_param_group_t k_param_groups[] = {
     {"Nav",       k_param_group_navigation, ARRAY_SIZE(k_param_group_navigation)},
     {"Mag",       k_param_group_mag,        ARRAY_SIZE(k_param_group_mag)}
 };
+
+static void ui_set_screen(ui_screen_t screen);
 
 static const float k_edit_step_scales[] = {
     0.1f, 1.0f, 10.0f, 100.0f, 1000.0f
@@ -857,6 +873,31 @@ static void ui_scan_keys(ui_key_event_t events[UI_KEY_COUNT])
     }
 }
 
+static uint8_t ui_handle_emergency_combo(void)
+{
+    uint8_t combo_down = (ui_keys[UI_KEY_DOWN].stable_level == 0 && ui_keys[UI_KEY_UP].stable_level == 0) ? 1 : 0;
+
+    if (!combo_down)
+    {
+        ui_emergency_combo_ticks = 0;
+        ui_emergency_combo_fired = 0;
+        return 0;
+    }
+
+    if (ui_emergency_combo_ticks < 60000)
+    {
+        ui_emergency_combo_ticks++;
+    }
+
+    if (ui_emergency_combo_ticks >= UI_EMERGENCY_COMBO_TICKS && !ui_emergency_combo_fired)
+    {
+        ui_emergency_combo_fired = 1;
+        Vehicle_Emergency_Stop(VEHICLE_EVENT_SOURCE_SCREEN);
+        ui_set_screen(UI_SCREEN_HOME);
+    }
+
+    return 1;
+}
 static void ui_set_screen(ui_screen_t screen)
 {
     ui_screen = screen;
@@ -1191,9 +1232,32 @@ static void ui_draw_wifi(void)
     ui_show_text(8, 178, UI_TEXT_T_CURRENT);
     ui_show_text(64, 178, k_wifi_texts[((uint8_t)current_wifi_mode < ARRAY_SIZE(k_wifi_texts)) ? (uint8_t)current_wifi_mode : 0]);
     ui_show_text(8, 204, wifi_is_connected ? UI_TEXT_T_CONNECTED : UI_TEXT_T_NOT_CONNECTED);
+    ips200_show_string(8, 230, "Wave: OK select vars");
     ui_draw_footer_text(UI_TEXT_T_HINT_SET);
 }
 
+static void ui_draw_wifi_wave_select(void)
+{
+    char line[40];
+    uint8_t row;
+
+    ui_draw_title_text(UI_TEXT_T_WIFI_WAVE);
+    sprintf(line, "SEL:%d/%d", wifi_wave_selected_count, WIFI_WAVE_MAX_SELECTED);
+    ips200_show_string(8, 32, line);
+
+    for (row = 0; row < UI_PARAM_ROWS; row++)
+    {
+        uint8_t idx = ui_wave_var_top + row;
+        uint16_t y = 56 + row * 28;
+        if (idx < WIFI_WAVE_VAR_COUNT)
+        {
+            sprintf(line, "%c%c %s", (idx == ui_wave_var_index) ? '>' : ' ', wifi_wave_is_selected(idx) ? '*' : ' ', wifi_wave_var_name((wifi_wave_var_t)idx));
+            ips200_show_string(8, y, line);
+        }
+    }
+
+    ui_draw_footer_text_str("OK Select  LongOK Start  Back");
+}
 static void ui_draw_modules(void)
 {
     ui_draw_title_text(UI_TEXT_T_TITLE_MODULE);
@@ -1208,9 +1272,12 @@ static void ui_draw_modules(void)
 
 static void ui_draw_system(void)
 {
+    char line[32];
     ui_draw_title_text(UI_TEXT_T_TITLE_SYSTEM);
     ui_draw_text_list(k_system_texts, ARRAY_SIZE(k_system_texts), ui_system_index, 0, ARRAY_SIZE(k_system_texts));
-    ui_show_text(8, 220, UI_TEXT_T_FLASH_CONFIRM);
+    ui_show_text(8, 202, UI_TEXT_T_FLASH_CONFIRM);
+    sprintf(line, "Zero State:%d", core_a_status.motor_zero_state);
+    ips200_show_string(8, 226, line);
     ui_draw_footer_text(UI_TEXT_T_HINT_SELECT);
 }
 
@@ -1458,8 +1525,17 @@ static void ui_handle_wifi(ui_key_event_t events[UI_KEY_COUNT])
     }
     else if (events[UI_KEY_OK])
     {
-        current_wifi_mode = (wifi_mode_t)ui_wifi_index;
-        ui_set_screen(UI_SCREEN_HOME);
+        if (ui_wifi_index == WIFI_MODE_WAVE)
+        {
+            ui_wave_var_index = 0;
+            ui_wave_var_top = 0;
+            ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
+        }
+        else
+        {
+            current_wifi_mode = (wifi_mode_t)ui_wifi_index;
+            ui_set_screen(UI_SCREEN_HOME);
+        }
     }
     else if (events[UI_KEY_BACK])
     {
@@ -1467,6 +1543,49 @@ static void ui_handle_wifi(ui_key_event_t events[UI_KEY_COUNT])
     }
 }
 
+static void ui_handle_wifi_wave_select(ui_key_event_t events[UI_KEY_COUNT])
+{
+    if (events[UI_KEY_UP])
+    {
+        ui_wave_var_index = (ui_wave_var_index == 0) ? (WIFI_WAVE_VAR_COUNT - 1) : (ui_wave_var_index - 1);
+        if (ui_wave_var_index < ui_wave_var_top)
+        {
+            ui_wave_var_top = ui_wave_var_index;
+        }
+        else if (ui_wave_var_index >= ui_wave_var_top + UI_PARAM_ROWS)
+        {
+            ui_wave_var_top = ui_wave_var_index - UI_PARAM_ROWS + 1;
+        }
+        ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
+    }
+    else if (events[UI_KEY_DOWN])
+    {
+        ui_wave_var_index = (ui_wave_var_index + 1) % WIFI_WAVE_VAR_COUNT;
+        if (ui_wave_var_index < ui_wave_var_top)
+        {
+            ui_wave_var_top = ui_wave_var_index;
+        }
+        else if (ui_wave_var_index >= ui_wave_var_top + UI_PARAM_ROWS)
+        {
+            ui_wave_var_top = ui_wave_var_index - UI_PARAM_ROWS + 1;
+        }
+        ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
+    }
+    else if (events[UI_KEY_OK] == UI_EVENT_LONG)
+    {
+        wifi_wave_enter_mode();
+        ui_set_screen(UI_SCREEN_HOME);
+    }
+    else if (events[UI_KEY_OK] == UI_EVENT_SHORT)
+    {
+        wifi_wave_toggle_selected(ui_wave_var_index);
+        ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        ui_set_screen(UI_SCREEN_WIFI);
+    }
+}
 static void ui_handle_modules(ui_key_event_t events[UI_KEY_COUNT])
 {
     if (events[UI_KEY_UP])
@@ -1514,6 +1633,11 @@ static void ui_handle_system(ui_key_event_t events[UI_KEY_COUNT])
         {
             wifi_request_reconnect();
             ui_set_screen(UI_SCREEN_WIFI);
+        }
+        else if (ui_system_index == 4)
+        {
+            IPC_Request_Motor_Zero_Calibration();
+            ui_set_screen(UI_SCREEN_SYSTEM);
         }
     }
     else if (events[UI_KEY_BACK])
@@ -1566,6 +1690,7 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         case UI_SCREEN_PARAM_ADJUST: ui_handle_param_adjust(events); break;
         case UI_SCREEN_PARAM_DIRECT: ui_handle_param_direct(events); break;
         case UI_SCREEN_WIFI:        ui_handle_wifi(events); break;
+        case UI_SCREEN_WIFI_WAVE_SELECT: ui_handle_wifi_wave_select(events); break;
         case UI_SCREEN_MODULES:     ui_handle_modules(events); break;
         case UI_SCREEN_SYSTEM:      ui_handle_system(events); break;
         case UI_SCREEN_CONFIRM:     ui_handle_confirm(events); break;
@@ -1606,6 +1731,9 @@ static void ui_render(void)
         case UI_SCREEN_WIFI:
             ui_draw_wifi();
             break;
+        case UI_SCREEN_WIFI_WAVE_SELECT:
+            ui_draw_wifi_wave_select();
+            break;
         case UI_SCREEN_MODULES:
             ui_draw_modules();
             break;
@@ -1630,7 +1758,10 @@ void screen_display_process(void)
         IPS200_flag = 0;
 
         ui_scan_keys(events);
-        ui_handle_events(events);
+        if (!ui_handle_emergency_combo())
+        {
+            ui_handle_events(events);
+        }
         ui_render();
 
         force_ui_refresh = 0;

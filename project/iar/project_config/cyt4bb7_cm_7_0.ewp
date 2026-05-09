@@ -1122,6 +1122,9 @@
             <name>$PROJ_DIR$\..\..\code\battery_monitor.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\app_headfile.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\control.c</name>
         </file>
         <file>
@@ -1132,6 +1135,12 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\jump_control.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\vehicle_supervisor.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\vehicle_supervisor.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\engine.c</name>

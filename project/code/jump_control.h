@@ -13,17 +13,35 @@ typedef enum
     JUMP_RECOVER
 } JumpState;
 
+typedef enum
+{
+    JUMP_BLOCK_NONE = 0,
+    JUMP_BLOCK_STARTED,
+    JUMP_BLOCK_BUSY,
+    JUMP_BLOCK_REMOTE_OFF,
+    JUMP_BLOCK_REMOTE_LOST,
+    JUMP_BLOCK_REMOTE_STANDBY,
+    JUMP_BLOCK_NOT_ARMED,
+    JUMP_BLOCK_NO_EDGE
+} JumpTriggerBlockReason;
+
 extern volatile JumpState jump_state;
 extern volatile uint8 jump_engine_suspend;
 extern volatile uint8 jump_encoder_suspend;
 extern volatile int jump_stop;
 extern volatile int jump_position;
+extern volatile uint8 jump_dbg_state;
+extern volatile uint16 jump_dbg_elapsed_ms;
+extern volatile uint8 jump_dbg_trigger_block_reason;
+extern volatile uint32 jump_dbg_trigger_count;
 
-void jump_start(void);
+uint8 jump_start(void);
 void jump_process_control(float *current_x, float *current_y);
 void jump_abort(void);
+void jump_force_idle(void);
 uint8 jump_is_active(void);
 uint8 jump_should_suspend_engine(void);
 uint8 jump_should_suspend_encoder(void);
+void jump_set_trigger_block_reason(JumpTriggerBlockReason reason);
 
 #endif

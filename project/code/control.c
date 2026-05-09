@@ -7,6 +7,7 @@
 #include "runtime_status.h"
 #include "process_rx.h"
 #include "jump_control.h"
+#include "vehicle_supervisor.h"
 // 全局变量
 extern float target_velocity;      // 目标速度
 extern float target_angle;         // 目标角度
@@ -33,6 +34,14 @@ float Velocity_Angle_left, Velocity_Angle_right; // 左右电机速度
 float out_speed_l = 0, out_speed_r = 0;
 float out_angle_l = 0, out_angle_r = 0;
 float out_gyro_l  = 0, out_gyro_r  = 0;
+// ================= Motor output hardware mapping =================
+// Keep final behavior identical to the old chain:
+// Motor_Left = -cuu(logical_left); Motor_Right = cuu(logical_right);
+// small_driver_set_duty(-Motor_Left, -Motor_Right).
+#define MOTOR_LEFT_LIMIT_SIGN      (-1)
+#define MOTOR_RIGHT_LIMIT_SIGN     (1)
+#define MOTOR_LEFT_DRIVER_SIGN     (-1)
+#define MOTOR_RIGHT_DRIVER_SIGN    (-1)
 // 其他变量
 static float balance_last_error = 0.0f;
 static float gyro_last_error = 0.0f;
@@ -419,7 +428,57 @@ int cuu(int c)
         return c;
 }
 
-// 最小转向角
+// Centralized motor stop/apply path. Keep PID calculations above unchanged.
+static void Motor_Output_Clear_Debug(void)
+{
+    out_speed_l = 0.0f;
+    out_speed_r = 0.0f;
+    out_angle_l = 0.0f;
+    out_angle_r = 0.0f;
+    out_gyro_l = 0.0f;
+    out_gyro_r = 0.0f;
+}
+
+static void Motor_Output_Stop(void)
+{
+    Motor_Left = 0;
+    Motor_Right = 0;
+    Motor_Output_Clear_Debug();
+    small_driver_set_duty(0, 0);
+}
+
+static void Motor_Output_Apply(float gyro_pwm, float turn_pwm, uint8 turn_enabled)
+{
+    int logical_left;
+    int logical_right;
+    int limited_left;
+    int limited_right;
+    int driver_left;
+    int driver_right;
+
+    if (turn_enabled)
+    {
+        logical_left = (int)(gyro_pwm + turn_pwm);
+        logical_right = (int)(gyro_pwm - turn_pwm);
+    }
+    else
+    {
+        logical_left = (int)gyro_pwm;
+        logical_right = (int)gyro_pwm;
+    }
+
+    limited_left = MOTOR_LEFT_LIMIT_SIGN * cuu(logical_left);
+    limited_right = MOTOR_RIGHT_LIMIT_SIGN * cuu(logical_right);
+
+    Motor_Left = (signed short int)limited_left;
+    Motor_Right = (signed short int)limited_right;
+
+    driver_left = MOTOR_LEFT_DRIVER_SIGN * limited_left;
+    driver_right = MOTOR_RIGHT_DRIVER_SIGN * limited_right;
+
+    small_driver_set_duty(driver_left, driver_right);
+}
+
 float Turn_gyro(float target_angle, float gyro)
 {
     // 1. 计算原始误差
@@ -474,6 +533,17 @@ void balance_control()
     float Gyro_Pwm;
     float raw_gyro_x = process_rx_gyro_x_dps((float)imu660rc_gyro_x);
 
+    if (Vehicle_Is_Emergency_Stop())
+    {
+        Runtime_Set_Balance_Reason(RUNTIME_REASON_BALANCE_OFF);
+        Balance_Pwm = 0.0f;
+        Velocity_Angle_left = 0.0f;
+        Velocity_Angle_right = 0.0f;
+        Turn_Pwm = 0.0f;
+        Motor_Output_Stop();
+        return;
+    }
+
     if (IPC_CoreB_Wifi_Is_Connected() == 0)
     {
         Runtime_Set_Balance_Reason(RUNTIME_REASON_WIFI_OFF);
@@ -481,15 +551,7 @@ void balance_control()
         Velocity_Angle_left = 0.0f;
         Velocity_Angle_right = 0.0f;
         Turn_Pwm = 0.0f;
-        Motor_Left = 0;
-        Motor_Right = 0;
-        out_speed_l = 0.0f;
-        out_speed_r = 0.0f;
-        out_angle_l = 0.0f;
-        out_angle_r = 0.0f;
-        out_gyro_l = 0.0f;
-        out_gyro_r = 0.0f;
-        small_driver_set_duty(0, 0);
+        Motor_Output_Stop();
         return;
     }
     Runtime_Set_Balance_Reason(RUNTIME_REASON_NORMAL);
@@ -511,15 +573,7 @@ void balance_control()
         Velocity_Angle_left = 0.0f;
         Velocity_Angle_right = 0.0f;
         Turn_Pwm = 0.0f;
-        Motor_Left = 0;
-        Motor_Right = 0;
-        out_speed_l = 0.0f;
-        out_speed_r = 0.0f;
-        out_angle_l = 0.0f;
-        out_angle_r = 0.0f;
-        out_gyro_l = 0.0f;
-        out_gyro_r = 0.0f;
-        small_driver_set_duty(0, 0);
+        Motor_Output_Stop();
         return;
     }
     else
@@ -555,20 +609,6 @@ void balance_control()
     Gyro_Pwm = GyroControl(Balance_Pwm, raw_gyro_x);
     Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
 
-    if (jump_position == 1)
-    {
-        Motor_Left = (signed short int)Gyro_Pwm;
-        Motor_Right = (signed short int)Gyro_Pwm;
-    }
-    else
-    {
-        Motor_Left = (signed short int)(Gyro_Pwm + Turn_Pwm);
-        Motor_Right = (signed short int)(Gyro_Pwm - Turn_Pwm);
-    }
-
-    Motor_Left = -(signed short int)cuu(Motor_Left);
-    Motor_Right = (signed short int)cuu(Motor_Right);
-
     out_speed_l = Velocity_Angle_left;
     out_speed_r = Velocity_Angle_left;
     out_angle_l = Balance_Pwm;
@@ -576,13 +616,16 @@ void balance_control()
     out_gyro_l = Gyro_Pwm;
     out_gyro_r = Gyro_Pwm;
 
-    small_driver_set_duty(-Motor_Left, -Motor_Right);
+    Motor_Output_Apply(Gyro_Pwm, Turn_Pwm, (jump_position == 0) ? 1 : 0);
 
     leg_loop_div++;
     if (leg_loop_div >= 20)
     {
         leg_loop_div = 0;
-        leg_control(&x_current, &y_current);
+        if (!Vehicle_Is_Emergency_Stop())
+        {
+            leg_control(&x_current, &y_current);
+        }
     }
 }
 
@@ -626,6 +669,14 @@ void leg_control(float *x, float *y)
     (void)leg_Kd;
 
     leg_dbg_tick += 1.0f;
+
+    if (Vehicle_Is_Emergency_Stop())
+    {
+        Runtime_Set_Servo_Reason(RUNTIME_REASON_SERVO_OFF);
+        leg_dbg_speed_tilt = 0.0f;
+        leg_dbg_x_offset = 0.0f;
+        return;
+    }
 
     if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_SERVO))
     {

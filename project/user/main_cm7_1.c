@@ -1,8 +1,4 @@
-#include "zf_common_headfile.h"
-#include "ipc_shared_data.h"
-#include "wifi.h"
-#include "screen_display.h"
-#include "vofa_protocol.h"
+#include "app_headfile.h"
 // **************************** 核间通信区域 ****************************
 // 将 Core A 的状态数据放在 0x28001000
 #pragma location = IPC_CORE_A_SHARED_ADDR
@@ -25,45 +21,49 @@ int count=0;
 
 int main(void)
 {
-    clock_init(SYSTEM_CLOCK_250M); 	// 时钟配置及系统初始化<务必保留>
-    debug_info_init();                  // 调试串口信息初始化
+    clock_init(SYSTEM_CLOCK_250M);     // 时钟配置及系统初始化<务必保留>
+    debug_info_init();                 // 调试串口信息初始化
 
-    // 此处编写用户代码 例如外设初始化代码等
-    interrupt_global_disable(); // 初始化外设之前先关闭中断
+    interrupt_global_disable();        // 初始化外设之前先关闭中断
+
+    // ============================= 基础外设初始化 =============================
     flash_init();
-    //=================================屏幕初始化与启动状态显示============================
+    Runtime_Status_Init();
+
     screen_display_init();
     screen_boot_begin();
     screen_boot_show_status(NULL, NULL);
+    screen_boot_show_status("Core1", "START");
     screen_boot_show_status("Flash", "OK");
     screen_boot_show_status("Screen", "OK");
+    screen_boot_show_status("Runtime", "OK");
     pit_ms_init(PIT_IPS, 50);
 
-    // =================================WIFI模块初始化======================
-    wifi_init_with_skip(1);
-    IPC_Update_Wifi_Status_From_CoreB(wifi_control_is_ready());
-    screen_boot_show_status("WiFi", wifi_is_connected ? "OK" : "SKIP");
-    pit_ms_init(PIT_WiFi, 20);
-
-    //=================================共享缓存以及Flash部分模块初始化===============
+    // ============================= IPC 与参数初始化 =============================
     pit_ms_init(PIT_IPC, 5);
     screen_boot_show_status("IPC", "OK");
     IPC_Load_Params_From_Flash();
     screen_boot_show_status("Params", "OK");
 
-    //=================================串口调参初始化======================
+    // ============================= 串口调参初始化 =============================
     VOFA_UART_Init();
     screen_boot_show_status("VOFA", "OK");
-    screen_boot_show_done(wifi_is_connected, (wifi_is_connected == 0 && wifi_control_is_ready()));
 
+    // ============================= WiFi 初始化 =============================
+    screen_boot_show_status("WiFi", "TRY");
+    wifi_init_with_skip(1);
+    IPC_Update_Wifi_Status_From_CoreB(wifi_control_is_ready());
+    screen_boot_show_status("WiFi", wifi_get_boot_state_text());
+    pit_ms_init(PIT_WiFi, 20);
 
-    interrupt_global_enable(0);// 在初始化后使能中断
-    // 此处编写用户代码 例如外设初始化代码等
+    screen_boot_show_done(wifi_is_connected, wifi_get_boot_state() == WIFI_BOOT_STATE_SKIPPED);
+
+    interrupt_global_enable(0);        // 初始化后使能中断
+
     while(true)
     {
-        // 此处编写需要循环执行的代码
-       screen_display_process();               //屏幕显示
-        wifi_process_loop();                    //wifi接收数据解析
+        screen_display_process();
+        wifi_process_loop();
         wifi_report_task();
         wifi_health_check_task();
         wifi_auto_reconnect_task();
@@ -71,10 +71,8 @@ int main(void)
         VOFA_UART_Process();
 
         system_delay_ms(1);
-        // 此处编写需要循环执行的代码
     }
 }
-
 // **************************** 代码区域 ****************************
 
 

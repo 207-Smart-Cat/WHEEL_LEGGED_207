@@ -70,6 +70,12 @@ char wifi_spi_ip_addr_port[25];                 // 保存模块IP地址与端口信息
 static fifo_struct  wifi_spi_fifo;
 static uint8        wifi_spi_buffer[WIFI_SPI_RECVIVE_FIFO_SIZE];
 static volatile     wifi_spi_state_enum wifi_spi_mutex;
+static wifi_spi_abort_callback_t wifi_spi_abort_callback = NULL;
+
+void wifi_spi_set_abort_callback (wifi_spi_abort_callback_t callback)
+{
+    wifi_spi_abort_callback = callback;
+}
 //-------------------------------------------------------------------------------------------------------------------
 // 函数简介     等待WIFI SPI就绪
 // 参数说明     wait_time       最大等待时间 单位毫秒
@@ -80,10 +86,23 @@ static volatile     wifi_spi_state_enum wifi_spi_mutex;
 static uint8 wifi_spi_wait_idle (uint32 wait_time)
 {
     uint32 time = 0;
+    uint16 abort_poll_count = 0;
     
     wait_time = wait_time*100;
     while(0 == gpio_get_level(WIFI_SPI_INT_PIN))
     {
+        if(NULL != wifi_spi_abort_callback)
+        {
+            abort_poll_count++;
+            if(abort_poll_count >= 1000)
+            {
+                abort_poll_count = 0;
+                if(wifi_spi_abort_callback())
+                {
+                    return 1;
+                }
+            }
+        }
         system_delay_us(10);
         time++;
         if(wait_time <= time)

@@ -1,13 +1,6 @@
 /*
  */
-#include "zf_common_headfile.h"
-#include "small_driver_uart_control.h"
-#include "imu.h"
-#include "wifi.h"
-#include "ipc_shared_data.h"
-#include "control.h"
-#include "remote.h"
-#include "jump_control.h"
+#include "app_headfile.h"
 // 引入主函数中的定时标志位
 extern uint8 IPS200_flag;
 extern uint8 Motor_Control_flag;
@@ -60,7 +53,7 @@ void pit0_ch10_isr() // 预留：主平衡控制已迁移到 5ms IMU 中断
 //    PERF_PROBE_LOW(PERF_PROBE_BALANCE);
     // balance_control() 已改为在 5ms IMU 中断中执行
 //    if (IMU_ready) {
-//        navi_ekf_update(); 
+//        navi_ekf_update();
 //    }
     pit_isr_flag_clear(PIT_CH10);
 }
@@ -81,7 +74,7 @@ void pit0_ch13_isr() // Servo control, fixed period
 {
     extern float x_current, y_current;
     PERF_PROBE_HIGH(PERF_PROBE_LEG);
-    if (!jump_is_active())
+    if (!jump_is_active() && !Vehicle_Is_Emergency_Stop())
     {
         leg_control(&x_current, &y_current);
     }
@@ -93,7 +86,10 @@ void pit0_ch14_isr() // 跳跃动作状态机 1ms
 {
     extern float x_current, y_current;
 
-    jump_process_control(&x_current, &y_current);
+    if (!Vehicle_Is_Emergency_Stop())
+    {
+        jump_process_control(&x_current, &y_current);
+    }
     pit_isr_flag_clear(PIT_CH14);
 }
 

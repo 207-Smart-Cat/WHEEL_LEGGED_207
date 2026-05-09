@@ -65,6 +65,34 @@ void IPC_Request_All_Params_Update(void)
     __enable_irq();
 }
 
+void IPC_Request_Motor_Zero_Calibration(void)
+{
+    __disable_irq();
+    core_b_cmd.motor_zero_request = 1;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    __enable_irq();
+}
+
+uint8 IPC_Consume_Motor_Zero_Request_Core0(void)
+{
+    uint8 request = 0;
+
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (core_b_cmd.motor_zero_request)
+    {
+        request = 1;
+        core_b_cmd.motor_zero_request = 0;
+        SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    }
+
+    return request;
+}
+
+void IPC_Update_Motor_Zero_State_From_Core0(uint8 state)
+{
+    core_a_status.motor_zero_state = state;
+    SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
+}
 // --- ³õÊ¼»¯º¯Êý ---
 void IPC_Init_Shared_Memory(void) {
     memset(&core_a_status, 0, sizeof(CoreA_Status_t));

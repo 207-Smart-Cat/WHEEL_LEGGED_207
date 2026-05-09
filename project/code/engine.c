@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "param.h"
 
 typedef struct
 {
@@ -144,6 +145,23 @@ void engine_init(int pwm1, int pwm2)
     pwm_init(PWM_4, FREQ, g_pwm_out_4);
 }
 
+static void engine_servo_disable_channel(uint8 channel_index)
+{
+    Cy_Tcpwm_Pwm_Disable((volatile stc_TCPWM_GRP_CNT_t *)&TCPWM0->GRP[0].CNT[channel_index]);
+}
+
+void engine_servo_disable(void)
+{
+    pwm_set_duty(PWM_1, 0);
+    pwm_set_duty(PWM_2, 0);
+    pwm_set_duty(PWM_3, 0);
+    pwm_set_duty(PWM_4, 0);
+
+    engine_servo_disable_channel(13); // PWM_1: left-front
+    engine_servo_disable_channel(12); // PWM_2: right-front
+    engine_servo_disable_channel(11); // PWM_3: right-rear
+    engine_servo_disable_channel(10); // PWM_4: left-rear
+}
 void engine_maintain(int pwm1, int pwm2)
 {
     engine_left_maintain(pwm1, pwm2);

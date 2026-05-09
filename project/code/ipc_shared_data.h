@@ -30,6 +30,7 @@ typedef struct {
     uint8 balance_reason;
     uint8 servo_reason;
     uint8 remote_reason;
+    uint8 motor_zero_state;
 
     // 【优化】用数组统一管理真实的参数！
     float act_params[PARAM_COUNT];
@@ -46,6 +47,7 @@ typedef struct {
     uint8 wifi_connected;
     uint8 vehicle_mode;
     uint8 runtime_status_valid;
+    uint8 motor_zero_request;
     uint32 runtime_module_enable_mask;
 } CoreB_Command_t;
 
@@ -67,6 +69,9 @@ uint8 IPC_CoreB_Wifi_Is_Connected(void); // Core 0 专用更新函数
 uint64_t IPC_Get_All_Param_Mask(void);
 void IPC_Request_Param_Update(ParamID_e id, float value);
 void IPC_Request_All_Params_Update(void);
+void IPC_Request_Motor_Zero_Calibration(void);
+uint8 IPC_Consume_Motor_Zero_Request_Core0(void);
+void IPC_Update_Motor_Zero_State_From_Core0(uint8 state);
 // Flash 参数固化与读取接口
 void IPC_Save_Params_To_Flash(void);
 void IPC_Load_Params_From_Flash(void);

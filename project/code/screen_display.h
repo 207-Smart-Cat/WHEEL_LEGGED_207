@@ -17,6 +17,7 @@ void screen_boot_begin(void);
 void screen_boot_show_status(const char *module_name, const char *status);
 void screen_boot_show_wifi_attempt(uint8 attempt, uint8 max_retry);
 uint8 screen_boot_skip_pressed(void);
+uint8 screen_boot_skip_is_down(void);
 void screen_boot_show_done(uint8 wifi_ready, uint8 wifi_skipped);
 
 #endif

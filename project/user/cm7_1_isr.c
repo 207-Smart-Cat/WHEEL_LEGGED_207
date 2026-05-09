@@ -35,11 +35,7 @@
 ********************************************************************************************************************/
 
 
-#include "zf_common_headfile.h"
-#include "wifi.h"
-#include "ipc_shared_data.h"
-#include "screen_display.h"
-#include "vofa_protocol.h"
+#include "app_headfile.h"
 
 // 独立的接收回调
 void uart_rx_interrupt_handler(void)

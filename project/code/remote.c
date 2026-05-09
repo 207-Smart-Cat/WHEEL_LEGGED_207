@@ -3,11 +3,13 @@
 #include "param.h"
 #include "runtime_status.h"
 #include "jump_control.h"
+#include "vehicle_supervisor.h"
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
+#define REMOTE_CH3_EMERGENCY_THRESHOLD 1000
 #define REMOTE_CH6_JUMP_THRESHOLD 1000
-#define REMOTE_CH6_JUMP_ARM_FRAMES 10
+#define REMOTE_CH6_JUMP_ARM_FRAMES 5
 // ------------------- 内部结构体定义 -------------------
 // 将数据结构体定义在 .c 文件中，实现对外隐藏（封装）
 typedef struct
@@ -23,9 +25,10 @@ static Remote_CtrlData_t s_RemoteData = {
                 REMOTE_SAFE_VALUE_CHother, REMOTE_SAFE_VALUE_CHother, REMOTE_SAFE_VALUE_CHother}};
 
 static bool remote_drive_active = false;
+static uint8 remote_ch3_emergency_latched = 0;
 static uint8 remote_ch6_initialized = 0;
 static uint8 remote_ch6_last_high = 0;
-static uint8 remote_ch6_low_count = 0;
+static uint8 remote_ch6_stable_count = 0;
 static uint8 remote_jump_armed = 0;
 
 float remote_dbg_connected = 0.0f;
@@ -39,7 +42,8 @@ float remote_dbg_frame_count = 0.0f;
 float remote_dbg_raw_state = 0.0f;
 float remote_dbg_uart4_isr_count = 0.0f;
 
-static void Remote_CheckJumpTrigger(void);
+static void Remote_CheckEmergencyStop(void);
+static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled);
 static void Remote_ResetJumpTrigger(void);
 
 static void Remote_UpdateDebugValues(void)
@@ -159,49 +163,97 @@ int32_t Remote_GetChannelData(uint8_t ch_index) // 通道序号，用于外部访问
     }
 }
 
+static void Remote_CheckEmergencyStop(void)
+{
+    uint8 ch3_emergency = (Remote_GetChannelData(3) > REMOTE_CH3_EMERGENCY_THRESHOLD) ? 1 : 0;
+
+    if (ch3_emergency)
+    {
+        if (!remote_ch3_emergency_latched)
+        {
+            Vehicle_Emergency_Stop(VEHICLE_EVENT_SOURCE_REMOTE);
+            remote_ch3_emergency_latched = 1;
+        }
+    }
+    else
+    {
+        remote_ch3_emergency_latched = 0;
+    }
+}
 static void Remote_ResetJumpTrigger(void)
 {
     remote_ch6_initialized = 0;
     remote_ch6_last_high = 0;
-    remote_ch6_low_count = 0;
+    remote_ch6_stable_count = 0;
     remote_jump_armed = 0;
+    jump_set_trigger_block_reason(JUMP_BLOCK_NOT_ARMED);
 }
 
-static void Remote_CheckJumpTrigger(void)
+static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
 {
     uint8 ch6_high = (Remote_GetChannelData(6) > REMOTE_CH6_JUMP_THRESHOLD) ? 1 : 0;
 
-    if (!ch6_high)
+    if (!remote_ch6_initialized)
     {
-        if (remote_ch6_low_count < REMOTE_CH6_JUMP_ARM_FRAMES)
+        remote_ch6_last_high = ch6_high;
+        remote_ch6_initialized = 1;
+        jump_set_trigger_block_reason(JUMP_BLOCK_NOT_ARMED);
+        return;
+    }
+
+    if (jump_is_active())
+    {
+        remote_ch6_last_high = ch6_high;
+        jump_set_trigger_block_reason(JUMP_BLOCK_BUSY);
+        return;
+    }
+
+    if (ch6_high == remote_ch6_last_high)
+    {
+        if (remote_ch6_stable_count < REMOTE_CH6_JUMP_ARM_FRAMES)
         {
-            remote_ch6_low_count++;
+            remote_ch6_stable_count++;
         }
-        if (remote_ch6_low_count >= REMOTE_CH6_JUMP_ARM_FRAMES)
+        if (remote_ch6_stable_count >= REMOTE_CH6_JUMP_ARM_FRAMES)
         {
             remote_jump_armed = 1;
         }
     }
     else
     {
-        remote_ch6_low_count = 0;
-    }
+        if (remote_drive_enabled && remote_jump_armed)
+        {
+            (void)jump_start();
+            remote_jump_armed = 0;
+        }
+        else if (!remote_drive_enabled)
+        {
+            jump_set_trigger_block_reason(JUMP_BLOCK_REMOTE_STANDBY);
+        }
+        else
+        {
+            jump_set_trigger_block_reason(JUMP_BLOCK_NOT_ARMED);
+        }
 
-    if (!remote_ch6_initialized)
-    {
         remote_ch6_last_high = ch6_high;
-        remote_ch6_initialized = 1;
+        remote_ch6_stable_count = 0;
         return;
     }
 
-    if (remote_jump_armed && ch6_high && !remote_ch6_last_high)
+    if (!remote_drive_enabled)
     {
-        jump_start();
-        remote_jump_armed = 0;
+        jump_set_trigger_block_reason(JUMP_BLOCK_REMOTE_STANDBY);
     }
-
-    remote_ch6_last_high = ch6_high;
+    else if (!remote_jump_armed)
+    {
+        jump_set_trigger_block_reason(JUMP_BLOCK_NOT_ARMED);
+    }
+    else
+    {
+        jump_set_trigger_block_reason(JUMP_BLOCK_NO_EDGE);
+    }
 }
+
 void Remote_control_callback(void)
 {
     float yaw_stick;
@@ -211,6 +263,8 @@ void Remote_control_callback(void)
     {
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_OFF);
         Remote_ResetJumpTrigger();
+        remote_ch3_emergency_latched = 0;
+        jump_set_trigger_block_reason(JUMP_BLOCK_REMOTE_OFF);
         if (remote_drive_active)
         {
             remote_drive_active = false;
@@ -222,8 +276,16 @@ void Remote_control_callback(void)
 
     if (Remote_GetStatus() == REMOTE_CONNECTED)
     {
-        Remote_CheckJumpTrigger();
-        if (Remote_GetChannelData(5) > 1000)
+        uint8 remote_drive_enabled = (Remote_GetChannelData(5) > 1000) ? 1 : 0;
+        Remote_CheckEmergencyStop();
+        if (Vehicle_Is_Emergency_Stop())
+        {
+            target_velocity = 0.0f;
+            remote_drive_active = false;
+            return;
+        }
+        Remote_CheckJumpTrigger(remote_drive_enabled);
+        if (remote_drive_enabled)
         {
             Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
             if (!remote_drive_active)
@@ -257,6 +319,8 @@ void Remote_control_callback(void)
     {
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_LOST);
         Remote_ResetJumpTrigger();
+        remote_ch3_emergency_latched = 0;
+        jump_set_trigger_block_reason(JUMP_BLOCK_REMOTE_LOST);
         if (remote_drive_active)
         {
             remote_drive_active = false;

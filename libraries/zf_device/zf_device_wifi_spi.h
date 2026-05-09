@@ -140,6 +140,9 @@ extern char wifi_spi_version[12];                               // ¹Ì¼þ°æ±¾     
 extern char wifi_spi_mac_addr[20];                              // Ä£¿éMACµØÖ·      ×Ö·û´®
 extern char wifi_spi_ip_addr_port[25];                          // IPµØÖ·Óë¶Ë¿ÚºÅ   ×Ö·û´®
 
+typedef uint8 (*wifi_spi_abort_callback_t)(void);
+void   wifi_spi_set_abort_callback (wifi_spi_abort_callback_t callback);
+
 uint8  wifi_spi_connect_wifi    (char *wifi_ssid, char *pass_word);
 uint8  wifi_spi_socket_connect  (char *transport_type, char *ip_addr, char *port, char *local_port);
 uint8  wifi_spi_socket_close    (void);
