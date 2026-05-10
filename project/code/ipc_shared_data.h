@@ -6,8 +6,11 @@
 // IPC shared memory limits. Keep PARAM_COUNT <= 63 because update_mask uses bit 0..62 safely.
 #define IPC_PARAM_MAX_COUNT        (63U)
 #define IPC_CORE_A_SHARED_ADDR     (0x28001000UL)
-#define IPC_CORE_B_SHARED_ADDR     (0x28001200UL)
-#define IPC_SHARED_CORE_GAP        (IPC_CORE_B_SHARED_ADDR - IPC_CORE_A_SHARED_ADDR)
+#define IPC_LOG_SHARED_ADDR        (0x28001400UL)
+#define IPC_CORE_B_SHARED_ADDR     (0x28001600UL)
+#define IPC_CORE_A_SHARED_SIZE     (IPC_LOG_SHARED_ADDR - IPC_CORE_A_SHARED_ADDR)
+#define IPC_LOG_SHARED_SIZE        (IPC_CORE_B_SHARED_ADDR - IPC_LOG_SHARED_ADDR)
+#define IPC_LOG_TEXT_SIZE          (256U)
 
 // ==========================================================
 // 参数字典枚举
@@ -51,12 +54,23 @@ typedef struct {
     uint32 runtime_module_enable_mask;
 } CoreB_Command_t;
 
+// ==========================================================
+// Core A -> Core B 日志邮箱
+// ==========================================================
+typedef struct {
+    volatile uint32 seq;
+    volatile uint8 pending;
+    char text[IPC_LOG_TEXT_SIZE];
+} IpcLogBox_t;
+
 typedef char ipc_param_count_must_not_exceed_63[(PARAM_COUNT <= IPC_PARAM_MAX_COUNT) ? 1 : -1];
-typedef char ipc_core_a_status_must_fit_before_core_b[(sizeof(CoreA_Status_t) <= IPC_SHARED_CORE_GAP) ? 1 : -1];
+typedef char ipc_core_a_status_must_fit_before_log[(sizeof(CoreA_Status_t) <= IPC_CORE_A_SHARED_SIZE) ? 1 : -1];
+typedef char ipc_log_box_must_fit_before_core_b[(sizeof(IpcLogBox_t) <= IPC_LOG_SHARED_SIZE) ? 1 : -1];
 
 // 绝对地址声明
 extern __no_init CoreA_Status_t core_a_status;
 extern __no_init CoreB_Command_t core_b_cmd;
+extern __no_init IpcLogBox_t ipc_log_box;
 extern const char *const g_param_names[PARAM_COUNT];
 
 // 函数声明
@@ -72,6 +86,8 @@ void IPC_Request_All_Params_Update(void);
 void IPC_Request_Motor_Zero_Calibration(void);
 uint8 IPC_Consume_Motor_Zero_Request_Core0(void);
 void IPC_Update_Motor_Zero_State_From_Core0(uint8 state);
+void IPC_LOG_Printf(const char *format, ...);
+void IPC_Flush_Log_To_CoreB(void);
 // Flash 参数固化与读取接口
 void IPC_Save_Params_To_Flash(void);
 void IPC_Load_Params_From_Flash(void);

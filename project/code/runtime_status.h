@@ -10,7 +10,7 @@ typedef enum
     RUNTIME_MODULE_BALANCE,          // 平衡控制计算开关。关闭后平衡环输出会被清零。
     RUNTIME_MODULE_SERVO,            // 腿部舵机控制开关。关闭后舵机保持固定 x/y 腿部位置。
     RUNTIME_MODULE_REMOTE,           // 遥控接管开关。关闭后忽略遥控器给出的目标速度和目标航向。
-    RUNTIME_MODULE_NAVIGATION,       // 导航定位更新开关。开启后 Core0 以 3ms 周期更新惯导位姿。
+    RUNTIME_MODULE_NAVIGATION,       // 导航定位/控制开关。开启后 Core0 按 ENCODER_DT 周期更新惯导位姿。
     RUNTIME_MODULE_DEBUG_OUTPUT,     // 调试输出预留开关。目前只保存状态。
     RUNTIME_MODULE_COUNT
 } runtime_module_t;

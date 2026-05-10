@@ -4,6 +4,7 @@
 #include "small_driver_uart_control.h"
 #include "ipc_shared_data.h"
 #include "navigation_data_handling.h"
+#include "navigation_tracking.h"
 #include "wifi.h"
 #include "param.h"
 #include "vofa_protocol.h"
@@ -820,7 +821,9 @@ static const ParamID_e k_param_group_direction[] = {
 
 static const ParamID_e k_param_group_navigation[] = {
     P_NAV_Q_V, P_NAV_Q_W, P_NAV_Q_BIAS_AX, P_NAV_Q_BIAS_W,
-    P_NAV_R_V_NORMAL, P_NAV_R_V_SLIP, P_NAV_R_W_NORMAL, P_NAV_R_W_SLIP, P_NAV_R_GYRO
+    P_NAV_R_V_NORMAL, P_NAV_R_V_SLIP, P_NAV_R_W_NORMAL, P_NAV_R_W_SLIP, P_NAV_R_GYRO,
+    P_NAVI_MODE_DRIVER, P_NAVI_MODE_MAP, P_NAVI_TRIGGER_RECORD, P_NAVI_PRINT_POSE_EN,
+    P_NAVI_PRINT_PERIOD, P_NAVI_WIFI_CMD, P_NAVI_WIFI_TYPE, P_NAVI_WIFI_ACTION
 };
 
 static const ui_param_group_t k_param_groups[] = {
@@ -1001,6 +1004,16 @@ static float ui_param_step(ParamID_e id)
         case P_NAV_R_W_SLIP:
         case P_NAV_R_GYRO:
             return 0.0001f;
+        case P_NAVI_MODE_DRIVER:
+        case P_NAVI_MODE_MAP:
+        case P_NAVI_TRIGGER_RECORD:
+        case P_NAVI_PRINT_POSE_EN:
+        case P_NAVI_WIFI_CMD:
+        case P_NAVI_WIFI_TYPE:
+        case P_NAVI_WIFI_ACTION:
+            return 1.0f;
+        case P_NAVI_PRINT_PERIOD:
+            return 100.0f;
         case P_JUMP_AIR_RETRACT_Y:
         case P_JUMP_BUFFER_Y:
             return 0.001f;

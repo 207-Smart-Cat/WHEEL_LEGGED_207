@@ -33,27 +33,37 @@ float leg_Kp = 0, leg_Ki = 0, leg_Kd = 0;
 const float Q_yaw_init = 0.001f, Q_pr_init = 0.003f, Q_bias_init = 0.001f;
 const float R_yaw_init = 0.05f, R_pr_init = 0.05f;
 
-const float Speed_p_init = 0.025f,  Speed_i_init = 0.0002f, Speed_d_init = 0.0f;
-const float Angle_p_init = 12.3999f, Angle_i_init = 0.15f,  Angle_d_init = 0.15f;
+const float Speed_p_init = 0.025f,  Speed_i_init = 0.0f, Speed_d_init = 0.0f;
+const float Angle_p_init = 12.3999f, Angle_i_init = 0.15f,  Angle_d_init = 0.0f;
 const float Gyro_p_init  = 15.0f,   Gyro_i_init  = 0.0f,   Gyro_d_init  = 0.0f;
 
-const float Target_Velocity_init = 0.0f, Target_Angle_init = 180.0f, Target_Motor_Stand_init = 0.0f;
+const float Target_Velocity_init = 0.0f, Target_Angle_init = 0.0f, Target_Motor_Stand_init = 0.0f;
 
 const float Leg_Kp_init = 0.0f,    Leg_Ki_init = 0.0f,    Leg_Kd_init = 0.0f;
-const float X_Current_init = 0.0f, Y_Current_init = 0.05f;
+const float X_Current_init = 0.0f, Y_Current_init = 0.04f;
 const float Leg_X_Gain_init = 1.6f, Leg_X_Limit_init = 0.018f, Leg_X_Min_Step_init = 0.0008f, Leg_X_Step_Limit_init = 0.0012f;
 const float Jump_Burst_Pwm_init = 1200.0f, Jump_Burst_Ms_init = 130.0f, Jump_Air_Retract_Y_init = 0.03f, Jump_Buffer_Y_init = 0.05f, Jump_Landing_Max_Ms_init = 600.0f;
 
-const float Air_roll_p_init = 45.0f, Air_roll_i_init = 0.0f, Air_roll_d_init = 0.0f;
+const float Air_roll_p_init = 3.0f, Air_roll_i_init = 0.03f, Air_roll_d_init = 0.0015f;
 const float Direction_p_init = 14.93f, Direction_i_init = 0.012f, Direction_d_init = 0.875f;
 
 // 导航参数初始值
-const float Nav_q_v_init = 0.01f, Nav_q_w_init = 0.01f;
-const float Nav_q_bias_ax_init = 0.002f, Nav_q_bias_w_init = 0.0f;
-const float Nav_r_v_normal_init = 0.01f, Nav_r_v_slip_init = 10.0f;
-const float Nav_r_w_normal_init = 0.0f, Nav_r_w_slip_init = 0.08f;
+const float Nav_q_v_init = 2.0f, Nav_q_w_init = 0.0099f;
+const float Nav_q_bias_ax_init = 0.015f, Nav_q_bias_w_init = 0.001f;
+const float Nav_r_v_normal_init = 0.01f, Nav_r_v_slip_init = 0.01f;
+const float Nav_r_w_normal_init = 0.002f, Nav_r_w_slip_init = 0.002f;
 const float Nav_r_gyro_init = 0.01f;
 
+// 导航控制参数初始值：默认只计算定位，不接管速度/转向
+const float Navi_Mode_Driver_init = 0.0f;
+const float Navi_Mode_Map_init = 0.0f;
+const float Navi_Trigger_Record_init = 0.0f;
+const float Navi_Print_Pose_En_init = 1.0f;
+const float Navi_Print_Pose_Period_init = 1000.0f;
+const float Navi_Wifi_Cmd_init = 0.0f;
+const float Navi_Wifi_Remote_Type_init = 0.0f;
+const float Navi_Wifi_In_Action_init = 0.0f;
+
 // 磁力计参数初始值
-const float Mag_offset_x_init = -0.080f, Mag_offset_y_init = 0.040f;
-const float Mag_scale_x_init = 1.0f, Mag_scale_y_init = 1.0499f;
+const float Mag_offset_x_init = 10.0f, Mag_offset_y_init = 0.01f;
+const float Mag_scale_x_init = 10.0f, Mag_scale_y_init = 0.01f;

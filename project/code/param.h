@@ -40,6 +40,9 @@ extern float Air_roll_p, Air_roll_i, Air_roll_d;
 extern float Direction_p, Direction_i, Direction_d;
 extern float leg_Kp, leg_Ki, leg_Kd;
 extern float mag_offset_x, mag_offset_y, mag_scale_x, mag_scale_y;
+extern float wifi_cmd_trigger, wifi_remote_type, wifi_in_action;
+extern float vofa_trigger_record, vofa_mode_driver, vofa_mode_map;
+extern float vofa_print_pose_en, vofa_print_pose_period;
 
 // ========================================================
 // 2. 【新增】系统默认初始值常量声明 (带有 _init 后缀)
@@ -59,6 +62,9 @@ extern const float Direction_p_init, Direction_i_init, Direction_d_init;
 // 导航与磁力计初始值
 extern const float Nav_q_v_init, Nav_q_w_init, Nav_q_bias_ax_init, Nav_q_bias_w_init;
 extern const float Nav_r_v_normal_init, Nav_r_v_slip_init, Nav_r_w_normal_init, Nav_r_w_slip_init, Nav_r_gyro_init;
+extern const float Navi_Mode_Driver_init, Navi_Mode_Map_init, Navi_Trigger_Record_init;
+extern const float Navi_Print_Pose_En_init, Navi_Print_Pose_Period_init;
+extern const float Navi_Wifi_Cmd_init, Navi_Wifi_Remote_Type_init, Navi_Wifi_In_Action_init;
 extern const float Mag_offset_x_init, Mag_offset_y_init, Mag_scale_x_init, Mag_scale_y_init;
 
 #endif // PARAM_H

@@ -564,7 +564,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 LOG_Printf("\r\n[VOFA] Received BULK PARAM UPDATE (AA C4)!\r\n");
 
                 __disable_irq();
-                // 神级操作：利用内存拷贝，一行代码直接把 88 字节的数据灌入 Core B 的参数数组中
+                // 神级操作：利用内存拷贝，直接把 PARAM_COUNT 个 float 灌入 Core B 的参数数组中
                 memcpy(core_b_cmd.params, &rx_buffer[i + 2], PARAM_COUNT * sizeof(float));
 
                 // 触发全量更新掩码 (0xFFFFFFFF 表示所有位都是 1)
@@ -583,7 +583,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
                 LOG_Printf("[ERROR] Bulk Update Checksum Failed!\r\n");
             }
 
-            i += (2 + PARAM_COUNT * 4 + 1); // 跳过这 91 个字节
+            i += (2 + PARAM_COUNT * 4 + 1); // 跳过整帧：帧头 + 参数区 + 校验和
             continue;
         }
 

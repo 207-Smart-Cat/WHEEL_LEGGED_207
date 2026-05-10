@@ -14,31 +14,25 @@
 
 #include "navigation_action.h"
 
+#include "control.h"
+
+#include <math.h>
+
 
 
 //====================================================±äÁ¿ÉùÃ÷=======================================================
 
 extern IMU_t IMU_data;                         //IMUÊı¾İ½á¹¹Ìå
 
-extern Navi_WayPoint_t     point_map[NAVI_POINT_MAX];               // Ô¤ÉèµÄ¡°Â·¡±
-
-
-
 // ÒıÓÃcontrol.c ÖĞµÄ¿ØÖÆ½Ó¿Ú
 
 extern float now_velocity;       //µ±Ç°ËÙ¶È(ÏßËÙ¶È)
 
-extern float target_velocity;    // Ä¿±êËÙ¶È (ÏßËÙ¶È)
-
-extern float target_motor_angle; // Ä¿±ê½Ç¶È (ÓÃÓÚ×ªÏò)
-
-extern float target_engine_high; // Ä¿±êÍÈ²¿¸ß¶È
-
-extern float Turn_Pwm; // ×ªÏòPWMÖµ
-
 extern float Encoder_Left;
 
 extern float Encoder_Right;
+
+extern float target_velocity;
 
 
 //ÆäËûÎÄ¼ş¼Ğº¯ÊıÊ¹ÓÃÇé¿ö
@@ -63,6 +57,11 @@ Navi_Sensor_Data_t       raw_data  ,filter_data;                        // Ô­Ê¼Ô
 static KalmanFilter_Struct nav_ekf;      // 5½×µ¼º½ EKF ½á¹¹Ìå
 
 static LowPassFilter_Struct   lpf_v_left,  lpf_v_right, lpf_ax, lpf_w;
+
+static float yaw_history_sin[YAW_HISTORY_LEN] = {0};
+static float yaw_history_cos[YAW_HISTORY_LEN] = {0};
+static uint16_t yaw_hist_idx = 0;
+static uint8_t yaw_hist_filled = 0; // ±ê¼Ç´°¿ÚÊÇ·ñÒÑ¾­ÌîÂú¹ı
 
 // ÔÚÎÄ¼şÉÏ·½µÄÈ«¾Ö±äÁ¿ÇøÌí¼Ó£º
 #if USE_WIFI_TUNE
@@ -232,7 +231,19 @@ void navi_parse_data(void) {
 
     memcpy(filter_data.unbiased_gyro,raw_data.unbiased_gyro,sizeof(raw_data.unbiased_gyro));    
     
-    filter_data.unbiased_gyro[2] = low_pass_filter_update(&lpf_w, raw_data.unbiased_gyro[2]);        
+    filter_data.unbiased_gyro[2] = low_pass_filter_update(&lpf_w, raw_data.unbiased_gyro[2]);      
+    
+    
+    // ¡¾ĞÂÔö¡¿£º½«µ±Ç°µÄ¾ø¶Ô Yaw ×ª»»Îª»¡¶È£¬²¢´æÈëÏòÁ¿»¬¶¯´°¿Ú
+    float raw_yaw_rad = ANGLE_TO_RAD(IMU_data.filter_result.yaw);
+    yaw_history_sin[yaw_hist_idx] = sinf(raw_yaw_rad);
+    yaw_history_cos[yaw_hist_idx] = cosf(raw_yaw_rad);
+    
+    yaw_hist_idx++;
+    if(yaw_hist_idx >= YAW_HISTORY_LEN) {
+        yaw_hist_idx = 0;
+        yaw_hist_filled = 1; // ±ê¼ÇÊı×éÒÑ±»Ğ´ÂúÒ»ÂÖ
+    }
 
 }
 
@@ -253,7 +264,21 @@ void Navi_Data_Set_Origin(void) {
     
     // ¡¾ĞÂÔö¡¿£ºËø¶¨µ±Ç°³µÍ·³¯Ïò£¬×÷ÎªÏà¶Ô×ø±êÏµµÄ 0 ¶È²Î¿¼
 #if NAVI_USE_LOCAL_FRAME
-    initial_yaw_offset = IMU_data.filter_result.yaw;
+    if (yaw_hist_filled) {
+        float sum_sin = 0.0f;
+        float sum_cos = 0.0f;
+        // ÀÛ¼Ó×î½ü YAW_HISTORY_LEN ´ÎµÄÏòÁ¿
+        for(uint16_t i = 0; i < YAW_HISTORY_LEN; i++) {
+            sum_sin += yaw_history_sin[i];
+            sum_cos += yaw_history_cos[i];
+        }
+        // Ê¹ÓÃ atan2f »¹Ô­Æ½¾ù½Ç¶È£¬ÍêÃÀ½â¾ö 180/-180 ·­×ªÍ»±äÎÊÌâ
+        float avg_yaw_rad = atan2f(sum_sin, sum_cos);
+        initial_yaw_offset = RAD_TO_ANGLE(avg_yaw_rad);
+    } else {
+        // ¶µµ×Âß¼­£ºÈç¹û¿ª»úË²¼äÌ«¿ì£¨»¹Ã»ÅÜ¹»10¸öÖÜÆÚ£©£¬Ö±½ÓÈ¡µ±Ç°Öµ
+        initial_yaw_offset = IMU_data.filter_result.yaw;
+    }
 #endif
 
     robot_pose.is_valid = 1;
@@ -359,17 +384,15 @@ void navi_ekf_update(void) {
     navi_parse_data();
     
     Navi_Slip_Detection();
-    
-    action_fsm.is_airborne_expect=0;
-    
-    uint8_t airborne_flag = (uint8_t)is_airborne() || action_fsm.is_airborne_expect;                 //»ñÈ¡controlÀïÃæµÄÌÚ¿Õ±êÖ¾  !!!ºóÒ»¸ö±êÖ¾Î»¿ÉÓÃÓÚÉèÖÃÌÚ¿ÕÊ±µÄ¿ÕÖĞ¼ÓËÙ¶È¼ÆÀ´Ô¤²âÎ»ÖÃµÄ×¼È·ĞÔ
-                                                                                                                     //Ö»ÒªĞ¡³µ´¦ÓÚ¶¯×÷Á´µÄ FSM_JUMP_AIRBORNE ×´Ì¬£¬²»¹ÜÄãÓÃÊÖ¾ÙµÃ¶àÆ½ÎÈ£¬ÏµÍ³¶¼»áÇ¿ÖÆ·ÅĞĞ¼ÓËÙ¶ÈÊäÈë£¬±£Ö¤¿ÕÖĞÌøÔ¾ÍÆËãµÄ¾ø¶Ô´¥·¢¡£
+        
+    uint8_t airborne_flag = navi_airborne_detection() || action_fsm.is_airborne_expect;                 //»ñÈ¡controlÀïÃæµÄÌÚ¿Õ±êÖ¾  !!!ºóÒ»¸ö±êÖ¾Î»¿ÉÓÃÓÚÉèÖÃÌÚ¿ÕÊ±µÄ¿ÕÖĞ¼ÓËÙ¶È¼ÆÀ´Ô¤²âÎ»ÖÃµÄ×¼È·ĞÔ
+//    uint8_t airborne_flag = 0 ;                                                                                                                 //Ö»ÒªĞ¡³µ´¦ÓÚ¶¯×÷Á´µÄ FSM_JUMP_AIRBORNE ×´Ì¬£¬²»¹ÜÄãÓÃÊÖ¾ÙµÃ¶àÆ½ÎÈ£¬ÏµÍ³¶¼»áÇ¿ÖÆ·ÅĞĞ¼ÓËÙ¶ÈÊäÈë£¬±£Ö¤¿ÕÖĞÌøÔ¾ÍÆËãµÄ¾ø¶Ô´¥·¢¡£
 
     // ¹Û²âÖµ Z (±àÂëÆ÷ËÙ¶È)
     float v_obs_mps = RPM_TO_M_COEFF(now_velocity); 
     
     // ±àÂëÆ÷¼ÆËã½ÇËÙ¶È (¼ÙÉèË³Ê±ÕëÎªÕı£º×óÂÖ¿ìÔòÏòÓÒ×ª)
-    float w_obs_enc = (filter_data.left_mps - filter_data.right_mps) / WHEEL_DISRANCE;
+    float w_obs_enc = (filter_data.left_mps + filter_data.right_mps) / WHEEL_DISRANCE;
     
     // È¡³öÍêÈ«Ô­Ê¼µÄ gyro_z£¬²»ÒªÈË¹¤¼õ 0.1£¬ÈÃ¿¨¶ûÂüÈ¥ËãËüµÄÕæÊµÁãÆ«£¡
     float gyro_z_obs = raw_data.unbiased_gyro[2]; 
@@ -441,10 +464,47 @@ void navi_ekf_update(void) {
     float opt_w = mat_get(&nav_ekf.X, 1, 0);
     float dt = ENCODER_DT;
     float yaw_rad = ANGLE_TO_RAD(filter_data.yaw);
+    
+    if (fabsf(target_velocity) < 0.001f && fabsf(v_obs_mps) < 0.15f && !airborne_flag) {
+        opt_v = 0.0f;     // Ç¿ÖÆµ±Ç°ËÙ¶ÈÎª0£¬²»²ÎÓëXY»ı·Ö
+        opt_w = 0.0f;
+        a_input = 0.0f;   // ºöÂÔ¸Ã×´Ì¬ÏÂµÄ¼Ù¼ÓËÙ¶È
+    }
+    
+    // ====================================================================
+    // »ìºÏÔ²»¡Ä£ĞÍ
+    // ====================================================================
+    float dx = 0.0f, dy = 0.0f;
+    float dtheta = opt_w * dt; // dtÊ±¼äÄÚ×Ü×ª½Ç
 
-    // ´¿ÔË¶¯Ñ§»ı·Ö£¬ÍêÃÀË³»¬
-    robot_pose.x += opt_v * cosf(yaw_rad) * dt;
-    robot_pose.y += opt_v * sinf(yaw_rad) * dt;
+    // Éè¶¨½ÇËÙ¶ÈËÀÇø (Ô¼ 0.057¶È/s)£¬ÅĞ¶ÏÊÇ·ñÎª¡°Ö±ÏßÔË¶¯¡±
+    if (fabsf(opt_w) < 1e-3f) {
+        // [ÇéĞÎ 1] Ö±ĞĞ»òÎ¢Ğ¡¶¶¶¯Ê±£ºÍË»¯Îª¶ş½×ÖĞµã»ı·Ö£¨·ÀÖ¹³ıÁãÒç³ö£©
+        float half_dtheta = dtheta / 2.0f;
+        dx = opt_v * cosf(yaw_rad + half_dtheta) * dt;
+        dy = opt_v * sinf(yaw_rad + half_dtheta) * dt;
+    } else {
+        // [ÇéĞÎ 2] ÖĞ¸ßËÙÍäµÀÔË¶¯£ºÊ¹ÓÃ¾«È·½âÎöÔ²»¡»ı·Ö
+        // °ë¾¶ R = v / w
+        float radius = opt_v / opt_w; 
+        
+        // ½âÎö»ı·Ö½á¹û
+        dx = radius * (sinf(yaw_rad + dtheta) - sinf(yaw_rad));
+        // ×¢Òâ Y ÖáµÄ»ı·Ö½á¹û·ûºÅÊÇ·´¹ıÀ´µÄ£º -R * (cos(new) - cos(old)) Ò²¾ÍÊÇ R * (cos(old) - cos(new))
+        dy = radius * (cosf(yaw_rad) - cosf(yaw_rad + dtheta)); 
+    }
+
+    // ½«ÔöÁ¿ÀÛ¼Ó½øÈ«¾Ö×ø±êÏµ
+    robot_pose.x += dx;
+    robot_pose.y += dy;
+
+//    float half_dtheta = (opt_w * dt) / 2.0f; // opt_w ÊÇ EKF ÈÚºÏºóµÄ½ÇËÙ¶È (»¡¶ÈÖÆ)
+//    robot_pose.x += opt_v * cosf(yaw_rad + half_dtheta) * dt;
+//    robot_pose.y += opt_v * sinf(yaw_rad + half_dtheta) * dt;
+    
+//    // ´¿ÔË¶¯Ñ§»ı·Ö£¬ÍêÃÀË³»¬
+//    robot_pose.x += opt_v * cosf(yaw_rad) * dt;
+//    robot_pose.y += opt_v * sinf(yaw_rad) * dt;
 
     // ======== 6. ½á¹ûĞ´»ØÈ«¾Ö×´Ì¬ ========
     robot_pose.v       = opt_v;
@@ -455,102 +515,12 @@ void navi_ekf_update(void) {
     robot_pose.yaw     = navi_limit_angle180(filter_data.yaw);
 
     robot_pose.is_valid = 1;
+    
+//    IPC_LOG_Printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,robot_pose.bias_ax,robot_pose.bias_w); 
+//    printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,robot_pose.bias_ax,robot_pose.bias_w); 
+
 
 }
-
-
-
-//----------------------------------------------------------------------------------------------------------------
-// ¼ÆËãµ±Ç°Î»ÖÃµ½Ä¿±êº½µãµÄµ¼º½ĞÅÏ¢   (XÎª±±£¬Y¶«,Ë³Ê±Õë½Ç¶È¼Ó)
-
-//  target_idx: Ä¿±êº½µãË÷Òı
-
-// azimuth: ·½Î»½ÇÖ¸Õë£¨µ¥Î»£º¶È£©
-
-// distance: Ö±Ïß¾àÀëÖ¸Õë£¨µ¥Î»£ºÃ×£©
-
-//----------------------------------------------------------------------------------------------------------------
-
-uint8 navi_calcnavinfo(uint8 target_idx, double *azimuth, double *distance) {
-
-    if(target_idx >= NAVI_POINT_MAX || !point_map[target_idx].valid || !robot_pose.is_valid)
-
-       return 0;
-
-    
-
-    double dx = point_map[target_idx].x - robot_pose.x;
-
-    double dy = point_map[target_idx].y - robot_pose.y;
-
-    *distance = sqrt(dx * dx + dy * dy);   
-
-    
-
-    // ±ß½ç´¦Àí£ºÈç¹ûÒÑ¾­ÔÚÄ¿±êµã¸½½ü£¬·½Î»½Ç±£³Öµ±Ç°º½Ïò£¬·ÀÖ¹¶¶¶¯
-
-    if (*distance < 0.01) *azimuth = robot_pose.yaw;
-
-    else {
-
-        double angle = RAD_TO_ANGLE(atan2(dy, dx));
-
-        *azimuth = (angle < 0) ? (angle + 360.0) : angle;
-
-    }
-
-    return 1;
-
-}
-
-
-
-//-------------------------------------------------------------------------------------------------------------------
-
-// ÅĞ¶ÏÊÇ·ñµ½´ïÄ¿±êº½µã           0 £º   Î´µ½´ï               1£ºµ½´ï
-
-// »ùÓÚÆ½Ãæ×ø±ê£¨x/y£©¼ÆËãµ±Ç°Î»ÖÃÓëÄ¿±êº½µãµÄ¾àÀë£¬ÅĞ¶ÏÊÇ·ñĞ¡ÓÚÉè¶¨ãĞÖµ
-
-// arget_idx: Ä¿±êº½µãË÷Òı
-
-//--------------------------------------------------------------------------------------------------------------
-
-uint8 navi_isreach_target_point(uint8 target_idx) {
-
-    if(target_idx >= NAVI_POINT_MAX || !point_map[target_idx].valid || !robot_pose.is_valid) {
-
-        return 0;
-
-    }
-
-    double dx = point_map[target_idx].x - robot_pose.x;
-
-    double dy = point_map[target_idx].y - robot_pose.y;
-
-    double distance_sq = dx*dx + dy*dy;
-    
-    float current_threshold = DISTANCE_THRESHOLD; // Ä¬ÈÏ 0.2m
-    
-    switch (point_map[target_idx].type) {
-        case WP_TYPE_CONE_CONE:   // ÈÆ×¶Í°£ºÒªÇó¸ü¾«×¼£¬ËõĞ¡ãĞÖµ
-            current_threshold = 0.10f; 
-            break;
-        case WP_TYPE_NORMAL:      // ÆÕÍ¨Ö±Ïß£ºÎªÁË¸ßËÙË³»¬£¬·Å´óãĞÖµÌáÇ°ÇĞµã
-            current_threshold = 0.40f; 
-            break;
-        case WP_TYPE_STOP:        // Í£³µµã£ºÒªÇó¼«¸ß¾«¶È
-            current_threshold = 0.05f; 
-            break;
-        default:
-            current_threshold = 0.20f;
-            break;
-    }
-
-    return (distance_sq <= (current_threshold * current_threshold)) ? 1 : 0;
-
-}
-
-
 
 
 
@@ -610,23 +580,91 @@ static void Navi_Slip_Detection(void) {
 }
 
 
-float navi_limit_angle180(float angle) 
-{
-    // µÚÒ»²½£ºÊ¹ÓÃ fmodf ½«ÈÎÒâ´ó½Ç¶È¿ìËÙÓ³Éäµ½ (-360, 360) Çø¼ä
-    // fmodf ×¨ÃÅÓÃÓÚ float ÀàĞÍ£¬ÔËËãËÙ¶È¿ìÇÒÊÇ O(1) ¸´ÔÓ¶È
-    angle = fmodf(angle, 360.0f);
-
-    // µÚ¶ş²½£º½«Çø¼ä½øÒ»²½Ñ¹Ëõµ½ (-180, 180]
-    if (angle > 180.0f) 
-    {
-        angle -= 360.0f;
-    } 
-    else if (angle <= -180.0f) 
-    {
-        angle += 360.0f;
-    }
-
-    return angle;
+float navi_limit_angle180(float angle) {
+    angle = fmodf(angle + 180.0f, 360.0f);
+    if (angle < 0) angle += 360.0f;
+    return angle - 180.0f;
 }
 
+// =====================================================================
+// [¹¦ÄÜ] ¸ßÂ³°ôĞÔÂÖÍÈÌÚ¿Õ¼ì²â (ÑÏ¸ñ×ñÑ­¹úÈüÍ¨ÓÃ¿¹¸ÉÈÅ±ê×¼)
+// [·µ»Ø] 1: µ±Ç°È·ÈÏÌÚ¿Õ ; 0: µ±Ç°È·ÈÏÔÚµØÃæ
+// =====================================================================
+uint8_t navi_airborne_detection(void) {
+    // 4. ×´Ì¬Ëø´æ£º¾²Ì¬±äÁ¿Î¬³Ö×´Ì¬»ú£¬±ÜÃâ±»¾Ö²¿±äÁ¿ÖØÖÃ
+    static uint8_t is_latching_airborne = 0; 
+    
+    // ÂË²¨Æ÷¾²Ì¬±äÁ¿
+    static float lpf_acc_z = 1.0f;     // ¾²Ö¹Ê±Ä¬ÈÏ Z ÖáÎª 1g
+    static float lpf_gyro_norm = 0.0f; // ½ÇËÙ¶È²¨¶¯·ùÖµ
+    
+    // 3. Á¬Ğø¼ÆÊıÆ÷£º¶ÀÁ¢Î¬»¤ÉÏÉıÑØºÍÏÂ½µÑØµÄÂË²¨·À¶¶
+    static uint8_t airborne_confirm_cnt = 0;
+    static uint8_t ground_confirm_cnt = 0;
+
+    // --- ²ÎÊıÅäÖÃÇø (¿É¸ù¾İÊµ³µ telemetry Î¢µ÷) ---
+    const float ALPHA_A = 0.3f;        // 2. Ò»½×µÍÍ¨ÂË²¨ÏµÊı (¼ÓËÙ¶È)£¬0.3¾ßÓĞ½ÏºÃÆ½»¬¶È
+    const float ALPHA_W = 0.2f;        // 2. Ò»½×µÍÍ¨ÂË²¨ÏµÊı (½ÇËÙ¶È)
+    
+    const float FREEFALL_MAX = 0.4f;   // ÌÚ¿ÕÅĞ¶¨ÉÏÏŞ£º<0.4g ÊÓÎªÊ§ÖØ×´Ì¬ (ÕæÊµ×ÔÓÉÂäÌåÎª0)
+    const float FREEFALL_MIN = -0.4f;  // ÌÚ¿ÕÅĞ¶¨ÏÂÏŞ£ºÔÊĞíÒ»¶¨´«¸ĞÆ÷¹ı³å
+    
+    const float GYRO_SHOCK_MAX = 350.0f; // 1. Ë«ÅĞ¶ÏÉÏÏŞ£º×²»÷µØÃæË²¼ä½ÇËÙ¶ÈÍ¨³£>500¶È/s£¬ÌÚ¿Õ·ÉĞĞÊ±Ïà¶ÔÆ½ÎÈ
+    
+    const float LANDING_GRAVITY_MIN = 0.8f; // ÂäµØÅĞ¶¨£ºĞè»Ö¸´ÖÁ½Ó½ü 1g Õı³£ÖØÁ¦
+    const float LANDING_GRAVITY_MAX = 1.2f;
+
+    // --- Êı¾İ»ñÈ¡ÓëÂË²¨ ---
+    // 5. ÇáÁ¿¸ßĞ§£ºÖ±½ÓÊ¹ÓÃ¾ø¶ÔÖµÏà¼Ó´úÌæ sqrt ÇóÄ££¬¼«´óµØ½ÚÊ¡ MCU ËãÁ¦
+    float cur_acc_z = raw_data.accel[2]; // ZÖá¼ÓËÙ¶È(µ¥Î»:g)
+    float cur_gyro_p = raw_data.unbiased_gyro[0]; 
+    float cur_gyro_r = raw_data.unbiased_gyro[1];
+    
+    // Ö´ĞĞÒ»½×µÍÍ¨ÂË²¨£¬ÂË³ıµç»ú¸ßÆµÕğµ´ºÍÂÄ´ø/ÂÖÌ¥ËéÕğ
+    lpf_acc_z = ALPHA_A * cur_acc_z + (1.0f - ALPHA_A) * lpf_acc_z;
+    
+    float gyro_sum = fabsf(cur_gyro_p) + fabsf(cur_gyro_r);
+    lpf_gyro_norm = ALPHA_W * gyro_sum + (1.0f - ALPHA_W) * lpf_gyro_norm;
+
+    // --- Âß¼­ÅĞ¶ÏÓë×´Ì¬»ú ---
+    // ÅĞ¶¨Ìõ¼ş1£ºZÖá½øÈëÊ§ÖØÇø¼ä
+    uint8_t cond_is_freefall = (lpf_acc_z < FREEFALL_MAX && lpf_acc_z > FREEFALL_MIN);
+    // ÅĞ¶¨Ìõ¼ş2£º½ÇËÙ¶ÈÎ´³öÏÖ¼«Æä¾çÁÒµÄ×²»÷¼â·å
+    uint8_t cond_gyro_stable = (lpf_gyro_norm < GYRO_SHOCK_MAX);
+    // ÅĞ¶¨Ìõ¼ş3£º»Ö¸´Õı³£¾²Ö¹ÖØÁ¦Çø¼ä
+    uint8_t cond_is_grounded = (lpf_acc_z > LANDING_GRAVITY_MIN && lpf_acc_z < LANDING_GRAVITY_MAX);
+
+    if (is_latching_airborne == 0) {
+        // ¡¾µ±Ç°ÔÚµØÃæ£¬Õì²âÆğÌø/µøÂä¡¿
+        if (cond_is_freefall && cond_gyro_stable) {
+            airborne_confirm_cnt++;
+            ground_confirm_cnt = 0; // »¥ËøÇåÁã
+            
+            // Á¬ĞøÈ·ÈÏ (5¸öÖÜÆÚ = 50ms@10ms¿ØÖÆÖÜÆÚ)£¬·ÀÖ¹µ¥µãÌø±äÎóÅĞ
+            if (airborne_confirm_cnt >= 5) {
+                is_latching_airborne = 1;
+                airborne_confirm_cnt = 0;
+            }
+        } else {
+            airborne_confirm_cnt = 0; // Óöµ½ÄÄÅÂ1Ö¡µÄ²»Âú×ãÒªÇó£¬Á¢¿ÌÇåÁãÖØĞÂ¼ÆÊı
+        }
+    } else {
+        // ¡¾µ±Ç°ÔÚ¿ÕÖĞ£¬Õì²âÂäµØ¡¿
+        // ÂäµØË²¼äÍ¨³£°éËæ¾çÁÒµÄ acc_z ³¬µ÷(>2g)£¬ËùÒÔ²»ÄÜÁ¢¿ÌÅĞ¶¨£¬±ØĞëµÈÖØÁ¦»Ö¸´Æ½ÎÈÇø
+        if (cond_is_grounded) {
+            ground_confirm_cnt++;
+            airborne_confirm_cnt = 0;
+            
+            // ÂäµØ·À¶¶Í¨³£ĞèÒª¸ü³¤µÄÊ±¼ä (10¸öÖÜÆÚ = 100ms)£¬µÈ±ÜÕğÆ÷ºÍÍÈ²¿»ú¹¹ÍêÈ«Ğ¶Á¦ÊÕÁ²
+            if (ground_confirm_cnt >= 10) {
+                is_latching_airborne = 0;
+                ground_confirm_cnt = 0;
+            }
+        } else {
+            ground_confirm_cnt = 0;
+        }
+    }
+
+    return is_latching_airborne;
+}
 

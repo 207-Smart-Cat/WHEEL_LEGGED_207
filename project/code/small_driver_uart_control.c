@@ -4,9 +4,9 @@
 #include "runtime_status.h"
 #define MOTOR_STARTUP_DUTY_STEP      (120)
 #define MOTOR_DUTY_MAX_ABS           (MAX_DUTY * (PWM_DUTY_MAX / 100))
-#define MOTOR_ZERO_WAIT_MIN_MS       (2000U)
-#define MOTOR_ZERO_WAIT_TIMEOUT_MS   (5000U)
-#define MOTOR_ZERO_SETTLE_MS         (200U)
+#define MOTOR_ZERO_WAIT_MIN_MS       (4000U)
+#define MOTOR_ZERO_WAIT_TIMEOUT_MS   (8000U)
+#define MOTOR_ZERO_SETTLE_MS         (500U)
 
 static volatile motor_zero_state_t motor_zero_state = MOTOR_ZERO_STATE_IDLE;
 static volatile uint8 motor_zero_rx_seen = 0;
@@ -101,10 +101,11 @@ void small_driver_zero_calibration_start(void)
     motor_zero_rx_seen = 0;
     motor_zero_speed_seen = 0;
     motor_zero_elapsed_ms = 0;
-    motor_zero_state = MOTOR_ZERO_STATE_WAIT_REPLY;
-    IPC_Update_Motor_Zero_State_From_Core0((uint8)motor_zero_state);
 
     small_driver_set_duty(0, 0);
+
+    motor_zero_state = MOTOR_ZERO_STATE_WAIT_REPLY;
+    IPC_Update_Motor_Zero_State_From_Core0((uint8)motor_zero_state);
 
     set_zero_cmd[0] = 0xA5;
     set_zero_cmd[1] = 0x03;
@@ -260,9 +261,8 @@ void small_driver_set_duty(int16 left_duty, int16 right_duty)
 
     if (small_driver_zero_calibration_is_active())
     {
-        left_duty = 0;
-        right_duty = 0;
         motor_safety_reset(&motor_output_enabled, &startup_duty_limit);
+        return;
     }
     else if (motor_output_is_allowed() == 0)
     {

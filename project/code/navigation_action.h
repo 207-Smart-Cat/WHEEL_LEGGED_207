@@ -3,24 +3,41 @@
 
 #include "zf_common_headfile.h"
 
-#include "navigation_tracking.h" // 引入航点类型 WayPoint_Type
+#include "navigation_tracking.h"  // 引入航点类型 WayPoint_Type
 
+// ========================== 宏定义 ==========================
 #define MAX_ACTION_NUM  50    // 假设赛道上最多有 50 个特殊动作点
+
+#define TIMER_ACTION_PIR  0.01f       //中断周期
 
 // ========================== 动作状态机枚举 ==========================
 typedef enum {
     FSM_IDLE = 0,             // 闲置/正常巡航
     
-    // --- 跳跃动作状态链 -   
-    FSM_JUMP_PREPARE,         // 准备期：压低重心，蓄力
-    
+// --- 跳跃动作状态链 ---   
+    FSM_JUMP_PREPARE,         // 准备期：压低重心，蓄力加速
     FSM_JUMP_TAKEOFF,         // 起跳期：爆发伸腿
     FSM_JUMP_AIRBORNE,        // 腾空期：空中姿态保持，通知 EKF 断流补全
     FSM_JUMP_LANDING,         // 落地期：屈腿缓冲冲击
     
     // --- 单边桥动作状态链 ---
     FSM_BRIDGE_APPROACH,      // 接近期：减速，精准对正
-    FSM_BRIDGE_ON_BOARD       // 上桥期：开启腿部独立自适应
+    FSM_BRIDGE_ON_BOARD,      // 上桥期：开启腿部独立自适应
+    
+    // --- 定点排雷动作状态链 ---
+    FSM_MINE_APPROACH,        // 接近期：减速寻点
+    FSM_MINE_PROCESSING,      // 处理期：停车，可扩展机械臂或蜂鸣器动作
+    
+    // --- 绕圆锥桶状态链 ---
+    FSM_CONE_APPROACH,        // 接近期：降速，准备大角度转向
+    FSM_CONE_NAVIGATE,        // 绕行期：维持低速与低重心
+    
+    // --- 侧倾坡道状态链 ---
+    FSM_SLOPE_APPROACH,       // 接近期：姿态调整
+    FSM_SLOPE_ONBOARD,        // 上坡期：压低重心，抗侧翻
+    
+    // --- 终点停车状态 ---
+    FSM_STOP_PARKING          // 终点停车锁定
 } ActionState_e;
 
 // ========================== 数据结构定义 ==========================
@@ -47,8 +64,6 @@ typedef struct {
 // ========================== 全局变量与接口声明 ==========================
 extern ActionFSM_t action_fsm;
 extern ActionSequence_t action_seq;
-
-// 【关键】：把动作接管标志位移到这里，作为全局变量暴露
 extern uint8_t is_action_busy; 
 
 void navi_parse_global_path(void);

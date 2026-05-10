@@ -111,6 +111,9 @@ void pit0_ch15_isr() // Navigation EKF positioning, 3ms
     }
 
     navi_ekf_update();
+    navi_ctrl.navi_mode_driver = (uint8_t)vofa_mode_driver;
+    navi_ctrl.navi_mode_map = (uint8_t)vofa_mode_map;
+    task_navigation_control();
     pit_isr_flag_clear(PIT_CH15);
 }
 

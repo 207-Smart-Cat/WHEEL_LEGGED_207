@@ -4,6 +4,7 @@
 #include "control.h"
 #include "param.h"
 #include "navigation_data_handling.h"
+#include "navigation_tracking.h"
 #include "imu.h"
 #include "wifi.h"
 #include "battery_monitor.h"
@@ -11,9 +12,15 @@
 #include "vofa_protocol.h"
 #include "runtime_status.h"
 #include "small_driver_uart_control.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 // --- 1. 绝对地址内存分配 ---
 #pragma location = IPC_CORE_A_SHARED_ADDR
 __no_init CoreA_Status_t core_a_status;
+
+#pragma location = IPC_LOG_SHARED_ADDR
+__no_init IpcLogBox_t ipc_log_box;
 
 #pragma location = IPC_CORE_B_SHARED_ADDR
 __no_init CoreB_Command_t core_b_cmd;
@@ -99,6 +106,7 @@ void IPC_Update_Motor_Zero_State_From_Core0(uint8 state)
 // --- 初始化函数 ---
 void IPC_Init_Shared_Memory(void) {
     memset(&core_a_status, 0, sizeof(CoreA_Status_t));
+    memset(&ipc_log_box, 0, sizeof(IpcLogBox_t));
     memset(&core_b_cmd, 0, sizeof(CoreB_Command_t));
 
     // 【完美替换】直接从 param.c 读取基准初始配置
@@ -113,6 +121,7 @@ void IPC_Init_Shared_Memory(void) {
     core_b_cmd.runtime_status_valid = 1;
 
     SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
+    SCB_CleanInvalidateDCache_by_Addr(&ipc_log_box, sizeof(ipc_log_box));
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
 }
 
@@ -139,6 +148,64 @@ void IPC_Push_Status_From_CoreA(void) {
     SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
 }
 
+// --- Core A -> Core B 日志邮箱：Core0 写入，Core1 主循环转发到现有 LOG_Printf ---
+void IPC_LOG_Printf(const char *format, ...)
+{
+    char log_buf[IPC_LOG_TEXT_SIZE];
+    uint32 i;
+
+    va_list args;
+    va_start(args, format);
+    vsnprintf(log_buf, sizeof(log_buf), format, args);
+    va_end(args);
+    log_buf[IPC_LOG_TEXT_SIZE - 1U] = '\0';
+
+    __disable_irq();
+    for (i = 0; i < IPC_LOG_TEXT_SIZE; i++)
+    {
+        ipc_log_box.text[i] = log_buf[i];
+        if (log_buf[i] == '\0')
+        {
+            break;
+        }
+    }
+    if (i >= IPC_LOG_TEXT_SIZE)
+    {
+        ipc_log_box.text[IPC_LOG_TEXT_SIZE - 1U] = '\0';
+    }
+    ipc_log_box.pending = 1U;
+    ipc_log_box.seq++;
+    SCB_CleanInvalidateDCache_by_Addr(&ipc_log_box, sizeof(ipc_log_box));
+    __enable_irq();
+}
+
+void IPC_Flush_Log_To_CoreB(void)
+{
+    static uint32 last_seq = 0U;
+    char log_buf[IPC_LOG_TEXT_SIZE];
+    uint32 i;
+    uint32 seq;
+
+    SCB_CleanInvalidateDCache_by_Addr(&ipc_log_box, sizeof(ipc_log_box));
+    seq = ipc_log_box.seq;
+    if ((ipc_log_box.pending == 0U) || (seq == last_seq))
+    {
+        return;
+    }
+
+    for (i = 0; i < IPC_LOG_TEXT_SIZE; i++)
+    {
+        log_buf[i] = ipc_log_box.text[i];
+        if (log_buf[i] == '\0')
+        {
+            break;
+        }
+    }
+    log_buf[IPC_LOG_TEXT_SIZE - 1U] = '\0';
+    last_seq = seq;
+
+    LOG_Printf("%s", log_buf);
+}
 // --- 4. Core B 专属：从 SRAM 拉取最新数据到结构体 ---
 void IPC_Pull_Status_To_CoreB(void) {
     // 让 Core B 的 Cache 失效，强制从真正的 SRAM 读取最新数据
@@ -183,6 +250,7 @@ void IPC_Check_And_Apply_Params_To_Core0(void) {
 #define PARAM_FLASH_SECTION  (0)  // 选用靠后的扇区
 #define PARAM_FLASH_PAGE     (95)
 #define PARAM_FLASH_LEGACY_COUNT_BEFORE_JUMP (45)
+#define PARAM_FLASH_LEGACY_COUNT_BEFORE_NAVI_CTRL (50)
 
 // ====================================================================
 // 功能 1：真正操作硬件，把参数写入 Flash (Core B 调用)
@@ -221,6 +289,11 @@ void IPC_Load_Params_From_Flash(void) {
        flash_union_buffer[PARAM_COUNT + 1].uint32_type == 0x11223344)
     {
         load_count = PARAM_COUNT;
+    }
+    else if(flash_union_buffer[0].uint32_type == 0x55AA55AA &&
+            flash_union_buffer[PARAM_FLASH_LEGACY_COUNT_BEFORE_NAVI_CTRL + 1].uint32_type == 0x11223344)
+    {
+        load_count = PARAM_FLASH_LEGACY_COUNT_BEFORE_NAVI_CTRL;
     }
     else if(flash_union_buffer[0].uint32_type == 0x55AA55AA &&
             flash_union_buffer[PARAM_FLASH_LEGACY_COUNT_BEFORE_JUMP + 1].uint32_type == 0x11223344)
@@ -327,7 +400,19 @@ void IPC_Load_Params_From_Flash(void) {
                F_S(core_b_cmd.params[P_NAV_R_W_NORMAL]), F_I(core_b_cmd.params[P_NAV_R_W_NORMAL]), F_D5(core_b_cmd.params[P_NAV_R_W_NORMAL]),
                F_S(core_b_cmd.params[P_NAV_R_W_SLIP]), F_I(core_b_cmd.params[P_NAV_R_W_SLIP]), F_D5(core_b_cmd.params[P_NAV_R_W_SLIP]),
                F_S(core_b_cmd.params[P_NAV_R_GYRO]), F_I(core_b_cmd.params[P_NAV_R_GYRO]), F_D5(core_b_cmd.params[P_NAV_R_GYRO]));
+        LOG_Printf(" [NavCtl] Driver: %s%d.%04d, Map: %s%d.%04d, Rec: %s%d.%04d\r\n",
+               F_S(core_b_cmd.params[P_NAVI_MODE_DRIVER]), F_I(core_b_cmd.params[P_NAVI_MODE_DRIVER]), F_D(core_b_cmd.params[P_NAVI_MODE_DRIVER]),
+               F_S(core_b_cmd.params[P_NAVI_MODE_MAP]), F_I(core_b_cmd.params[P_NAVI_MODE_MAP]), F_D(core_b_cmd.params[P_NAVI_MODE_MAP]),
+               F_S(core_b_cmd.params[P_NAVI_TRIGGER_RECORD]), F_I(core_b_cmd.params[P_NAVI_TRIGGER_RECORD]), F_D(core_b_cmd.params[P_NAVI_TRIGGER_RECORD]));
 
+        LOG_Printf(" [NavCtl] Print: %s%d.%04d, Period: %s%d.%04d, Cmd: %s%d.%04d\r\n",
+               F_S(core_b_cmd.params[P_NAVI_PRINT_POSE_EN]), F_I(core_b_cmd.params[P_NAVI_PRINT_POSE_EN]), F_D(core_b_cmd.params[P_NAVI_PRINT_POSE_EN]),
+               F_S(core_b_cmd.params[P_NAVI_PRINT_PERIOD]), F_I(core_b_cmd.params[P_NAVI_PRINT_PERIOD]), F_D(core_b_cmd.params[P_NAVI_PRINT_PERIOD]),
+               F_S(core_b_cmd.params[P_NAVI_WIFI_CMD]), F_I(core_b_cmd.params[P_NAVI_WIFI_CMD]), F_D(core_b_cmd.params[P_NAVI_WIFI_CMD]));
+
+        LOG_Printf(" [NavCtl] Type: %s%d.%04d, Action: %s%d.%04d\r\n",
+               F_S(core_b_cmd.params[P_NAVI_WIFI_TYPE]), F_I(core_b_cmd.params[P_NAVI_WIFI_TYPE]), F_D(core_b_cmd.params[P_NAVI_WIFI_TYPE]),
+               F_S(core_b_cmd.params[P_NAVI_WIFI_ACTION]), F_I(core_b_cmd.params[P_NAVI_WIFI_ACTION]), F_D(core_b_cmd.params[P_NAVI_WIFI_ACTION]));
         LOG_Printf(" [ Mag ]  off_x: %s%d.%04d, off_y: %s%d.%04d\r\n",
                F_S(core_b_cmd.params[P_MAG_OFFSET_X]), F_I(core_b_cmd.params[P_MAG_OFFSET_X]), F_D(core_b_cmd.params[P_MAG_OFFSET_X]),
                F_S(core_b_cmd.params[P_MAG_OFFSET_Y]), F_I(core_b_cmd.params[P_MAG_OFFSET_Y]), F_D(core_b_cmd.params[P_MAG_OFFSET_Y]));

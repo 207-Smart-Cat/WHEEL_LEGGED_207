@@ -1,5 +1,6 @@
 #include "navigation_action.h"
 #include "navigation_data_handling.h"
+#include "control.h"
 
 // ==================== 实例化状态机变量 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -11,29 +12,31 @@ extern Navi_WayPoint_t point_map[NAVI_POINT_MAX];
 extern Navi_Controller_t navi_ctrl;
 extern Navi_Sensor_Data_t filter_data;
 
-// 引入 control.c 中的底层变量
 extern float target_velocity;    
-extern float target_motor_Stand; 
-extern float target_engine_high; 
+extern float now_velocity;
+extern float target_motor_Stand; // 默认中值为 2.2
 extern float x_current, y_current;
+extern int jump_position;        // 告诉底层进入跳跃/腾空模式 (关闭转向)
+extern int jump_stop;            // 强制切断电机PID
 extern int Bridge_position;
 
+// 定义腿长边界 (与 control.c 保持一致)
+#define LEG_MIN 0.04f
+#define LEG_MAX 0.10f
+#define LEG_NOMINAL 0.08f
+
 // ==============================================================================
-// 模块 1：全局路径预解析 (在录制完成或发车前调用 1 次)
+// 全局路径预解析,找出特殊点位置 (在录制完成或发车前调用 1 次)
 // ==============================================================================
 void navi_parse_global_path(void) {
     action_seq.total_count = 0;
     action_seq.current_ptr = 0;
 
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
-        if (point_map[i].type == WP_TYPE_JUMP || 
-            point_map[i].type == WP_TYPE_BRIDGE || 
-            point_map[i].type == WP_TYPE_CROSSING) {
-            
+        if (point_map[i].type != WP_TYPE_NORMAL && point_map[i].type != WP_TYPE_HOME) {
             action_seq.list[action_seq.total_count].wp_index = i;
             action_seq.list[action_seq.total_count].type = point_map[i].type;
             action_seq.total_count++;
-            
             if (action_seq.total_count >= MAX_ACTION_NUM) break;
         }
     }
@@ -42,72 +45,108 @@ void navi_parse_global_path(void) {
 // ==============================================================================
 // 模块 2：异步动作状态机
 // ==============================================================================
-static void Navi_Action_FSM_Update(uint8_t target_idx, double distance) {
+static void navi_action_fsm_update(uint8_t target_idx, double distance) {
     WayPoint_Type upcoming_type = point_map[target_idx].type;
-    action_fsm.state_timer_ms += 10; // 假设调用周期为 10ms
+    action_fsm.state_timer_ms += TIMER_ACTION_PIR; 
 
-    switch (action_fsm.state) {
+switch (action_fsm.state) {
         case FSM_IDLE:
+            // 休闲时自动巡航 / 正常状态恢复
             action_fsm.is_airborne_expect = 0;
-            // 跳跃预警：距离 < 1.0m
+            jump_stop = 0;        
+            jump_position = 0;    
+            target_motor_Stand = 2.2f; // 恢复机械中值
+            y_current = LEG_NOMINAL;
+            
+            // 距离判定预警分发
             if (upcoming_type == WP_TYPE_JUMP && distance < 1.0f) {
                 action_fsm.state = FSM_JUMP_PREPARE;
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1; 
             }
-            // 单边桥预警：距离 < 0.8m
             else if (upcoming_type == WP_TYPE_BRIDGE && distance < 0.8f) {
                 action_fsm.state = FSM_BRIDGE_APPROACH;
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
             }
+            else if (upcoming_type == WP_TYPE_MINE_SWEEP && distance < 0.5f) {
+                action_fsm.state = FSM_MINE_APPROACH;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;
+            }
+            else if (upcoming_type == WP_TYPE_CONE_CONE && distance < 0.8f) {
+                action_fsm.state = FSM_CONE_APPROACH;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;
+            }
+            else if (upcoming_type == WP_TYPE_SIDE_SLOPE && distance < 0.8f) {
+                action_fsm.state = FSM_SLOPE_APPROACH;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;
+            }
+            else if (upcoming_type == WP_TYPE_STOP && distance < 0.3f) {
+                action_fsm.state = FSM_STOP_PARKING;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;
+            }
             break;
 
+        // ------------------ 跳跃动作 ------------------
         case FSM_JUMP_PREPARE:
-            target_velocity = 800;
-            y_current = 0.04f;         // 压低重心
+            // 准备期：加速并下蹲蓄力
+            target_velocity = 650;     // 提速
+            y_current = LEG_MIN;       // 重心压到最低
             target_motor_Stand = 3.0f; // 身体前倾
-            if (distance < 0.1f || action_fsm.state_timer_ms > 2000) {
+            
+            if (distance < 0.1f || action_fsm.state_timer_ms > 1500) {
                 action_fsm.state = FSM_JUMP_TAKEOFF;
                 action_fsm.state_timer_ms = 0;
             }
             break;
 
         case FSM_JUMP_TAKEOFF:
-            y_current = 0.14f;         // 爆发起跳
-            target_velocity = 900;
-            if (action_fsm.state_timer_ms > 50) { 
+            // 起跳期：腿部瞬间伸展到最大，开启跳跃屏蔽模式
+            y_current = LEG_MAX;       // 瞬间蹬腿 (MAX_LEG_LENGTH 0.1)
+            jump_position = 1;         // 通知 control.c 切断转向，只保直立
+            
+            // 利用您底层的失重判断函数
+            if (navi_airborne_detection() || action_fsm.state_timer_ms > 200) { 
                 action_fsm.state = FSM_JUMP_AIRBORNE;
                 action_fsm.state_timer_ms = 0;
-                action_fsm.is_airborne_expect = 1; // 告诉EKF抛弃里程计
             }
             break;
 
         case FSM_JUMP_AIRBORNE:
-            y_current = 0.05f;         // 空中收腿
-            if (fabsf(filter_data.accel[2]) > 2.0f * GRAVITY || action_fsm.state_timer_ms > 600) {
+            // 腾空期：收腿防止磕碰，并在空中维持姿态
+            y_current = LEG_MIN;       // 空中缩腿
+            target_velocity = 0;       // 防止轮子在空中疯转产生陀螺效应
+            
+            // 底层的 control.c 会在此期间自动用 air_roll_pid 维持平衡
+            
+            if (!navi_airborne_detection() || action_fsm.state_timer_ms > 800) {
                 action_fsm.state = FSM_JUMP_LANDING;
                 action_fsm.state_timer_ms = 0;
-                action_fsm.is_airborne_expect = 0; // 告诉EKF恢复
             }
-            break;
 
         case FSM_JUMP_LANDING:
-            y_current = 0.04f;                    //屈腿缓冲
-            target_velocity = 400;
-            target_motor_Stand = 1.6f;
-            if (action_fsm.state_timer_ms > 300) { 
+            // 落地缓冲期
+            y_current = LEG_MIN;       // 保持屈腿缓冲冲击
+            target_velocity = 400;     // 恢复正常速度防摔
+            target_motor_Stand = 1.6f; // 重心后仰防前翻
+            
+            if (action_fsm.state_timer_ms > 400) { 
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
-                y_current = 0.08f;     
-                navi_switch_nexttargetpoint(); // 强制切掉跳跃航点
+                jump_position = 0;     // 重新开启转向控制
+                navi_switch_nexttargetpoint();
             }
             break;
 
+        // ------------------ 单边桥动作 ------------------
         case FSM_BRIDGE_APPROACH:
             target_velocity = 400;
-            y_current = 0.09f;
-            if (distance < 0.1f) {
+            y_current = LEG_NOMINAL;
+            if (distance < 0.1f || action_fsm.state_timer_ms > 2000) {
                 action_fsm.state = FSM_BRIDGE_ON_BOARD;
                 action_fsm.state_timer_ms = 0;
                 Bridge_position = 0;   // 开启单边桥自适应
@@ -115,13 +154,84 @@ static void Navi_Action_FSM_Update(uint8_t target_idx, double distance) {
             break;
 
         case FSM_BRIDGE_ON_BOARD:
-            target_velocity = 500;
-            if (action_fsm.state_timer_ms > 3000) { 
+            target_velocity = 400;
+            if (action_fsm.state_timer_ms > 3000) { // 假定3秒过桥，可改为基于位移的判定
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
                 Bridge_position = 1;   // 关闭自适应
                 navi_switch_nexttargetpoint();
             }
+            break;
+
+        // ------------------ 定点排雷动作 ------------------
+        case FSM_MINE_APPROACH:
+            target_velocity = 200;     // 极低速靠近
+            if (distance < 0.05f || action_fsm.state_timer_ms > 2000) {
+                action_fsm.state = FSM_MINE_PROCESSING;
+                action_fsm.state_timer_ms = 0;
+            }
+            break;
+
+        case FSM_MINE_PROCESSING:
+            target_velocity = 0;       // 停车
+            // jump_stop = 1;          // 若需要切断PID动力可解开此注释
+            if (action_fsm.state_timer_ms > 2000) { // 模拟排雷停留2秒
+                action_fsm.state = FSM_IDLE;
+                is_action_busy = 0;
+                navi_switch_nexttargetpoint();
+            }
+            break;
+
+        // ------------------ 绕圆锥桶动作 ------------------
+        case FSM_CONE_APPROACH:
+            target_velocity = 350;     // 降速防止侧滑
+            y_current = 0.05f;         // 降低重心增加抓地力
+            if (distance < 0.2f) {
+                action_fsm.state = FSM_CONE_NAVIGATE;
+                action_fsm.state_timer_ms = 0;
+            }
+            break;
+
+        case FSM_CONE_NAVIGATE:
+            target_velocity = 350;
+            if (action_fsm.state_timer_ms > 2500) { // 根据实际绕桩时间调整
+                action_fsm.state = FSM_IDLE;
+                is_action_busy = 0;
+                y_current = 0.08f;
+                navi_switch_nexttargetpoint();
+            }
+            break;
+
+        // ------------------ 侧倾坡道动作 ------------------
+        case FSM_SLOPE_APPROACH:
+            target_velocity = 450;
+            y_current = 0.04f;         // 极致低重心
+            if (distance < 0.1f) {
+                action_fsm.state = FSM_SLOPE_ONBOARD;
+                action_fsm.state_timer_ms = 0;
+            }
+            break;
+
+        case FSM_SLOPE_ONBOARD:
+            target_velocity = 500;
+            // 依靠 leg_control 内置的 roll 补偿即可应对侧倾
+            if (action_fsm.state_timer_ms > 3000) {
+                action_fsm.state = FSM_IDLE;
+                is_action_busy = 0;
+                y_current = 0.08f;
+                navi_switch_nexttargetpoint();
+            }
+            break;
+
+        // ------------------ 终点停车 ------------------
+        case FSM_STOP_PARKING:
+            target_velocity = 0;
+            y_current = LEG_MIN;       // 降低重心防急刹翻车
+            if (fabsf(now_velocity) < 15.0f && action_fsm.state_timer_ms > 1000) {
+                jump_stop = 1;         // 底层触发：PidChange(&motor_speed, 0, 0, 0)
+                // 停止在这个状态，不再切回 IDLE，除非外部复位
+            }
+            // 终点死循环，不再退出
             break;
 
         default:
@@ -138,28 +248,22 @@ void Navi_Action_Manager(uint8_t curr_idx) {
 
     uint8_t target_wp_idx = action_seq.list[action_seq.current_ptr].wp_index;
     int index_diff = target_wp_idx - curr_idx;
-    if (index_diff < 0) index_diff += navi_ctrl.point_total_count;                   //防环形越界
+    if (index_diff < 0) index_diff += navi_ctrl.point_total_count;                   
 
-    // 1. 越过目标点
-    if (index_diff == 0 || index_diff > (navi_ctrl.point_total_count - 10)) {                              //越过了目标点（且没跑太远，在 10 个点以内），就算你跨越成功了！
+    if (index_diff == 0 || index_diff > (navi_ctrl.point_total_count - 10)) {
         action_seq.current_ptr++;
-        if (action_seq.current_ptr >= action_seq.total_count) {                                        //最后一关，就将指针归 0，准备跑下一圈（可选）
-            action_seq.current_ptr = 0; 
-        }
+        if (action_seq.current_ptr >= action_seq.total_count) action_seq.current_ptr = 0; 
         return; 
     }
 
-    // 2. 预警触发
     if (index_diff > 0 && index_diff < 20) {
         double real_distance = 0.0;
         double dummy_azimuth = 0.0;
-        
         navi_calcnavinfo(target_wp_idx, &dummy_azimuth, &real_distance);
-        Navi_Action_FSM_Update(target_wp_idx, real_distance);
+        navi_action_fsm_update(target_wp_idx, real_distance);
     } 
-    else {                                                                    //如果目标还在 20个点开外（很安全），那么强行将状态机的状态锁定为 FSM_IDLE（闲置），并清空所有接管标志位。
+    else {                                                                    
         action_fsm.state = FSM_IDLE;
-        action_fsm.is_airborne_expect = 0;
         is_action_busy = 0;
     }
 }

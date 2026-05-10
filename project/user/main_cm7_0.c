@@ -7,7 +7,11 @@
 #pragma location = IPC_CORE_A_SHARED_ADDR
 __no_init CoreA_Status_t core_a_status;
 
-// 将 Core B 的指令数据放在 0x28001200 (往后偏移512字节，预留充足空间)
+// 将 Core A 的日志邮箱放在 0x28001400
+#pragma location = IPC_LOG_SHARED_ADDR
+__no_init IpcLogBox_t ipc_log_box;
+
+// 将 Core B 的指令数据放在 0x28001600 (扩大 Core A 共享区，避免日志与参数区重叠)
 #pragma location = IPC_CORE_B_SHARED_ADDR
 __no_init CoreB_Command_t core_b_cmd;
 
@@ -128,6 +132,7 @@ int main(void)
   Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
   small_driver_uart_init(); // 驱动板通信初始化
   navi_data_init(); // Navigation positioning init. Update is gated by runtime navigation switch.
+  Navi_Tracking_Init(); // Navigation route/control state init. Driver mode defaults to 0.
   //========================遥控器控制初始化==========================
   // SBUS uses UART4. Initialize it after other UART users to keep UART4 config intact.
   Remote_Init();
@@ -137,7 +142,7 @@ int main(void)
   // pit_ms_init(PIT_Engine, 20); // leg_control now runs from balance_control 20ms divider
   pit_ms_init(PIT_IPC, 10); // 双核参数同步 10ms 周期检查
   pit_ms_init(PIT_Jump, 1); // 跳跃动作状态机 1ms 周期
-  pit_ms_init(PIT_Navigation, 3); // Navigation EKF 3ms period, matches ENCODER_DT=0.003f.
+  pit_ms_init(PIT_Navigation, 10); // Navigation period matches ENCODER_DT=0.010f in navigation_data_handling.h.
 
 //  // === 1. 导航系统初始化 ===
 //    navi_data_init();

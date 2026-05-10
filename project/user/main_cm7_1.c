@@ -4,7 +4,11 @@
 #pragma location = IPC_CORE_A_SHARED_ADDR
 __no_init CoreA_Status_t core_a_status;
 
-// 将 Core B 的指令数据放在 0x28001200 (往后偏移512字节，预留充足空间)
+// 将 Core A 的日志邮箱放在 0x28001400
+#pragma location = IPC_LOG_SHARED_ADDR
+__no_init IpcLogBox_t ipc_log_box;
+
+// 将 Core B 的指令数据放在 0x28001600 (扩大 Core A 共享区，避免日志与参数区重叠)
 #pragma location = IPC_CORE_B_SHARED_ADDR
 __no_init CoreB_Command_t core_b_cmd;
 
@@ -68,6 +72,7 @@ int main(void)
         wifi_health_check_task();
         wifi_auto_reconnect_task();
         IPC_Update_Wifi_Status_From_CoreB(wifi_control_is_ready());
+        IPC_Flush_Log_To_CoreB();
         VOFA_UART_Process();
 
         system_delay_ms(1);
