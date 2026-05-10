@@ -503,7 +503,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
 
             // 安全检查：如果 ID 超出了我们现有的参数总数，直接丢弃
             if (param_id == 0 || param_id > PARAM_COUNT) {
-                i += 6; continue;
+                i += 7; continue;
             }
 
             FloatConverter_t temp_float;
@@ -519,7 +519,7 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
 
             VOFA_Log_Param_Update(param_id, g_param_names[index], temp_float.f_val, "C2_SINGLE");
 
-            i += 6; continue;
+            i += 7; continue;
         }
         // ========================================================
         // 协议 4: 系统级指令 - 一键保存参数到 Flash (AA C3)
@@ -643,6 +643,14 @@ void VOFA_Protocol_Parse(uint8 *rx_buffer, uint32 data_length)
             LOG_Printf(" Mag_Scl: X %s%d.%04d | Y %s%d.%04d \r\n",
                    F_S(core_a_status.act_params[P_MAG_SCALE_X]), F_I(core_a_status.act_params[P_MAG_SCALE_X]), F_D(core_a_status.act_params[P_MAG_SCALE_X]),
                    F_S(core_a_status.act_params[P_MAG_SCALE_Y]), F_I(core_a_status.act_params[P_MAG_SCALE_Y]), F_D(core_a_status.act_params[P_MAG_SCALE_Y]));
+            LOG_Printf(" NaviCtl: Driver %s%d.%04d | Map %s%d.%04d | Rec %s%d.%04d\r\n",
+                   F_S(core_a_status.act_params[P_NAVI_MODE_DRIVER]), F_I(core_a_status.act_params[P_NAVI_MODE_DRIVER]), F_D(core_a_status.act_params[P_NAVI_MODE_DRIVER]),
+                   F_S(core_a_status.act_params[P_NAVI_MODE_MAP]), F_I(core_a_status.act_params[P_NAVI_MODE_MAP]), F_D(core_a_status.act_params[P_NAVI_MODE_MAP]),
+                   F_S(core_a_status.act_params[P_NAVI_TRIGGER_RECORD]), F_I(core_a_status.act_params[P_NAVI_TRIGGER_RECORD]), F_D(core_a_status.act_params[P_NAVI_TRIGGER_RECORD]));
+            LOG_Printf(" NaviWiFi: Cmd %s%d.%04d | Type %s%d.%04d | Action %s%d.%04d\r\n",
+                   F_S(core_a_status.act_params[P_NAVI_WIFI_CMD]), F_I(core_a_status.act_params[P_NAVI_WIFI_CMD]), F_D(core_a_status.act_params[P_NAVI_WIFI_CMD]),
+                   F_S(core_a_status.act_params[P_NAVI_WIFI_TYPE]), F_I(core_a_status.act_params[P_NAVI_WIFI_TYPE]), F_D(core_a_status.act_params[P_NAVI_WIFI_TYPE]),
+                   F_S(core_a_status.act_params[P_NAVI_WIFI_ACTION]), F_I(core_a_status.act_params[P_NAVI_WIFI_ACTION]), F_D(core_a_status.act_params[P_NAVI_WIFI_ACTION]));
             LOG_Printf("=============================================\r\n");
 
             // 4. 分 4 段安全拼合打印 AA C4 参数包（防丢包/溢出）
@@ -710,5 +718,6 @@ void VOFA_UART_Process(void)
         VOFA_Protocol_Parse(fifo_get_data, fifo_data_count);
     }
 }
+
 
 

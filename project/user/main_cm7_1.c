@@ -43,15 +43,14 @@ int main(void)
     screen_boot_show_status("Runtime", "OK");
     pit_ms_init(PIT_IPS, 50);
 
-    // ============================= IPC 与参数初始化 =============================
+    // ============================= 串口调参与参数初始化 =============================
+    VOFA_UART_Init();
+    screen_boot_show_status("VOFA", "OK");
+
     pit_ms_init(PIT_IPC, 5);
     screen_boot_show_status("IPC", "OK");
     IPC_Load_Params_From_Flash();
     screen_boot_show_status("Params", "OK");
-
-    // ============================= 串口调参初始化 =============================
-    VOFA_UART_Init();
-    screen_boot_show_status("VOFA", "OK");
 
     // ============================= WiFi 初始化 =============================
     screen_boot_show_status("WiFi", "TRY");

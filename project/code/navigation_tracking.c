@@ -422,7 +422,7 @@ void task_navigation_control(void) {
             uint8_t curr_idx = navi_ctrl.point_current_idx;    
             
             if (total_points == 0) {
-              target_velocity = 0;
+              /* NAV observe-only mode: do not write target_velocity here. */
 //              IPC_LOG_Printf("\r\n>>>地图坐标数目为0，地图为建立<<<\r\n");
               break; 
           }
@@ -467,17 +467,8 @@ void task_navigation_control(void) {
                 
                 print_turn_angle = smooth_turn; // 保存下来用于下面的打印
                 
-                // 【核心坐标系转换】计算赋给底层的 target_angle！
-                // 推导过程：
-                // 导航系偏航角 = -(IMU偏航角 - 初始偏移)  -->  导航系增量 = -IMU增量
-                // 因此，导航系要求转 smooth_turn 度，对底层 IMU 来说就是转 -smooth_turn 度。
-                target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - smooth_turn);
-
-                if (!is_action_busy) {       // 判断是否在动作接管期              
-                  
-                  target_velocity = 1000.0f;
-                
-                }            
+                // 观察模式：只计算需要转向角和距离，不接管小车目标角度/目标速度。
+                // 如果之后要让导航真正接管，再把这里改为写 target_angle / target_velocity。
             
             }
             
@@ -499,9 +490,6 @@ void task_navigation_control(void) {
                           F_ARG(robot_pose.x), F_ARG(robot_pose.y),F_ARG(robot_pose.yaw), 
                           F_ARG(point_map[lookahead_idx].x), F_ARG(point_map[lookahead_idx].y), get_enum_name(point_map[lookahead_idx].type),
                           F_ARG((float)distance),F_ARG(print_turn_angle));
-                    
-                    IPC_LOG_Printf("检测navi_mode_driver值为：%s%d.%02d\r\n",F_ARG(navi_ctrl.navi_mode_driver));
-                    
 #endif
 
                 }
