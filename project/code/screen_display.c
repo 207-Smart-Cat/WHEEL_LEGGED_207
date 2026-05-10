@@ -279,11 +279,19 @@ static uint16_t ui_show_text(uint16_t x, uint16_t y, const uint16_t *text)
     {
         if (*text < 128)
         {
+            if (x > 232)
+            {
+                break;
+            }
             ips200_show_char(x, y, (char)(*text));
             x += 8;
         }
         else
         {
+            if (x > 224)
+            {
+                break;
+            }
             const uint8_t *glyph = ui_find_cn_glyph(*text);
             if (glyph != NULL)
             {
@@ -298,6 +306,36 @@ static uint16_t ui_show_text(uint16_t x, uint16_t y, const uint16_t *text)
         text++;
     }
     return x;
+}
+
+static void ui_show_string_safe(uint16_t x, uint16_t y, const char *text)
+{
+    char safe_text[31];
+    uint8_t max_chars;
+    uint8_t i = 0;
+
+    if (text == NULL || x >= 240 || y >= 320)
+    {
+        return;
+    }
+
+    max_chars = (uint8_t)((240 - x) / 8);
+    if (max_chars == 0)
+    {
+        return;
+    }
+    if (max_chars >= sizeof(safe_text))
+    {
+        max_chars = (uint8_t)(sizeof(safe_text) - 1);
+    }
+
+    while (text[i] != '\0' && i < max_chars)
+    {
+        safe_text[i] = text[i];
+        i++;
+    }
+    safe_text[i] = '\0';
+    ips200_show_string(x, y, safe_text);
 }
 
 static void ui_show_text_selected(uint16_t x, uint16_t y, uint8_t selected, const uint16_t *text)
@@ -490,6 +528,10 @@ void show_page_1(void)
     ips200_show_string(8, y_start + row_height + 5, temp_str);
     sprintf(temp_str, "Yaw  : %-6.2f", core_a_status.yaw);
     ips200_show_string(8, y_start + row_height * 2 + 5, temp_str);
+    sprintf(temp_str, "NX:%-6.2f", core_a_status.nav_x);
+    ips200_show_string(125, y_start + 5, temp_str);
+    sprintf(temp_str, "NY:%-6.2f", core_a_status.nav_y);
+    ips200_show_string(125, y_start + row_height + 5, temp_str);
     sprintf(temp_str, "Bat:%-5.2fV", core_a_status.battery_voltage);
     ips200_show_string(125, y_start + row_height * 2 + 5, temp_str);
 
@@ -522,14 +564,14 @@ void show_page_1(void)
     ips200_show_string(5, y_start + row_height * 8 + 5, temp_str);
     sprintf(temp_str, "Leg:%-6.3f", core_a_status.pid_out_leg);
     ips200_show_string(125, y_start + row_height * 8 + 5, temp_str);
-    sprintf(temp_str, "LS:%-6.2f", core_a_status.leg_dbg_speed_tilt);
+    sprintf(temp_str, "NX:%-6.2f", core_a_status.nav_x);
     ips200_show_string(5, y_start + row_height * 9 + 5, temp_str);
-    sprintf(temp_str, "LO:%-6.3f", core_a_status.leg_dbg_x_offset);
+    sprintf(temp_str, "NY:%-6.2f", core_a_status.nav_y);
     ips200_show_string(125, y_start + row_height * 9 + 5, temp_str);
 
-    sprintf(temp_str, "XT:%-6.3f", core_a_status.leg_dbg_x_target);
+    sprintf(temp_str, "NV:%-6.2f", core_a_status.nav_v);
     ips200_show_string(5, y_start + row_height * 10 + 5, temp_str);
-    sprintf(temp_str, "TK:%-6.0f", core_a_status.leg_dbg_tick);
+    sprintf(temp_str, "NW:%-6.2f", core_a_status.nav_w);
     ips200_show_string(125, y_start + row_height * 10 + 5, temp_str);
 }
 
@@ -757,22 +799,12 @@ static const uint16_t *const k_system_texts[] = {
     UI_TEXT_T_SYS_MOTOR_ZERO,
     UI_TEXT_T_SYS_ABOUT
 };
-static const ParamID_e k_param_group_filter[] = {
-    P_Q_YAW, P_Q_PR, P_Q_BIAS, P_R_YAW, P_R_PR
+static const ParamID_e k_param_group_balance[] = {
+    P_SPEED_P, P_SPEED_I, P_SPEED_D,
+    P_ANGLE_P, P_ANGLE_I, P_ANGLE_D,
+    P_GYRO_P, P_GYRO_I, P_GYRO_D,
+    P_TARGET_VELOCITY, P_TARGET_ANGLE, P_TARGET_MOTOR_STAND
 };
-
-static const ParamID_e k_param_group_speed[] = {
-    P_SPEED_P, P_SPEED_I, P_SPEED_D, P_TARGET_VELOCITY
-};
-
-static const ParamID_e k_param_group_angle[] = {
-    P_ANGLE_P, P_ANGLE_I, P_ANGLE_D, P_TARGET_ANGLE, P_TARGET_MOTOR_STAND
-};
-
-static const ParamID_e k_param_group_gyro[] = {
-    P_GYRO_P, P_GYRO_I, P_GYRO_D
-};
-
 static const ParamID_e k_param_group_leg[] = {
     P_LEG_KP, P_LEG_KI, P_LEG_KD, P_X_CURRENT, P_Y_CURRENT,
     P_LEG_X_GAIN, P_LEG_X_LIMIT, P_LEG_X_MIN_STEP, P_LEG_X_STEP_LIMIT
@@ -791,20 +823,12 @@ static const ParamID_e k_param_group_navigation[] = {
     P_NAV_R_V_NORMAL, P_NAV_R_V_SLIP, P_NAV_R_W_NORMAL, P_NAV_R_W_SLIP, P_NAV_R_GYRO
 };
 
-static const ParamID_e k_param_group_mag[] = {
-    P_MAG_OFFSET_X, P_MAG_OFFSET_Y, P_MAG_SCALE_X, P_MAG_SCALE_Y
-};
-
 static const ui_param_group_t k_param_groups[] = {
-    {"Filter",    k_param_group_filter,     ARRAY_SIZE(k_param_group_filter)},
-    {"Speed",     k_param_group_speed,      ARRAY_SIZE(k_param_group_speed)},
-    {"Angle",     k_param_group_angle,      ARRAY_SIZE(k_param_group_angle)},
-    {"Gyro",      k_param_group_gyro,       ARRAY_SIZE(k_param_group_gyro)},
+    {"Balance",   k_param_group_balance,    ARRAY_SIZE(k_param_group_balance)},
     {"Leg",       k_param_group_leg,        ARRAY_SIZE(k_param_group_leg)},
     {"Air",       k_param_group_air,        ARRAY_SIZE(k_param_group_air)},
     {"Direction", k_param_group_direction,  ARRAY_SIZE(k_param_group_direction)},
-    {"Nav",       k_param_group_navigation, ARRAY_SIZE(k_param_group_navigation)},
-    {"Mag",       k_param_group_mag,        ARRAY_SIZE(k_param_group_mag)}
+    {"Nav",       k_param_group_navigation, ARRAY_SIZE(k_param_group_navigation)}
 };
 
 static void ui_set_screen(ui_screen_t screen);
@@ -920,8 +944,22 @@ static void ui_draw_footer_text(const uint16_t *hint)
 
 static void ui_draw_footer_text_str(const char *hint)
 {
+    char safe_hint[30];
+    uint8_t i = 0;
+
     ips200_draw_line(0, 298, 239, 298, RGB565_SKYBLUE);
-    ips200_show_string(4, 304, hint);
+    if (hint == NULL)
+    {
+        return;
+    }
+
+    while (hint[i] != '\0' && i < (uint8_t)(sizeof(safe_hint) - 1))
+    {
+        safe_hint[i] = hint[i];
+        i++;
+    }
+    safe_hint[i] = '\0';
+    ui_show_string_safe(4, 304, safe_hint);
 }
 
 static void ui_draw_text_list(const uint16_t *const *items, uint8_t count, uint8_t selected, uint8_t top, uint8_t rows)
@@ -963,6 +1001,13 @@ static float ui_param_step(ParamID_e id)
         case P_NAV_R_W_SLIP:
         case P_NAV_R_GYRO:
             return 0.0001f;
+        case P_JUMP_AIR_RETRACT_Y:
+        case P_JUMP_BUFFER_Y:
+            return 0.001f;
+        case P_JUMP_BURST_PWM:
+        case P_JUMP_BURST_MS:
+        case P_JUMP_LANDING_MAX_MS:
+            return 1.0f;
         case P_Q_YAW:
         case P_Q_PR:
         case P_Q_BIAS:
@@ -1101,12 +1146,12 @@ static void ui_draw_param_page(void)
         if (idx < group_count)
         {
             char marker = (idx == ui_param_group) ? '>' : ' ';
-            sprintf(line, "%c%02d %-12s %2d", marker, idx + 1, k_param_groups[idx].name, k_param_groups[idx].count);
+            sprintf(line, "%c%02d %.9s %2d", marker, idx + 1, k_param_groups[idx].name, k_param_groups[idx].count);
             ips200_show_string(8, 36 + row * 32, line);
         }
     }
 
-    ui_draw_footer_text_str("UP/DN group  OK list  BACK home");
+    ui_draw_footer_text_str("UP/DN grp OK list BACK");
 }
 
 static void ui_draw_param_select(void)
@@ -1127,14 +1172,14 @@ static void ui_draw_param_select(void)
         {
             ParamID_e id = group->items[item_index];
             char marker = (item_index == ui_param_row) ? '>' : ' ';
-            sprintf(line, "%c%02d %-13s", marker, (int)id + 1, g_param_names[id]);
+            sprintf(line, "%c%02d %.10s", marker, (int)id + 1, g_param_names[id]);
             ips200_show_string(4, 36 + row * 32, line);
             sprintf(line, "% .5f", p[id]);
             ips200_show_string(132, 36 + row * 32, line);
         }
     }
 
-    ui_draw_footer_text_str("UP/DN param  OK edit  BACK group");
+    ui_draw_footer_text_str("UP/DN prm OK edit BACK");
 }
 
 static void ui_draw_param_edit(void)
@@ -1143,7 +1188,7 @@ static void ui_draw_param_edit(void)
     const float *p = screen_get_param_values();
 
     ui_draw_title_text(UI_TEXT_T_TITLE_EDIT);
-    sprintf(line, "ID:%02d  %s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
+    sprintf(line, "ID:%02d %.16s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
     ips200_show_string(8, 42, line);
     sprintf(line, "Now:% .6f", p[ui_edit_param]);
     ips200_show_string(8, 76, line);
@@ -1152,7 +1197,7 @@ static void ui_draw_param_edit(void)
 
     ips200_show_string(20, 152, ui_param_edit_choice == 0 ? "> Add/Sub Adjust" : "  Add/Sub Adjust");
     ips200_show_string(20, 188, ui_param_edit_choice == 1 ? "> Direct Set" : "  Direct Set");
-    ui_draw_footer_text_str("UP/DN choose  OK enter  BACK list");
+    ui_draw_footer_text_str("UP/DN sel OK enter BACK");
 }
 
 static void ui_draw_param_adjust(void)
@@ -1162,7 +1207,7 @@ static void ui_draw_param_adjust(void)
     float step = base_step * k_edit_step_scales[ui_edit_step_scale_index];
 
     ui_draw_title_text(UI_TEXT_T_TITLE_EDIT);
-    sprintf(line, "ID:%02d  %s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
+    sprintf(line, "ID:%02d %.16s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
     ips200_show_string(8, 42, line);
     sprintf(line, "Value:% .6f", ui_edit_value);
     ips200_show_string(8, 82, line);
@@ -1172,7 +1217,7 @@ static void ui_draw_param_adjust(void)
     ips200_show_string(8, 154, line);
     sprintf(line, "Step:% .6f", step);
     ips200_show_string(8, 186, line);
-    ui_draw_footer_text_str("UP/DN +/-  OK scale  HoldOK save");
+    ui_draw_footer_text_str("UP/DN +/- OK scale LOK save");
 }
 
 static void ui_direct_reset_digits(void)
@@ -1212,7 +1257,7 @@ static void ui_draw_param_direct(void)
     uint8_t cursor_x;
 
     ui_draw_title_text(UI_TEXT_T_TITLE_EDIT);
-    sprintf(line, "ID:%02d  %s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
+    sprintf(line, "ID:%02d %.16s", (int)ui_edit_param + 1, g_param_names[ui_edit_param]);
     ips200_show_string(8, 42, line);
     ips200_show_string(8, 78, "Direct Set: 000.000");
     ui_direct_build_string(line);
@@ -1223,7 +1268,7 @@ static void ui_draw_param_direct(void)
     ips200_show_string(8, 174, line);
     sprintf(line, "Digit:%d/6", ui_direct_digit_index + 1);
     ips200_show_string(8, 202, line);
-    ui_draw_footer_text_str("UP/DN digit  OK next  HoldOK save");
+    ui_draw_footer_text_str("UP/DN digit OK next LOK save");
 }
 static void ui_draw_wifi(void)
 {
@@ -1256,7 +1301,7 @@ static void ui_draw_wifi_wave_select(void)
         }
     }
 
-    ui_draw_footer_text_str("OK Select  LongOK Start  Back");
+    ui_draw_footer_text_str("OK sel LongOK start BACK");
 }
 static void ui_draw_modules(void)
 {
@@ -1272,12 +1317,16 @@ static void ui_draw_modules(void)
 
 static void ui_draw_system(void)
 {
-    char line[32];
+    char line[48];
     ui_draw_title_text(UI_TEXT_T_TITLE_SYSTEM);
     ui_draw_text_list(k_system_texts, ARRAY_SIZE(k_system_texts), ui_system_index, 0, ARRAY_SIZE(k_system_texts));
     ui_show_text(8, 202, UI_TEXT_T_FLASH_CONFIRM);
-    sprintf(line, "Zero State:%d", core_a_status.motor_zero_state);
+    sprintf(line, "Z Req:%d St:%d Ms:%d", core_b_cmd.motor_zero_request, core_a_status.motor_zero_state, (int)core_a_status.motor_zero_elapsed_ms);
     ips200_show_string(8, 226, line);
+    sprintf(line, "S:%d Tx:%d T:%d", (int)core_a_status.motor_zero_start_count, (int)core_a_status.motor_zero_tx_count, (int)core_a_status.motor_zero_task_count);
+    ips200_show_string(8, 242, line);
+    sprintf(line, "Rx:%d RB:%d SP:%d", (int)core_a_status.motor_zero_rx_count, (int)core_a_status.motor_zero_rx_seen, (int)core_a_status.motor_zero_speed_seen);
+    ips200_show_string(8, 258, line);
     ui_draw_footer_text(UI_TEXT_T_HINT_SELECT);
 }
 

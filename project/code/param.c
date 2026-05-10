@@ -12,6 +12,7 @@ float target_angle = 180.0f;
 float target_motor_Stand = 0;
 float x_current = 0, y_current = 0.04;
 float leg_x_gain = 1.6f, leg_x_limit = 0.018f, leg_x_min_step = 0.0008f, leg_x_step_limit = 0.0012f;
+float jump_burst_pwm = 1200.0f, jump_burst_ms = 130.0f, jump_air_retract_y = 0.03f, jump_buffer_y = 0.05f, jump_landing_max_ms = 600.0f;
 float mag_offset_x = -0.080f, mag_offset_y = 0.040f;
 float mag_scale_x = 1.0f, mag_scale_y = 1.0499f;
 
@@ -41,6 +42,7 @@ const float Target_Velocity_init = 0.0f, Target_Angle_init = 180.0f, Target_Moto
 const float Leg_Kp_init = 0.0f,    Leg_Ki_init = 0.0f,    Leg_Kd_init = 0.0f;
 const float X_Current_init = 0.0f, Y_Current_init = 0.05f;
 const float Leg_X_Gain_init = 1.6f, Leg_X_Limit_init = 0.018f, Leg_X_Min_Step_init = 0.0008f, Leg_X_Step_Limit_init = 0.0012f;
+const float Jump_Burst_Pwm_init = 1200.0f, Jump_Burst_Ms_init = 130.0f, Jump_Air_Retract_Y_init = 0.03f, Jump_Buffer_Y_init = 0.05f, Jump_Landing_Max_Ms_init = 600.0f;
 
 const float Air_roll_p_init = 45.0f, Air_roll_i_init = 0.0f, Air_roll_d_init = 0.0f;
 const float Direction_p_init = 14.93f, Direction_i_init = 0.012f, Direction_d_init = 0.875f;

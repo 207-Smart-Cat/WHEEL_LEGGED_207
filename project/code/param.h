@@ -31,6 +31,7 @@ extern float target_angle;       // 目标角度
 extern float target_motor_Stand; // 目标电机角度
 extern float x_current, y_current;
 extern float leg_x_gain, leg_x_limit, leg_x_min_step, leg_x_step_limit;
+extern float jump_burst_pwm, jump_burst_ms, jump_air_retract_y, jump_buffer_y, jump_landing_max_ms;
 
 extern float Speed_p, Speed_i, Speed_d;
 extern float Angle_p, Angle_i, Angle_d;
@@ -51,6 +52,7 @@ extern const float Target_Velocity_init, Target_Angle_init, Target_Motor_Stand_i
 extern const float Leg_Kp_init, Leg_Ki_init, Leg_Kd_init;
 extern const float X_Current_init, Y_Current_init;
 extern const float Leg_X_Gain_init, Leg_X_Limit_init, Leg_X_Min_Step_init, Leg_X_Step_Limit_init;
+extern const float Jump_Burst_Pwm_init, Jump_Burst_Ms_init, Jump_Air_Retract_Y_init, Jump_Buffer_Y_init, Jump_Landing_Max_Ms_init;
 extern const float Air_roll_p_init, Air_roll_i_init, Air_roll_d_init;
 extern const float Direction_p_init, Direction_i_init, Direction_d_init;
 

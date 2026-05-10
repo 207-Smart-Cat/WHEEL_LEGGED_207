@@ -10,6 +10,7 @@
 #include "remote.h"
 #include "vofa_protocol.h"
 #include "runtime_status.h"
+#include "small_driver_uart_control.h"
 // --- 1. 绝对地址内存分配 ---
 #pragma location = IPC_CORE_A_SHARED_ADDR
 __no_init CoreA_Status_t core_a_status;
@@ -49,6 +50,7 @@ void IPC_Request_Param_Update(ParamID_e id, float value)
     }
 
     __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     core_b_cmd.params[id] = value;
     core_b_cmd.update_mask |= (1ULL << id);
     core_b_cmd.param_update_flag = 1;
@@ -59,6 +61,7 @@ void IPC_Request_Param_Update(ParamID_e id, float value)
 void IPC_Request_All_Params_Update(void)
 {
     __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     core_b_cmd.update_mask = IPC_Get_All_Param_Mask();
     core_b_cmd.param_update_flag = 1;
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
@@ -179,12 +182,13 @@ void IPC_Check_And_Apply_Params_To_Core0(void) {
 // ====================================================================
 #define PARAM_FLASH_SECTION  (0)  // 选用靠后的扇区
 #define PARAM_FLASH_PAGE     (95)
+#define PARAM_FLASH_LEGACY_COUNT_BEFORE_JUMP (45)
 
 // ====================================================================
 // 功能 1：真正操作硬件，把参数写入 Flash (Core B 调用)
 // ====================================================================
 void IPC_Save_Params_To_Flash(void) {
-    SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     __disable_irq();
     flash_buffer_clear();
 
@@ -192,7 +196,7 @@ void IPC_Save_Params_To_Flash(void) {
 
     // 一个循环搞定所有参数的写入
     for(int i = 0; i < PARAM_COUNT; i++) {
-        flash_union_buffer[i + 1].float_type = core_a_status.act_params[i];
+        flash_union_buffer[i + 1].float_type = core_b_cmd.params[i];
     }
 
     // 帧尾自动放在参数之后
@@ -210,16 +214,34 @@ void IPC_Save_Params_To_Flash(void) {
 // 功能 2：单片机上电时，从硬件 Flash 读取参数 (Core B 调用)
 // ====================================================================
 void IPC_Load_Params_From_Flash(void) {
+    uint16 load_count = 0;
     flash_read_page_to_buffer(PARAM_FLASH_SECTION, PARAM_FLASH_PAGE, PARAM_COUNT + 2);
 
     if(flash_union_buffer[0].uint32_type == 0x55AA55AA &&
        flash_union_buffer[PARAM_COUNT + 1].uint32_type == 0x11223344)
     {
+        load_count = PARAM_COUNT;
+    }
+    else if(flash_union_buffer[0].uint32_type == 0x55AA55AA &&
+            flash_union_buffer[PARAM_FLASH_LEGACY_COUNT_BEFORE_JUMP + 1].uint32_type == 0x11223344)
+    {
+        load_count = PARAM_FLASH_LEGACY_COUNT_BEFORE_JUMP;
+    }
+
+    if(load_count > 0)
+    {
         VOFA_Set_Param_Rx_Source(VOFA_PARAM_RX_SRC_FLASH);
         LOG_Printf("\r\n[SYS] Valid parameters found in Flash! Loading to Core A...\r\n");
+        if(load_count != PARAM_COUNT)
+        {
+            LOG_Printf("[SYS] Legacy Flash parameter count detected. New params use defaults.\r\n");
+        }
 
-        // 1. 极致精简：用循环把数据从 Flash 全部倒进结构体的数组里
-        for(int i = 0; i < PARAM_COUNT; i++) {
+        // 先填默认值，再用 Flash 中已有参数覆盖，兼容旧参数表。
+#define PARAM_ITEM(id, runtime_var, init_val, display_name) core_b_cmd.params[id] = init_val;
+#include "param_registry.def"
+#undef PARAM_ITEM
+        for(int i = 0; i < load_count; i++) {
             core_b_cmd.params[i] = flash_union_buffer[i + 1].float_type;
         }
 
@@ -275,6 +297,11 @@ void IPC_Load_Params_From_Flash(void) {
         LOG_Printf(" [ Pos ]  X: %s%d.%04d, Y: %s%d.%04d\r\n",
                F_S(core_b_cmd.params[P_X_CURRENT]), F_I(core_b_cmd.params[P_X_CURRENT]), F_D(core_b_cmd.params[P_X_CURRENT]),
                F_S(core_b_cmd.params[P_Y_CURRENT]), F_I(core_b_cmd.params[P_Y_CURRENT]), F_D(core_b_cmd.params[P_Y_CURRENT]));
+        LOG_Printf(" [Leg X]  G: %s%d.%04d, L: %s%d.%04d, Mn: %s%d.%04d, St: %s%d.%04d\r\n",
+               F_S(core_b_cmd.params[P_LEG_X_GAIN]), F_I(core_b_cmd.params[P_LEG_X_GAIN]), F_D(core_b_cmd.params[P_LEG_X_GAIN]),
+               F_S(core_b_cmd.params[P_LEG_X_LIMIT]), F_I(core_b_cmd.params[P_LEG_X_LIMIT]), F_D(core_b_cmd.params[P_LEG_X_LIMIT]),
+               F_S(core_b_cmd.params[P_LEG_X_MIN_STEP]), F_I(core_b_cmd.params[P_LEG_X_MIN_STEP]), F_D(core_b_cmd.params[P_LEG_X_MIN_STEP]),
+               F_S(core_b_cmd.params[P_LEG_X_STEP_LIMIT]), F_I(core_b_cmd.params[P_LEG_X_STEP_LIMIT]), F_D(core_b_cmd.params[P_LEG_X_STEP_LIMIT]));
 
         LOG_Printf(" [ Air ]  P: %s%d.%04d, I: %s%d.%04d, D: %s%d.%04d\r\n",
                F_S(core_b_cmd.params[P_AIR_ROLL_P]), F_I(core_b_cmd.params[P_AIR_ROLL_P]), F_D(core_b_cmd.params[P_AIR_ROLL_P]),
@@ -308,6 +335,14 @@ void IPC_Load_Params_From_Flash(void) {
         LOG_Printf(" [ Mag ]  scl_x: %s%d.%04d, scl_y: %s%d.%04d\r\n",
                F_S(core_b_cmd.params[P_MAG_SCALE_X]), F_I(core_b_cmd.params[P_MAG_SCALE_X]), F_D(core_b_cmd.params[P_MAG_SCALE_X]),
                F_S(core_b_cmd.params[P_MAG_SCALE_Y]), F_I(core_b_cmd.params[P_MAG_SCALE_Y]), F_D(core_b_cmd.params[P_MAG_SCALE_Y]));
+        LOG_Printf(" [Jump ]  PWM: %s%d.%04d, Bms: %s%d.%04d, AirY: %s%d.%04d\r\n",
+               F_S(core_b_cmd.params[P_JUMP_BURST_PWM]), F_I(core_b_cmd.params[P_JUMP_BURST_PWM]), F_D(core_b_cmd.params[P_JUMP_BURST_PWM]),
+               F_S(core_b_cmd.params[P_JUMP_BURST_MS]), F_I(core_b_cmd.params[P_JUMP_BURST_MS]), F_D(core_b_cmd.params[P_JUMP_BURST_MS]),
+               F_S(core_b_cmd.params[P_JUMP_AIR_RETRACT_Y]), F_I(core_b_cmd.params[P_JUMP_AIR_RETRACT_Y]), F_D(core_b_cmd.params[P_JUMP_AIR_RETRACT_Y]));
+
+        LOG_Printf(" [Jump ]  BufY: %s%d.%04d, LandMax: %s%d.%04d\r\n",
+               F_S(core_b_cmd.params[P_JUMP_BUFFER_Y]), F_I(core_b_cmd.params[P_JUMP_BUFFER_Y]), F_D(core_b_cmd.params[P_JUMP_BUFFER_Y]),
+               F_S(core_b_cmd.params[P_JUMP_LANDING_MAX_MS]), F_I(core_b_cmd.params[P_JUMP_LANDING_MAX_MS]), F_D(core_b_cmd.params[P_JUMP_LANDING_MAX_MS]));
 
         LOG_Printf("=============================================\r\n\r\n");
         if (VOFA_Get_Param_Log_Detail())

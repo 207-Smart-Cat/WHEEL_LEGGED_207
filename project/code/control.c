@@ -72,6 +72,10 @@ float leg_dbg_x_offset = 0.0f;
 float leg_dbg_x_target = 0.0f;
 float leg_dbg_x_cmd = 0.0f;
 float leg_dbg_tick = 0.0f;
+float leg_dbg_x_gain_used = 0.0f;
+float leg_dbg_x_limit_used = 0.0f;
+float leg_dbg_x_step_used = 0.0f;
+float leg_dbg_x_limit_hit = 0.0f;
 
 static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
 {
@@ -81,6 +85,10 @@ static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
     float x_min_step = (leg_x_min_step > 0.0f) ? leg_x_min_step : Leg_X_Min_Step_init;
     float tilt_rad;
     float x_offset;
+    float x_limited;
+
+    leg_dbg_x_gain_used = x_gain;
+    leg_dbg_x_limit_used = x_limit;
 
     leg_tilt_deg = constrain_float(leg_tilt_deg, -10.0f, 10.0f);
     leg_height = constrain_float(leg_height, MIN_Y, MAX_Y);
@@ -92,7 +100,10 @@ static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
         x_offset = (leg_tilt_deg > 0.0f) ? x_min_step : -x_min_step;
     }
 
-    return constrain_float(x_offset, -x_limit, x_limit);
+    x_limited = constrain_float(x_offset, -x_limit, x_limit);
+    leg_dbg_x_limit_hit = (fabsf(x_limited - x_offset) > 0.00001f) ? 1.0f : 0.0f;
+
+    return x_limited;
 }
 
 // 妯＄硦瑙勫垯鍙傛暟
@@ -675,6 +686,8 @@ void leg_control(float *x, float *y)
         Runtime_Set_Servo_Reason(RUNTIME_REASON_SERVO_OFF);
         leg_dbg_speed_tilt = 0.0f;
         leg_dbg_x_offset = 0.0f;
+        leg_dbg_x_step_used = 0.0f;
+        leg_dbg_x_limit_hit = 0.0f;
         return;
     }
 
@@ -715,12 +728,15 @@ void leg_control(float *x, float *y)
         leg_dbg_x_offset = 0.0f;
         leg_dbg_x_target = base_x;
         leg_dbg_x_cmd = base_x;
+        leg_dbg_x_step_used = 0.0f;
+        leg_dbg_x_limit_hit = 0.0f;
         return;
     }
     const bool leg_adaptive_enable = false; // 主平衡调参阶段先固定腿部，避免腿控扰动主串级 PID。
     if (!leg_adaptive_enable)
     {
         float leg_x_step = constrain_float(leg_x_step_limit, 0.0001f, 0.02f);
+        leg_dbg_x_step_used = leg_x_step;
         float base_x = constrain_float(*x, MIN_X, MAX_X);
         float base_y = constrain_float(*y, MIN_Y, MAX_Y);
         float leg_x_offset = speed_tilt_to_leg_x(g_leg_speed_tilt_deg, base_y);

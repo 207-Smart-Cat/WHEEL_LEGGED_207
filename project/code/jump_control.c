@@ -7,7 +7,7 @@
 
 #define JUMP_PREPARE_X       (0.00f)
 #define JUMP_PREPARE_Y       (0.03f)
-#define JUMP_BURST_PWM_1     (1200)
+#define JUMP_BURST_PWM       (1200)
 #define JUMP_SERVO_SUM       (1500)
 #define JUMP_SERVO_MIN_PWM   (300)
 #define JUMP_SERVO_MAX_PWM   (1200)
@@ -21,8 +21,8 @@
 #define JUMP_PREPARE_MS      (50U)
 #define JUMP_BURST_MS        (130U)
 #define JUMP_AIR_RETRACT_MS  (80U)
-#define JUMP_LANDING_MAX_MS  (600U)
 #define JUMP_RECOVER_MS      (50U)
+#define JUMP_LANDING_MAX_MS  (600U)
 #define JUMP_LAND_ACCEL_G    (1.0f)
 
 volatile JumpState jump_state = JUMP_FREE;
@@ -78,21 +78,21 @@ static void jump_drive_symmetric_pwm(int pwm1)
     pwm1 = jump_limit_pwm1(pwm1);
     pwm2 = JUMP_SERVO_SUM - pwm1;
 
-    pwm_set_duty(PWM_1, pwm1);
-    pwm_set_duty(PWM_3, pwm1);
-    pwm_set_duty(PWM_2, pwm2);
-    pwm_set_duty(PWM_4, pwm2);
+    engine_left_maintain(pwm1, pwm2);
+    engine_right_maintain(pwm1, pwm2);
 }
 
 static void jump_drive_symmetric_xy(float x, float y)
 {
-    int leg1;
-    int leg2;
-    int pwm1;
+    int left_1;
+    int left_2;
+    int right_1;
+    int right_2;
 
-    servo_control(SERVO_LEG_LEFT, x, y, &leg1, &leg2);
-    pwm1 = (leg1 + (JUMP_SERVO_SUM - leg2)) / 2;
-    jump_drive_symmetric_pwm(pwm1);
+    servo_control(SERVO_LEG_LEFT, x, y, &left_1, &left_2);
+    servo_control(SERVO_LEG_RIGHT, x, y, &right_1, &right_2);
+    engine_left_maintain(left_1, left_2);
+    engine_right_maintain(right_1, right_2);
 }
 
 uint8 jump_start(void)
@@ -157,7 +157,7 @@ void jump_process_control(float *current_x, float *current_y)
             break;
 
         case JUMP_BURST:
-            jump_drive_symmetric_pwm(JUMP_BURST_PWM_1);
+            jump_drive_symmetric_pwm(JUMP_BURST_PWM);
             if (jump_state_elapsed_ms >= JUMP_BURST_MS)
             {
                 jump_set_state(JUMP_AIR_RETRACT);

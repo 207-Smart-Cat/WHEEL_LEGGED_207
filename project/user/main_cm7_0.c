@@ -19,6 +19,7 @@ __no_init CoreB_Command_t core_b_cmd;
 #define PIT_Engine (PIT_CH13)
 #define PIT_IPC (PIT_CH11)
 #define PIT_Jump (PIT_CH14)
+#define PIT_Navigation (PIT_CH15)
 #define LED1 (P19_0)
 #define IMU_ACC_RAW_VOFA_TEST_MODE (0)
 // **************************** 全局变量区域 ****************************
@@ -126,6 +127,7 @@ int main(void)
   //=================================平衡动作初始化========================
   Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
   small_driver_uart_init(); // 驱动板通信初始化
+  navi_data_init(); // Navigation positioning init. Update is gated by runtime navigation switch.
   //========================遥控器控制初始化==========================
   // SBUS uses UART4. Initialize it after other UART users to keep UART4 config intact.
   Remote_Init();
@@ -135,6 +137,7 @@ int main(void)
   // pit_ms_init(PIT_Engine, 20); // leg_control now runs from balance_control 20ms divider
   pit_ms_init(PIT_IPC, 10); // 双核参数同步 10ms 周期检查
   pit_ms_init(PIT_Jump, 1); // 跳跃动作状态机 1ms 周期
+  pit_ms_init(PIT_Navigation, 3); // Navigation EKF 3ms period, matches ENCODER_DT=0.003f.
 
 //  // === 1. 导航系统初始化 ===
 //    navi_data_init();

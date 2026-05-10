@@ -93,8 +93,24 @@ void pit0_ch14_isr() // 跳跃动作状态机 1ms
     pit_isr_flag_clear(PIT_CH14);
 }
 
-void pit0_ch15_isr() // 定时器通道 15 周期中断服务函数
+void pit0_ch15_isr() // Navigation EKF positioning, 3ms
 {
+    static uint8_t nav_origin_ready = 0;
+
+    if (!IMU_ready || !(g_runtime_status.module_enable_mask & RUNTIME_MODULE_BIT(RUNTIME_MODULE_NAVIGATION)))
+    {
+        nav_origin_ready = 0;
+        pit_isr_flag_clear(PIT_CH15);
+        return;
+    }
+
+    if (!nav_origin_ready)
+    {
+        Navi_Data_Set_Origin();
+        nav_origin_ready = 1;
+    }
+
+    navi_ekf_update();
     pit_isr_flag_clear(PIT_CH15);
 }
 

@@ -10,7 +10,7 @@ typedef enum
     RUNTIME_MODULE_BALANCE,          // 平衡控制计算开关。关闭后平衡环输出会被清零。
     RUNTIME_MODULE_SERVO,            // 腿部舵机控制开关。关闭后舵机保持固定 x/y 腿部位置。
     RUNTIME_MODULE_REMOTE,           // 遥控接管开关。关闭后忽略遥控器给出的目标速度和目标航向。
-    RUNTIME_MODULE_NAVIGATION,       // 导航控制预留开关。目前只保存状态，还没有接入导航逻辑。
+    RUNTIME_MODULE_NAVIGATION,       // 导航定位更新开关。开启后 Core0 以 3ms 周期更新惯导位姿。
     RUNTIME_MODULE_DEBUG_OUTPUT,     // 调试输出预留开关。目前只保存状态。
     RUNTIME_MODULE_COUNT
 } runtime_module_t;
@@ -46,11 +46,12 @@ typedef struct
 // 将模块枚举值转换成 module_enable_mask 里的 bit。
 #define RUNTIME_MODULE_BIT(module)       (1UL << (uint32)(module))
 
-// 上电后的安全默认开关：允许手动调车所需模块，导航和调试输出默认关闭。
+// 上电后的安全默认开关：允许手动调车所需模块，导航定位默认开启，调试输出默认关闭。
 #define RUNTIME_DEFAULT_MODULE_MASK      (RUNTIME_MODULE_BIT(RUNTIME_MODULE_MOTOR) | \
                                           RUNTIME_MODULE_BIT(RUNTIME_MODULE_BALANCE) | \
                                           RUNTIME_MODULE_BIT(RUNTIME_MODULE_SERVO) | \
-                                          RUNTIME_MODULE_BIT(RUNTIME_MODULE_REMOTE))
+                                          RUNTIME_MODULE_BIT(RUNTIME_MODULE_REMOTE) | \
+                                          RUNTIME_MODULE_BIT(RUNTIME_MODULE_NAVIGATION))
 
 // 当前核心的运行状态缓存。外部文件不要直接改它，统一走 runtime_status.c 里的接口。
 extern volatile runtime_status_t g_runtime_status;

@@ -162,6 +162,13 @@ void engine_servo_disable(void)
     engine_servo_disable_channel(11); // PWM_3: right-rear
     engine_servo_disable_channel(10); // PWM_4: left-rear
 }
+void engine_servo_enable(void)
+{
+    pwm_init(PWM_1, FREQ, g_pwm_out_1);
+    pwm_init(PWM_2, FREQ, g_pwm_out_2);
+    pwm_init(PWM_3, FREQ, g_pwm_out_3);
+    pwm_init(PWM_4, FREQ, g_pwm_out_4);
+}
 void engine_maintain(int pwm1, int pwm2)
 {
     engine_left_maintain(pwm1, pwm2);

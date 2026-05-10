@@ -92,7 +92,10 @@ static const char *const k_wifi_wave_var_names[WIFI_WAVE_VAR_COUNT] = {
     "Roll", "Pitch", "Yaw",
     "L_Spd", "R_Spd", "L_PWM", "R_PWM",
     "SpdO_L", "SpdO_R", "AngO_L", "AngO_R", "GyrO_L", "GyrO_R",
-    "TurnO", "LegO", "LegTilt", "LegXOff", "LegXTar", "LegTick", "Battery"
+    "TurnO", "LegO", "LegTilt", "LegXOff", "LegXTar", "LegTick", "Battery",
+    "NavX", "NavY", "NavV", "NavW", "NavYaw", "NavOK",
+    "LegXGain", "LegXLim", "LegXStep", "LegXHit",
+    "ZeroSt", "ZeroMs", "ZeroRx", "ZeroSpd", "ZeroStart", "ZeroTx", "ZeroTask", "ZeroRxCnt"
 };
 
 const char *wifi_wave_var_name(wifi_wave_var_t id)
@@ -128,6 +131,24 @@ float wifi_wave_get_value(wifi_wave_var_t id)
         case WIFI_WAVE_VAR_LEG_X_TARGET:   return core_a_status.leg_dbg_x_target;
         case WIFI_WAVE_VAR_LEG_TICK:       return core_a_status.leg_dbg_tick;
         case WIFI_WAVE_VAR_BATTERY:        return core_a_status.battery_voltage;
+        case WIFI_WAVE_VAR_NAV_X:          return core_a_status.nav_x;
+        case WIFI_WAVE_VAR_NAV_Y:          return core_a_status.nav_y;
+        case WIFI_WAVE_VAR_NAV_V:          return core_a_status.nav_v;
+        case WIFI_WAVE_VAR_NAV_W:          return core_a_status.nav_w;
+        case WIFI_WAVE_VAR_NAV_YAW:        return core_a_status.nav_yaw;
+        case WIFI_WAVE_VAR_NAV_VALID:      return core_a_status.nav_valid;
+        case WIFI_WAVE_VAR_LEG_X_GAIN_USED:     return core_a_status.leg_dbg_x_gain_used;
+        case WIFI_WAVE_VAR_LEG_X_LIMIT_USED:    return core_a_status.leg_dbg_x_limit_used;
+        case WIFI_WAVE_VAR_LEG_X_STEP_USED:     return core_a_status.leg_dbg_x_step_used;
+        case WIFI_WAVE_VAR_LEG_X_LIMIT_HIT:     return core_a_status.leg_dbg_x_limit_hit;
+        case WIFI_WAVE_VAR_MOTOR_ZERO_STATE:    return (float)core_a_status.motor_zero_state;
+        case WIFI_WAVE_VAR_MOTOR_ZERO_ELAPSED:  return core_a_status.motor_zero_elapsed_ms;
+        case WIFI_WAVE_VAR_MOTOR_ZERO_RX:       return core_a_status.motor_zero_rx_seen;
+        case WIFI_WAVE_VAR_MOTOR_ZERO_SPEED:    return core_a_status.motor_zero_speed_seen;
+        case WIFI_WAVE_VAR_MOTOR_ZERO_START:    return core_a_status.motor_zero_start_count;
+        case WIFI_WAVE_VAR_MOTOR_ZERO_TX:       return core_a_status.motor_zero_tx_count;
+        case WIFI_WAVE_VAR_MOTOR_ZERO_TASK:     return core_a_status.motor_zero_task_count;
+        case WIFI_WAVE_VAR_MOTOR_ZERO_RX_COUNT: return core_a_status.motor_zero_rx_count;
         default:                           return 0.0f;
     }
 }

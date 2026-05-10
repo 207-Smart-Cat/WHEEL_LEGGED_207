@@ -14,6 +14,14 @@ static volatile uint8 motor_zero_speed_seen = 0;
 static volatile uint8 motor_startup_ramp_reset_request = 0;
 static uint16 motor_zero_elapsed_ms = 0;
 
+volatile uint16 motor_zero_dbg_elapsed_ms = 0;
+volatile uint8 motor_zero_dbg_rx_seen = 0;
+volatile uint8 motor_zero_dbg_speed_seen = 0;
+volatile uint32 motor_zero_dbg_start_count = 0;
+volatile uint32 motor_zero_dbg_tx_count = 0;
+volatile uint32 motor_zero_dbg_task_count = 0;
+volatile uint32 motor_zero_dbg_rx_count = 0;
+
 static uint8 motor_output_is_allowed(void)
 {
     if (IPC_CoreB_Wifi_Is_Connected() == 0)
@@ -81,6 +89,9 @@ motor_zero_state_t small_driver_zero_calibration_state(void)
 void small_driver_zero_calibration_start(void)
 {
     uint8 set_zero_cmd[7];
+    uint8 set_zero_text[] = "SET-ZERO\n";
+
+    motor_zero_dbg_start_count++;
 
     if (small_driver_zero_calibration_is_active())
     {
@@ -103,6 +114,8 @@ void small_driver_zero_calibration_start(void)
     set_zero_cmd[5] = 0x00;
     set_zero_cmd[6] = set_zero_cmd[0] + set_zero_cmd[1] + set_zero_cmd[2] + set_zero_cmd[3] + set_zero_cmd[4] + set_zero_cmd[5];
     uart_write_buffer(SMALL_DRIVER_UART, set_zero_cmd, 7);
+    uart_write_buffer(SMALL_DRIVER_UART, set_zero_text, sizeof(set_zero_text) - 1);
+    motor_zero_dbg_tx_count++;
 
     small_driver_get_speed();
 }
@@ -118,6 +131,10 @@ void small_driver_zero_calibration_task(void)
     {
         motor_zero_elapsed_ms++;
     }
+    motor_zero_dbg_task_count++;
+    motor_zero_dbg_elapsed_ms = motor_zero_elapsed_ms;
+    motor_zero_dbg_rx_seen = motor_zero_rx_seen;
+    motor_zero_dbg_speed_seen = motor_zero_speed_seen;
 
     if (motor_zero_state == MOTOR_ZERO_STATE_WAIT_REPLY)
     {
@@ -141,6 +158,9 @@ void small_driver_zero_calibration_task(void)
         }
     }
 
+    motor_zero_dbg_elapsed_ms = motor_zero_elapsed_ms;
+    motor_zero_dbg_rx_seen = motor_zero_rx_seen;
+    motor_zero_dbg_speed_seen = motor_zero_speed_seen;
     IPC_Update_Motor_Zero_State_From_Core0((uint8)motor_zero_state);
 }
 
@@ -160,9 +180,11 @@ void uart_control_callback(void)
 
     if(uart_query_byte(SMALL_DRIVER_UART, &receive_data))                                   // 接收串口数据
     {
+        motor_zero_dbg_rx_count++;
         if (small_driver_zero_calibration_is_active())
         {
             motor_zero_rx_seen = 1;
+            motor_zero_dbg_rx_seen = 1;
         }
         if(receive_data == 0xA5 && motor_value.receive_data_buffer[0] != 0xA5)              // 判断是否收到帧头 并且 当前接收内容中是否正确包含帧头
         {
@@ -193,6 +215,7 @@ void uart_control_callback(void)
                         motor_value.receive_right_speed_data = (((int)motor_value.receive_data_buffer[4] << 8) | (int)motor_value.receive_data_buffer[5]);  // 拟合右侧电机转速数据
 
                         motor_zero_speed_seen = 1;
+                        motor_zero_dbg_speed_seen = 1;
                     }
 
                     motor_value.receive_data_count = 0;                                     // 清除缓冲区计数值

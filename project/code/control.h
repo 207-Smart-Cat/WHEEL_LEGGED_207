@@ -23,6 +23,7 @@ extern signed short int Motor_Left, Motor_Right;
 extern float out_speed_l, out_speed_r, out_angle_l, out_angle_r, out_gyro_l, out_gyro_r;
 extern float Turn_Pwm, leg_error;
 extern float leg_dbg_speed_tilt, leg_dbg_x_offset, leg_dbg_x_target, leg_dbg_x_cmd, leg_dbg_tick;
+extern float leg_dbg_x_gain_used, leg_dbg_x_limit_used, leg_dbg_x_step_used, leg_dbg_x_limit_hit;
 //******************
 void Balance_init(void);
 void balance_control(void);

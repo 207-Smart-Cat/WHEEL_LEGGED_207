@@ -8,6 +8,7 @@ extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
 #define REMOTE_CH3_EMERGENCY_THRESHOLD 1000
+#define REMOTE_CH3_EMERGENCY_RECOVER_FRAMES 300
 #define REMOTE_CH6_JUMP_THRESHOLD 1000
 #define REMOTE_CH6_JUMP_ARM_FRAMES 5
 // ------------------- 内部结构体定义 -------------------
@@ -25,7 +26,9 @@ static Remote_CtrlData_t s_RemoteData = {
                 REMOTE_SAFE_VALUE_CHother, REMOTE_SAFE_VALUE_CHother, REMOTE_SAFE_VALUE_CHother}};
 
 static bool remote_drive_active = false;
-static uint8 remote_ch3_emergency_latched = 0;
+static uint8 remote_ch3_initialized = 0;
+static uint8 remote_ch3_last_high = 0;
+static uint16 remote_ch3_emergency_frames = 0;
 static uint8 remote_ch6_initialized = 0;
 static uint8 remote_ch6_last_high = 0;
 static uint8 remote_ch6_stable_count = 0;
@@ -43,6 +46,7 @@ float remote_dbg_raw_state = 0.0f;
 float remote_dbg_uart4_isr_count = 0.0f;
 
 static void Remote_CheckEmergencyStop(void);
+static void Remote_ResetEmergencyTrigger(void);
 static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled);
 static void Remote_ResetJumpTrigger(void);
 
@@ -163,21 +167,53 @@ int32_t Remote_GetChannelData(uint8_t ch_index) // 通道序号，用于外部访问
     }
 }
 
+static void Remote_ResetEmergencyTrigger(void)
+{
+    remote_ch3_initialized = 0;
+    remote_ch3_last_high = 0;
+    remote_ch3_emergency_frames = 0;
+}
+
 static void Remote_CheckEmergencyStop(void)
 {
-    uint8 ch3_emergency = (Remote_GetChannelData(3) > REMOTE_CH3_EMERGENCY_THRESHOLD) ? 1 : 0;
+    uint8 ch3_high = (Remote_GetChannelData(3) > REMOTE_CH3_EMERGENCY_THRESHOLD) ? 1 : 0;
 
-    if (ch3_emergency)
+    if (!remote_ch3_initialized)
     {
-        if (!remote_ch3_emergency_latched)
+        remote_ch3_last_high = ch3_high;
+        remote_ch3_initialized = 1;
+        remote_ch3_emergency_frames = 0;
+        return;
+    }
+
+    if (Vehicle_Is_Emergency_Stop())
+    {
+        if (remote_ch3_emergency_frames < REMOTE_CH3_EMERGENCY_RECOVER_FRAMES)
         {
-            Vehicle_Emergency_Stop(VEHICLE_EVENT_SOURCE_REMOTE);
-            remote_ch3_emergency_latched = 1;
+            remote_ch3_emergency_frames++;
         }
     }
     else
     {
-        remote_ch3_emergency_latched = 0;
+        remote_ch3_emergency_frames = 0;
+    }
+
+    if (ch3_high != remote_ch3_last_high)
+    {
+        remote_ch3_last_high = ch3_high;
+        if (Vehicle_Is_Emergency_Stop())
+        {
+            if (remote_ch3_emergency_frames >= REMOTE_CH3_EMERGENCY_RECOVER_FRAMES)
+            {
+                Vehicle_Emergency_Recover(VEHICLE_EVENT_SOURCE_REMOTE);
+                remote_ch3_emergency_frames = 0;
+            }
+        }
+        else
+        {
+            Vehicle_Emergency_Stop(VEHICLE_EVENT_SOURCE_REMOTE);
+            remote_ch3_emergency_frames = 0;
+        }
     }
 }
 static void Remote_ResetJumpTrigger(void)
@@ -263,7 +299,7 @@ void Remote_control_callback(void)
     {
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_OFF);
         Remote_ResetJumpTrigger();
-        remote_ch3_emergency_latched = 0;
+        Remote_ResetEmergencyTrigger();
         jump_set_trigger_block_reason(JUMP_BLOCK_REMOTE_OFF);
         if (remote_drive_active)
         {
@@ -319,7 +355,7 @@ void Remote_control_callback(void)
     {
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_LOST);
         Remote_ResetJumpTrigger();
-        remote_ch3_emergency_latched = 0;
+        Remote_ResetEmergencyTrigger();
         jump_set_trigger_block_reason(JUMP_BLOCK_REMOTE_LOST);
         if (remote_drive_active)
         {

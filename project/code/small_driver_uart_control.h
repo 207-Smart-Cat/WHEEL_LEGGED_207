@@ -53,6 +53,13 @@ typedef struct
 }small_device_value_struct;
 
 extern small_device_value_struct motor_value;
+extern volatile uint16 motor_zero_dbg_elapsed_ms;
+extern volatile uint8 motor_zero_dbg_rx_seen;
+extern volatile uint8 motor_zero_dbg_speed_seen;
+extern volatile uint32 motor_zero_dbg_start_count;
+extern volatile uint32 motor_zero_dbg_tx_count;
+extern volatile uint32 motor_zero_dbg_task_count;
+extern volatile uint32 motor_zero_dbg_rx_count;
 
 typedef enum
 {
