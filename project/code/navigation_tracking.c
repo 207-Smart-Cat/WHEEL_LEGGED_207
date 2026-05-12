@@ -31,6 +31,8 @@
 
 #include "ipc_shared_data.h"
 
+#include "wifi.h" // 包含 LOG_Printf 支持串口和WiFi双路透传
+
 //====================================================全局变量定义=======================================================
 
 Navi_Controller_t navi_ctrl;
@@ -98,7 +100,7 @@ void Navi_Tracking_Init(void) {
 
 //  路径预处理：线性插值
 
-//当两点间距 > 0.3m 时，自动插入中间点，确保前瞻逻辑平滑
+//当两点间距 >DISTANCE_THRESHOLD 时，自动插入中间点，确保前瞻逻辑平滑
 
 //-------------------------------------------------------------------------------------------------------------------
 
@@ -409,7 +411,7 @@ void task_navigation_control(void) {
     switch(navi_ctrl.navi_mode_driver)
     {
         case 0:   {            //停止
-                ;
+                Navigation_Pose_Monitor_Task((int32_t)vofa_print_pose_period);     //打印位姿
                 break;  
         }  
         
@@ -429,9 +431,10 @@ void task_navigation_control(void) {
 
             // --- 1. 动态前瞻搜索 ---计算当前速度自适应的前瞻距离  0.2f 是速度增益系数
 
-            float dynamic_lookahead = DISTANCE_THRESHOLD + (RPM_TO_M_COEFF(fabsf(now_velocity) )* 0.2f); 
+            float dynamic_lookahead = BASE_LOOKAHEAD_DIST + (RPM_TO_M_COEFF(fabsf(now_velocity)) * LOOKAHEAD_VEL_GAIN);
 
-            dynamic_lookahead = fmaxf(DISTANCE_THRESHOLD, fminf(1.0f, dynamic_lookahead));// 限幅防止前瞻过远
+          // 限幅防止前瞻过远或过近：下限卡在 BASE_LOOKAHEAD_DIST，上限卡在 1.0f
+            dynamic_lookahead = fmaxf(BASE_LOOKAHEAD_DIST, fminf(1.0f, dynamic_lookahead));
 
             
             //寻找最近的一个前瞻点
@@ -469,6 +472,17 @@ void task_navigation_control(void) {
                 
                 // 观察模式：只计算需要转向角和距离，不接管小车目标角度/目标速度。
                 // 如果之后要让导航真正接管，再把这里改为写 target_angle / target_velocity。
+                
+                                // 【核心坐标系转换】计算赋给底层的 target_angle！
+                // 推导过程：
+                // 导航系偏航角 = -(IMU偏航角 - 初始偏移)  -->  导航系增量 = -IMU增量
+                // 因此，导航系要求转 smooth_turn 度，对底层 IMU 来说就是转 -smooth_turn 度。
+                target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - smooth_turn);
+
+                if (!is_action_busy) {       // 判断是否在动作接管期              
+                  
+                  target_velocity = 300.0f;
+                }
             
             }
             
@@ -483,13 +497,17 @@ void task_navigation_control(void) {
                     dynamic_print_delay = 0;
 
 #if WEIZHIJIANCE
-                    // 打印包含坐标、偏航角、当前模式，方便你调试打点准确性
-                    IPC_LOG_Printf("[位姿监测] 车姿(%s%d.%02d, %s%d.%02d)  | Yaw=%s%d.%02d |"
-                                   "去往前瞻点(%s%d.%02d, %s%d.%02d) 类型：%s | "
-                                    "距目标: %s%d.%02d | 需转向: %s%d.%02d度\r\n",
-                          F_ARG(robot_pose.x), F_ARG(robot_pose.y),F_ARG(robot_pose.yaw), 
-                          F_ARG(point_map[lookahead_idx].x), F_ARG(point_map[lookahead_idx].y), get_enum_name(point_map[lookahead_idx].type),
-                          F_ARG((float)distance),F_ARG(print_turn_angle));
+          // 更新打印信息，加入累计角度和圈数
+          IPC_LOG_Printf("[位姿监测] 车姿(%s%d.%02d, %s%d.%02d) | Yaw=%s%d.%02d | "
+                         "累计角度:%s%d.%02d | 圈数:%s%d.%02d | "
+                         "去往前瞻点(%s%d.%02d, %s%d.%02d) 类型:%s | "
+                         "距目标:%s%d.%02d | 需转向:%s%d.%02d度\r\n",
+                F_ARG(robot_pose.x), F_ARG(robot_pose.y), F_ARG(robot_pose.yaw), 
+                F_ARG((float)robot_pose.cumulative_yaw), // 累计角度
+                F_ARG(robot_pose.turns),                 // 累计圈数
+                F_ARG(point_map[lookahead_idx].x), F_ARG(point_map[lookahead_idx].y), 
+                get_enum_name(point_map[lookahead_idx].type),
+                F_ARG((float)distance), F_ARG(print_turn_angle));
 #endif
 
                 }
@@ -539,16 +557,16 @@ void task_navigation_control(void) {
                } 
 
            }  
-//           else if (curr_idx < navi_ctrl.point_total_count - 1) {
-//                // 防切角死锁：判断是否离下一个点更近
-//                float dist_to_curr = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx].x, point_map[curr_idx].y);
-//                float dist_to_next = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx+1].x, point_map[curr_idx+1].y);
-//                
-//                // 如果离下一个点更近，说明已经越过了当前点所在切面，强制切走！
-//                if (dist_to_next < dist_to_curr) {
-//                    navi_switch_nexttargetpoint();
-//                }
-//           }
+           // 防切角死锁：判断是否离下一个点更近
+           else if (curr_idx < navi_ctrl.point_total_count - 1) {              
+                float dist_to_curr = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx].x, point_map[curr_idx].y);
+                float dist_to_next = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx+1].x, point_map[curr_idx+1].y);
+                
+                // 如果离下一个点更近，说明已经越过了当前点所在切面，强制切走！
+                if (dist_to_next < dist_to_curr) {
+                    navi_switch_nexttargetpoint();
+                }
+           }
             
             //“到达终点”后,最大速度导航回到初始位置（或者初始位置的横向轴就行）                  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
             if (navi_ctrl.point_current_idx >= navi_ctrl.point_total_count - 1) {
@@ -786,6 +804,51 @@ uint8 navi_isreach_target_point(uint16 target_idx) {
     return (distance_sq <= (current_threshold * current_threshold)) ? 1 : 0;
 
 }
+
+
+
+/**
+ * @brief  导航关闭时的位姿监测打印任务
+ * @param  delta_ms: 距离上次调用的时间(毫秒)，用于非阻塞计时
+ */
+void Navigation_Pose_Monitor_Task(uint32_t delta_ms)
+{
+    static uint32_t print_timer = 0;
+
+    // 1. 判断循迹模式是否关闭 (vofa_mode_driver < 0.5 视为关闭)
+    if (vofa_mode_driver >= 0.5f) {
+        // 循迹开启时，为了保证控制实时性，不进行高频文本打印
+        print_timer = 0; 
+        return; 
+    }
+
+    // 2. 检查上位机是否使能了打印
+    if (vofa_print_pose_en < 0.5f) {
+        return; 
+    }
+
+    // 3. 非阻塞延时控制打印频率
+    print_timer += delta_ms;
+    if (print_timer >= (uint32_t)vofa_print_pose_period) 
+    {
+        print_timer = 0; // 重置计时器
+
+        // 从 IPC 共享数据或全局变量获取最新的位姿
+        float cur_x = core_a_status.nav_x;
+        float cur_y = core_a_status.nav_y;
+        float cur_v = core_a_status.nav_v;
+        float cur_yaw = core_a_status.nav_yaw;
+
+        // 执行打印，格式：[位姿监测] 车姿(X, Y) 速度, 航向
+        LOG_Printf("[位姿监测] 车姿(%s%d.%02d, %s%d.%02d) 速度:%s%d.%02d m/s 航向:%s%d.%02d°\r\n",
+                   F_S(cur_x), F_I(cur_x), F_D2(cur_x),
+                   F_S(cur_y), F_I(cur_y), F_D2(cur_y),
+                   F_S(cur_v), F_I(cur_v), F_D2(cur_v),
+                   F_S(cur_yaw), F_I(cur_yaw), F_D2(cur_yaw));
+    }
+}
+
+
 
 // 将航点类型枚举转换为对应的中文字符串
 const char* get_enum_name(WayPoint_Type type) {

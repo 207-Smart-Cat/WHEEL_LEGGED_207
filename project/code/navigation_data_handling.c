@@ -277,6 +277,12 @@ void Navi_Data_Set_Origin(void) {
         initial_yaw_offset = IMU_data.filter_result.yaw;
     }
 #endif
+    
+    // --- 新增：初始化累计角度和圈数 ---
+    robot_pose.cumulative_yaw = 0.0;
+    robot_pose.turns = 0.0f;
+    robot_pose.last_yaw_for_cum = 0.0f; // 重置后 Yaw 为 0
+    // ----------------------------
 
     robot_pose.is_valid = 1;
 
@@ -505,6 +511,19 @@ void navi_ekf_update(void) {
     robot_pose.bias_w  = mat_get(&nav_ekf.X, 3, 0); // 可以通过串口打印这个值，看看它有多准
     
     robot_pose.yaw     = navi_limit_angle180(filter_data.yaw);
+    
+    // --- 新增：累计角度计算逻辑 ---
+    float delta_yaw = robot_pose.yaw - robot_pose.last_yaw_for_cum;
+    
+    // 检测从 180° 跳到 -180° 的情况（顺时针增加）
+    if (delta_yaw < -180.0f) delta_yaw += 360.0f;
+    // 检测从 -180° 跳到 180° 的情况（逆时针减小）
+    else if (delta_yaw > 180.0f) delta_yaw -= 360.0f;
+    
+    robot_pose.cumulative_yaw += delta_yaw;
+    robot_pose.turns = (float)(robot_pose.cumulative_yaw / 360.0);
+    robot_pose.last_yaw_for_cum = robot_pose.yaw;
+    // ----------------------------
 
     robot_pose.is_valid = 1;
     

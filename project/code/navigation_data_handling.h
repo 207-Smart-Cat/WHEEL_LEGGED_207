@@ -63,7 +63,7 @@
 
 // =========================车模数据 ==========================
 
-#define WHEEL_DIAMETER   0.045F             //车轮直径
+#define WHEEL_DIAMETER   0.046F             //车轮直径
 
 #define WHEEL_DISRANCE   0.200f              //两轮轴距    
 
@@ -154,6 +154,11 @@ typedef struct {
     uint8_t slip_level;     // 打滑状态 (0:正常, 1:轻微, 2:严重)
 
     uint8_t is_valid;       // 状态是否可靠
+    
+    // --- 新增变量用于轴距测试 ---
+    double cumulative_yaw;  // 累计真实角度 (不限制范围，度)
+    float  turns;           // 累计圈数 (自动计算比例，如 1.05)
+    float  last_yaw_for_cum; // 上一帧的 Yaw 值，用于检测跳转
 
 } RobotState_t;
 

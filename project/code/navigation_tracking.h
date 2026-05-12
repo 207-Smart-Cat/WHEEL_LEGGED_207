@@ -39,9 +39,13 @@
 
 #define NAVI_POINT_MAX   500                  //最大记录航点数
 
-#define DISTANCE_THRESHOLD   0.2f            //到达判定值
+#define DISTANCE_THRESHOLD   0.05f            //到达判定值
 
-#define INTERPOLATION_STEP  1.4f              //插值步长
+#define INTERPOLATION_STEP  1.0f              //插值步长
+
+#define BASE_LOOKAHEAD_DIST  0.5f             // 基础前瞻距离 
+
+#define LOOKAHEAD_VEL_GAIN   0.2f             // 前瞻距离的速度增益系数
 
 #define RECORD_MIN_DIST 0.05f  // 最小打点间距 (米)
 
@@ -166,6 +170,8 @@ float navi_get_two_points_distance(float x1, float y1, float x2, float y2);
 float navi_get_two_points_azimuth(float x1, float y1, float x2, float y2);
 
 void navi_wifi_remote_cmd(void) ;
+
+void Navigation_Pose_Monitor_Task(uint32_t delta_ms);                           //导航关闭时的位姿监测打印任务
 
 // 将航点类型枚举转换为对应的中文字符串
 const char* get_enum_name(WayPoint_Type type);
