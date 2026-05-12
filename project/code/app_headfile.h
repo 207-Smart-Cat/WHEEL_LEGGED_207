@@ -7,7 +7,7 @@
 // 1 = keep only IMU, motor speed receive, navigation EKF and IPC status upload on Core0.
 //     Balance, remote, jump and navigation control task are disabled for nav_x/nav_y testing.
 // 0 = normal runtime mode.
-#define NAV_HAND_PUSH_TEST_MODE 0   
+#define NAV_HAND_PUSH_TEST_MODE 0    
 
 // Basic utilities
 #include "pid.h"

@@ -77,7 +77,7 @@ void small_driver_set_duty(int16 left_duty, int16 right_duty);      // 无刷驱动 
 void small_driver_get_speed(void);                                  // 无刷驱动 获取速度信息
 
 void small_driver_uart_init(void);                                  // 无刷驱动 串口通讯初始化
-void small_driver_zero_calibration_start(void);                      // 发送 SET-ZERO 并启动零点校准状态机
+void small_driver_zero_calibration_start(void);                      // Start motor zero calibration state machine
 void small_driver_zero_calibration_task(void);                       // 1ms 调用，推进零点校准状态机
 uint8 small_driver_zero_calibration_is_active(void);                 // 查询零点校准期间是否需要强制电机零输出
 motor_zero_state_t small_driver_zero_calibration_state(void);        // 查询当前零点校准状态

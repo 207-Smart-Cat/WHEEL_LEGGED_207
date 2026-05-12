@@ -375,10 +375,10 @@ float Velocity(velocity_loop_state_t *state, float measured_velocity, float targ
     // 计算角度（Velocity的物理意义是输出角度�?
     state->velocity = motor_speed.kp * state->encoder_bias + motor_speed.ki * state->encoder_integral;
     // 限制速度范围
-    if (state->velocity > 10)
-        state->velocity = 10;
-    if (state->velocity < -10)
-        state->velocity = -10;
+    if (state->velocity > 8)
+        state->velocity = 8;
+    if (state->velocity < -8)
+        state->velocity = -8;
 
     // 动态调整PID参数
     // fuzzy_pid_adjust(&motor_speed, state->encoder_bias, state->velocity - last_error, &speed_rules, &speed_pid_limits);

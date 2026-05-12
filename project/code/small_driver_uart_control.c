@@ -4,7 +4,7 @@
 #include "runtime_status.h"
 #define MOTOR_STARTUP_DUTY_STEP      (1)
 #define MOTOR_DUTY_MAX_ABS           (MAX_DUTY * (PWM_DUTY_MAX / 100))
-#define MOTOR_ZERO_WAIT_MIN_MS       (4000U)
+#define MOTOR_ZERO_WAIT_MIN_MS       (5500U)
 #define MOTOR_ZERO_WAIT_TIMEOUT_MS   (8000U)
 #define MOTOR_ZERO_SETTLE_MS         (500U)
 
@@ -89,6 +89,20 @@ void small_driver_request_startup_ramp_reset(void)
     motor_startup_ramp_reset_request = 1;
 }
 
+static void small_driver_send_zero_duty_direct(void)
+{
+    uint8 zero_duty_cmd[7] = {0xA5, 0x01, 0x00, 0x00, 0x00, 0x00, 0xA6};
+
+    uart_write_buffer(SMALL_DRIVER_UART, zero_duty_cmd, sizeof(zero_duty_cmd));
+}
+
+static void small_driver_stop_send(void)
+{
+    uint8 stop_send_cmd[] = "STOP-SEND\n";
+
+    uart_write_buffer(SMALL_DRIVER_UART, stop_send_cmd, sizeof(stop_send_cmd) - 1);
+}
+
 uint8 small_driver_zero_calibration_is_active(void)
 {
     return (motor_zero_state == MOTOR_ZERO_STATE_WAIT_REPLY || motor_zero_state == MOTOR_ZERO_STATE_SETTLE) ? 1 : 0;
@@ -102,7 +116,6 @@ motor_zero_state_t small_driver_zero_calibration_state(void)
 void small_driver_zero_calibration_start(void)
 {
     uint8 set_zero_cmd[7];
-    uint8 set_zero_text[] = "SET-ZERO\n";
 
     motor_zero_dbg_start_count++;
 
@@ -115,10 +128,11 @@ void small_driver_zero_calibration_start(void)
     motor_zero_speed_seen = 0;
     motor_zero_elapsed_ms = 0;
 
-    small_driver_set_duty(0, 0);
-
     motor_zero_state = MOTOR_ZERO_STATE_WAIT_REPLY;
     IPC_Update_Motor_Zero_State_From_Core0((uint8)motor_zero_state);
+
+    small_driver_send_zero_duty_direct();
+    small_driver_stop_send();
 
     set_zero_cmd[0] = 0xA5;
     set_zero_cmd[1] = 0x03;
@@ -128,10 +142,7 @@ void small_driver_zero_calibration_start(void)
     set_zero_cmd[5] = 0x00;
     set_zero_cmd[6] = set_zero_cmd[0] + set_zero_cmd[1] + set_zero_cmd[2] + set_zero_cmd[3] + set_zero_cmd[4] + set_zero_cmd[5];
     uart_write_buffer(SMALL_DRIVER_UART, set_zero_cmd, 7);
-    uart_write_buffer(SMALL_DRIVER_UART, set_zero_text, sizeof(set_zero_text) - 1);
     motor_zero_dbg_tx_count++;
-
-    small_driver_get_speed();
 }
 
 void small_driver_zero_calibration_task(void)
@@ -152,10 +163,11 @@ void small_driver_zero_calibration_task(void)
 
     if (motor_zero_state == MOTOR_ZERO_STATE_WAIT_REPLY)
     {
-        if (motor_zero_elapsed_ms >= MOTOR_ZERO_WAIT_MIN_MS && motor_zero_rx_seen && motor_zero_speed_seen)
+        if (motor_zero_elapsed_ms >= MOTOR_ZERO_WAIT_MIN_MS)
         {
-            motor_zero_elapsed_ms = 0;
-            motor_zero_state = MOTOR_ZERO_STATE_SETTLE;
+            small_driver_get_speed();
+            motor_zero_state = MOTOR_ZERO_STATE_DONE;
+            small_driver_request_startup_ramp_reset();
         }
         else if (motor_zero_elapsed_ms >= MOTOR_ZERO_WAIT_TIMEOUT_MS)
         {
