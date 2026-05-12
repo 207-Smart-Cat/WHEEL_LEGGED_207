@@ -16,6 +16,8 @@
 
 #include "control.h"
 
+#include "small_driver_uart_control.h"
+
 #include <math.h>
 
 
@@ -23,16 +25,6 @@
 //====================================================±äÁ¿ÉùÃ÷=======================================================
 
 extern IMU_t IMU_data;                         //IMUÊı¾İ½á¹¹Ìå
-
-// ÒıÓÃcontrol.c ÖĞµÄ¿ØÖÆ½Ó¿Ú
-
-extern float now_velocity;       //µ±Ç°ËÙ¶È(ÏßËÙ¶È)
-
-extern float Encoder_Left;
-
-extern float Encoder_Right;
-
-extern float target_velocity;
 
 
 //ÆäËûÎÄ¼ş¼Ğº¯ÊıÊ¹ÓÃÇé¿ö
@@ -84,7 +76,12 @@ static float initial_yaw_offset = 0.0f;  // ¼ÇÂ¼¿ª»ú/ÖØÖÃÊ±µÄ¾ø¶Ôº½Ïò½Ç×÷ÎªÁãµãÆ
 
 
 //====================================================¾²Ì¬º¯Êı=================================================
+
 static void Navi_Slip_Detection(void);                //´ò»¬¼ì²âº¯Êı£¬ÔÚÎ»×Ë¸üĞÂÇ°µ÷ÓÃ
+
+static float Navi_Get_Forward_Mps(void);
+
+static float Navi_Get_YawRate_Enc(void);
 
 
 
@@ -199,9 +196,9 @@ void navi_parse_data(void) {
     raw_data.accel[2] =  IMU_data.accel[2]; // ´¹Ö±·½Ïò (Z)
 
     
-    raw_data.left_rpm = (int16_t)Encoder_Left;
+    raw_data.left_rpm = (int16_t)(-motor_value.receive_left_speed_data);
 
-    raw_data.right_rmp = (int16_t)Encoder_Right;
+    raw_data.right_rmp = (int16_t)(-motor_value.receive_right_speed_data);
 
     raw_data.left_mps = RPM_TO_M_COEFF((float)raw_data.left_rpm);
 
@@ -333,7 +330,7 @@ void navi_ekf_config(void) {
     // 4. ³õÊ¼»¯
     mat_eye(&nav_ekf.P);
     mat_zero(&nav_ekf.X);
-    mat_set(&nav_ekf.X, 0, 0, RPM_TO_M_COEFF(now_velocity)); // ³õÊ¼»¯ËÙ¶È(m/s)
+    mat_set(&nav_ekf.X, 0, 0, 0.0f); // ³õÊ¼»¯ËÙ¶È(m/s)
 
 }
 
@@ -375,7 +372,7 @@ void navi_update_F_B_U(float a_pure_mps2) {
 
 // ºËĞÄ EKF ¸üĞÂ (Navigation Core)    
 
-//³µÁ¾ÏßËÙ¶È                 À´Ô´ÓÚcontrol.h
+//³µÁ¾ÏßËÙ¶È                 À´Ô´ÓÚÇı¶¯°åËÙ¶È·´À¡
 
 //-------------------------------------------------------------------------------------------------------------------
 
@@ -389,10 +386,10 @@ void navi_ekf_update(void) {
 //    uint8_t airborne_flag = 0 ;                                                                                                                 //Ö»ÒªĞ¡³µ´¦ÓÚ¶¯×÷Á´µÄ FSM_JUMP_AIRBORNE ×´Ì¬£¬²»¹ÜÄãÓÃÊÖ¾ÙµÃ¶àÆ½ÎÈ£¬ÏµÍ³¶¼»áÇ¿ÖÆ·ÅĞĞ¼ÓËÙ¶ÈÊäÈë£¬±£Ö¤¿ÕÖĞÌøÔ¾ÍÆËãµÄ¾ø¶Ô´¥·¢¡£
 
     // ¹Û²âÖµ Z (±àÂëÆ÷ËÙ¶È)
-    float v_obs_mps = RPM_TO_M_COEFF(now_velocity); 
+    float v_obs_mps = Navi_Get_Forward_Mps();
     
     // ±àÂëÆ÷¼ÆËã½ÇËÙ¶È (¼ÙÉèË³Ê±ÕëÎªÕı£º×óÂÖ¿ìÔòÏòÓÒ×ª)
-    float w_obs_enc = (filter_data.left_mps + filter_data.right_mps) / WHEEL_DISRANCE;
+    float w_obs_enc = Navi_Get_YawRate_Enc();
     
     // È¡³öÍêÈ«Ô­Ê¼µÄ gyro_z£¬²»ÒªÈË¹¤¼õ 0.1£¬ÈÃ¿¨¶ûÂüÈ¥ËãËüµÄÕæÊµÁãÆ«£¡
     float gyro_z_obs = raw_data.unbiased_gyro[2]; 
@@ -465,12 +462,7 @@ void navi_ekf_update(void) {
     float dt = ENCODER_DT;
     float yaw_rad = ANGLE_TO_RAD(filter_data.yaw);
     
-    if (fabsf(target_velocity) < 0.001f && fabsf(v_obs_mps) < 0.15f && !airborne_flag) {
-        opt_v = 0.0f;     // Ç¿ÖÆµ±Ç°ËÙ¶ÈÎª0£¬²»²ÎÓëXY»ı·Ö
-        opt_w = 0.0f;
-        a_input = 0.0f;   // ºöÂÔ¸Ã×´Ì¬ÏÂµÄ¼Ù¼ÓËÙ¶È
-    }
-    
+
     // ====================================================================
     // »ìºÏÔ²»¡Ä£ĞÍ
     // ====================================================================
@@ -532,6 +524,17 @@ void navi_ekf_update(void) {
 
 //-------------------------------------------------------------------------------------------------------------------
 
+static float Navi_Get_Forward_Mps(void)
+{
+    // ÓÒÂÖËÙ¶ÈÔÚµ±Ç°Çı¶¯·´À¡·ûºÅÏÂÓë×óÂÖÏà·´£¬ÑØÓÃ control.c µÄÏßËÙ¶È·ûºÅÔ¼¶¨¡£
+    return (filter_data.left_mps - filter_data.right_mps) * 0.5f;
+}
+
+static float Navi_Get_YawRate_Enc(void)
+{
+    // ÓÒÂÖËÙ¶ÈÔÚÖ±ĞĞÊ±Îª·´ºÅ£¬Òò´Ë²îËÙ½ÇËÙ¶ÈÊ¹ÓÃ left + right¡£
+    return (filter_data.left_mps + filter_data.right_mps) / WHEEL_DISRANCE;
+}
 static void Navi_Slip_Detection(void) {
 
     float dt = ENCODER_DT;
@@ -541,7 +544,7 @@ static void Navi_Slip_Detection(void) {
 
     // ¼ÆËã±àÂëÆ÷¼ÓËÙ¶È
 
-    float current_v_mps = RPM_TO_M_COEFF(now_velocity);
+    float current_v_mps = Navi_Get_Forward_Mps();
 
     float enc_accel = (current_v_mps - last_v_mps) / dt;
 

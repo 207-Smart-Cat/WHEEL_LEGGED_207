@@ -224,9 +224,10 @@ void IPC_Update_Wifi_Status_From_CoreB(uint8 connected) {
 }
 
 uint8 IPC_CoreB_Wifi_Is_Connected(void) {
-    return Runtime_Get_Wifi_Connected();
+    return g_runtime_status.wifi_connected;
 }
 void IPC_Check_And_Apply_Params_To_Core0(void) {
+    Runtime_Sync_From_IPC();
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
 
     if(core_b_cmd.param_update_flag == 1) {

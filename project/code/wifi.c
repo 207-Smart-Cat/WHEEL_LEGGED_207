@@ -23,11 +23,11 @@ static uint32 data_length;
 wifi_mode_t current_wifi_mode = WIFI_MODE_SILENT;
 uint8 wave_format = 1;
 uint8 channel_show[5] = {1, 1, 1, 0, 0};
-uint8 wifi_wave_selected_count = 3;
+uint8 wifi_wave_selected_count = 0;
 uint8 wifi_wave_selected[WIFI_WAVE_MAX_SELECTED] = {
-    WIFI_WAVE_VAR_ROLL,
-    WIFI_WAVE_VAR_PITCH,
-    WIFI_WAVE_VAR_YAW,
+    WIFI_WAVE_EMPTY_SLOT,
+    WIFI_WAVE_EMPTY_SLOT,
+    WIFI_WAVE_EMPTY_SLOT,
     WIFI_WAVE_EMPTY_SLOT,
     WIFI_WAVE_EMPTY_SLOT,
     WIFI_WAVE_EMPTY_SLOT
@@ -95,7 +95,8 @@ static const char *const k_wifi_wave_var_names[WIFI_WAVE_VAR_COUNT] = {
     "TurnO", "LegO", "LegTilt", "LegXOff", "LegXTar", "LegTick", "Battery",
     "NavX", "NavY", "NavV", "NavW", "NavYaw", "NavOK",
     "LegXGain", "LegXLim", "LegXStep", "LegXHit",
-    "ZeroSt", "ZeroMs", "ZeroRx", "ZeroSpd", "ZeroStart", "ZeroTx", "ZeroTask", "ZeroRxCnt"
+    "ZeroSt", "ZeroMs", "ZeroRx", "ZeroSpd", "ZeroStart", "ZeroTx", "ZeroTask", "ZeroRxCnt",
+    "TargetVel", "TargetAng", "TargetStand", "XCurrent", "YCurrent"
 };
 
 const char *wifi_wave_var_name(wifi_wave_var_t id)
@@ -114,10 +115,10 @@ float wifi_wave_get_value(wifi_wave_var_t id)
         case WIFI_WAVE_VAR_ROLL:           return core_a_status.roll;
         case WIFI_WAVE_VAR_PITCH:          return core_a_status.pitch;
         case WIFI_WAVE_VAR_YAW:            return core_a_status.yaw;
-        case WIFI_WAVE_VAR_LEFT_SPEED:     return (float)motor_value.receive_left_speed_data;
-        case WIFI_WAVE_VAR_RIGHT_SPEED:    return (float)motor_value.receive_right_speed_data;
-        case WIFI_WAVE_VAR_LEFT_PWM:       return (float)Motor_Left;
-        case WIFI_WAVE_VAR_RIGHT_PWM:      return (float)Motor_Right;
+        case WIFI_WAVE_VAR_LEFT_SPEED:     return (float)core_a_status.left_wheel_speed;
+        case WIFI_WAVE_VAR_RIGHT_SPEED:    return (float)core_a_status.right_wheel_speed;
+        case WIFI_WAVE_VAR_LEFT_PWM:       return (float)core_a_status.left_pwm_duty;
+        case WIFI_WAVE_VAR_RIGHT_PWM:      return (float)core_a_status.right_pwm_duty;
         case WIFI_WAVE_VAR_SPD_OUT_L:      return core_a_status.pid_out_speed_l;
         case WIFI_WAVE_VAR_SPD_OUT_R:      return core_a_status.pid_out_speed_r;
         case WIFI_WAVE_VAR_ANG_OUT_L:      return core_a_status.pid_out_angle_l;
@@ -131,6 +132,11 @@ float wifi_wave_get_value(wifi_wave_var_t id)
         case WIFI_WAVE_VAR_LEG_X_TARGET:   return core_a_status.leg_dbg_x_target;
         case WIFI_WAVE_VAR_LEG_TICK:       return core_a_status.leg_dbg_tick;
         case WIFI_WAVE_VAR_BATTERY:        return core_a_status.battery_voltage;
+        case WIFI_WAVE_VAR_TARGET_VELOCITY: return core_a_status.target_velocity_status;
+        case WIFI_WAVE_VAR_TARGET_ANGLE:    return core_a_status.target_angle_status;
+        case WIFI_WAVE_VAR_TARGET_STAND:    return core_a_status.target_motor_stand_status;
+        case WIFI_WAVE_VAR_X_CURRENT:       return core_a_status.x_current_status;
+        case WIFI_WAVE_VAR_Y_CURRENT:       return core_a_status.y_current_status;
         case WIFI_WAVE_VAR_NAV_X:          return core_a_status.nav_x;
         case WIFI_WAVE_VAR_NAV_Y:          return core_a_status.nav_y;
         case WIFI_WAVE_VAR_NAV_V:          return core_a_status.nav_v;
@@ -205,16 +211,6 @@ uint8 wifi_wave_toggle_selected(uint8 id)
 
 void wifi_wave_enter_mode(void)
 {
-    if (wifi_wave_selected_count == 0)
-    {
-        wifi_wave_selected[0] = WIFI_WAVE_VAR_ROLL;
-        wifi_wave_selected[1] = WIFI_WAVE_VAR_PITCH;
-        wifi_wave_selected[2] = WIFI_WAVE_VAR_YAW;
-        wifi_wave_selected[3] = WIFI_WAVE_EMPTY_SLOT;
-        wifi_wave_selected[4] = WIFI_WAVE_EMPTY_SLOT;
-        wifi_wave_selected[5] = WIFI_WAVE_EMPTY_SLOT;
-        wifi_wave_selected_count = 3;
-    }
     wave_format = 1;
     current_wifi_mode = WIFI_MODE_WAVE;
 }

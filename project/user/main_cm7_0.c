@@ -129,19 +129,25 @@ int main(void)
   pit_ms_init(PIT_IMU, 1);
 #endif
   //=================================平衡动作初始化========================
+#if !NAV_HAND_PUSH_TEST_MODE
   Balance_init(); // 初始化平衡控制（设置Kalman滤波的各个参数）
+#endif
   small_driver_uart_init(); // 驱动板通信初始化
   navi_data_init(); // Navigation positioning init. Update is gated by runtime navigation switch.
   Navi_Tracking_Init(); // Navigation route/control state init. Driver mode defaults to 0.
   //========================遥控器控制初始化==========================
   // SBUS uses UART4. Initialize it after other UART users to keep UART4 config intact.
+#if !NAV_HAND_PUSH_TEST_MODE
   Remote_Init();
   pit_ms_init(PIT_Remote, 10);//10ms????????
+#endif
   battery_monitor_init(); // 电池电压 ADC 初始化
   //=================================舵机初始化======================
   // pit_ms_init(PIT_Engine, 20); // leg_control now runs from balance_control 20ms divider
   pit_ms_init(PIT_IPC, 10); // 双核参数同步 10ms 周期检查
+#if !NAV_HAND_PUSH_TEST_MODE
   pit_ms_init(PIT_Jump, 1); // 跳跃动作状态机 1ms 周期
+#endif
   pit_ms_init(PIT_Navigation, 10); // Navigation period matches ENCODER_DT=0.010f in navigation_data_handling.h.
 
 //  // === 1. 导航系统初始化 ===
@@ -150,7 +156,9 @@ int main(void)
 //
 //    // 修改：将 PIT_Balance 从 3ms 改为 10ms 以匹配 ENCODER_DT (0.01f)
 //    // 注意：如果是平衡控制强制要求 3ms，则需修改导航的 ENCODER_DT 为 0.03f 并在 3ms 中断分频调用
+#if !NAV_HAND_PUSH_TEST_MODE
     pit_ms_init(PIT_Balance, 1);
+#endif
 ////    jump_stop = 1; // 在 control.c 中，jump_stop=1 会让 PID 参数全置 0
     interrupt_global_enable(0);
 //
@@ -172,20 +180,44 @@ int main(void)
   while (true)
   {
     static uint8_t battery_update_div = 0;
+    static uint8_t ipc_status_push_div = 0;
+#if !NAV_HAND_PUSH_TEST_MODE
+    static uint8_t navigation_task_div = 0;
+#endif
     // 此处编写需要循环执行的代码
+#if !NAV_HAND_PUSH_TEST_MODE
     if (IPC_Consume_Motor_Zero_Request_Core0())
     {
         small_driver_zero_calibration_start();
     }
     small_driver_zero_calibration_task();
+#endif
 
+#if !NAV_HAND_PUSH_TEST_MODE
+    navigation_task_div++;
+    if (navigation_task_div >= 10)
+    {
+        navigation_task_div = 0;
+        if (IMU_ready && (g_runtime_status.module_enable_mask & RUNTIME_MODULE_BIT(RUNTIME_MODULE_NAVIGATION)))
+        {
+            navi_ctrl.navi_mode_driver = (uint8_t)vofa_mode_driver;
+            navi_ctrl.navi_mode_map = (uint8_t)vofa_mode_map;
+            task_navigation_control();
+        }
+    }
+#endif
     battery_update_div++;
     if (battery_update_div >= 100)
     {
         battery_update_div = 0;
         battery_monitor_update();
     }
-    IPC_Push_Status_From_CoreA();
+    ipc_status_push_div++;
+    if (ipc_status_push_div >= 10)
+    {
+        ipc_status_push_div = 0;
+        IPC_Push_Status_From_CoreA();
+    }
 
     // Core0 main-loop debug output disabled for balance timing test.
     //printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);

@@ -22,6 +22,7 @@ uint8 force_ui_refresh = 1;
 #define UI_KEY_BACK_PIN     P20_2
 #define UI_KEY_COUNT        (4)
 #define UI_LONG_PRESS_TICKS (16)   // 16 * 50ms = 800ms
+#define UI_REPEAT_PRESS_TICKS (3)  // Long press repeat: 3 * 50ms = 150ms
 #define UI_EMERGENCY_COMBO_TICKS (60) // 60 * 50ms = 3s
 #define UI_PARAM_ROWS       (7)
 #define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
@@ -49,6 +50,7 @@ typedef enum {
     UI_SCREEN_PARAM_ADJUST,
     UI_SCREEN_PARAM_DIRECT,
     UI_SCREEN_WIFI,
+    UI_SCREEN_WIFI_WAVE_GROUP,
     UI_SCREEN_WIFI_WAVE_SELECT,
     UI_SCREEN_MODULES,
     UI_SCREEN_SYSTEM,
@@ -75,6 +77,12 @@ typedef struct {
     const ParamID_e *items;
     uint8_t count;
 } ui_param_group_t;
+
+typedef struct {
+    const char *name;
+    const wifi_wave_var_t *items;
+    uint8_t count;
+} ui_wave_group_t;
 
 // ================= 16x16 Chinese glyphs for setup UI ==============
 typedef struct {
@@ -684,6 +692,8 @@ static ui_screen_t ui_screen = UI_SCREEN_HOME;
 static uint8_t ui_home_index = 0;
 static uint8_t ui_mode_index = 0;
 static uint8_t ui_wifi_index = 0;
+static uint8_t ui_wave_group = 0;
+static uint8_t ui_wave_group_top = 0;
 static uint8_t ui_wave_var_index = 0;
 static uint8_t ui_wave_var_top = 0;
 static uint8_t ui_module_index = 0;
@@ -803,14 +813,18 @@ static const uint16_t *const k_system_texts[] = {
 static const ParamID_e k_param_group_balance[] = {
     P_SPEED_P, P_SPEED_I, P_SPEED_D,
     P_ANGLE_P, P_ANGLE_I, P_ANGLE_D,
-    P_GYRO_P, P_GYRO_I, P_GYRO_D,
-    P_TARGET_VELOCITY, P_TARGET_ANGLE, P_TARGET_MOTOR_STAND
-};
-static const ParamID_e k_param_group_leg[] = {
-    P_LEG_KP, P_LEG_KI, P_LEG_KD, P_X_CURRENT, P_Y_CURRENT,
-    P_LEG_X_GAIN, P_LEG_X_LIMIT, P_LEG_X_MIN_STEP, P_LEG_X_STEP_LIMIT
+    P_GYRO_P, P_GYRO_I, P_GYRO_D
 };
 
+static const ParamID_e k_param_group_target[] = {
+    P_TARGET_VELOCITY, P_TARGET_ANGLE, P_TARGET_MOTOR_STAND,
+    P_X_CURRENT, P_Y_CURRENT
+};
+
+static const ParamID_e k_param_group_leg[] = {
+    P_LEG_KP, P_LEG_KI, P_LEG_KD,
+    P_LEG_X_GAIN, P_LEG_X_LIMIT, P_LEG_X_MIN_STEP, P_LEG_X_STEP_LIMIT
+};
 static const ParamID_e k_param_group_air[] = {
     P_AIR_ROLL_P, P_AIR_ROLL_I, P_AIR_ROLL_D
 };
@@ -828,10 +842,64 @@ static const ParamID_e k_param_group_navigation[] = {
 
 static const ui_param_group_t k_param_groups[] = {
     {"Balance",   k_param_group_balance,    ARRAY_SIZE(k_param_group_balance)},
+    {"Target",    k_param_group_target,     ARRAY_SIZE(k_param_group_target)},
     {"Leg",       k_param_group_leg,        ARRAY_SIZE(k_param_group_leg)},
     {"Air",       k_param_group_air,        ARRAY_SIZE(k_param_group_air)},
     {"Direction", k_param_group_direction,  ARRAY_SIZE(k_param_group_direction)},
     {"Nav",       k_param_group_navigation, ARRAY_SIZE(k_param_group_navigation)}
+};
+
+static const wifi_wave_var_t k_wave_group_attitude[] = {
+    WIFI_WAVE_VAR_ROLL, WIFI_WAVE_VAR_PITCH, WIFI_WAVE_VAR_YAW
+};
+
+static const wifi_wave_var_t k_wave_group_motor[] = {
+    WIFI_WAVE_VAR_LEFT_SPEED, WIFI_WAVE_VAR_RIGHT_SPEED,
+    WIFI_WAVE_VAR_LEFT_PWM, WIFI_WAVE_VAR_RIGHT_PWM,
+    WIFI_WAVE_VAR_BATTERY
+};
+
+static const wifi_wave_var_t k_wave_group_target[] = {
+    WIFI_WAVE_VAR_TARGET_VELOCITY, WIFI_WAVE_VAR_TARGET_ANGLE,
+    WIFI_WAVE_VAR_TARGET_STAND, WIFI_WAVE_VAR_X_CURRENT,
+    WIFI_WAVE_VAR_Y_CURRENT
+};
+
+static const wifi_wave_var_t k_wave_group_pid[] = {
+    WIFI_WAVE_VAR_SPD_OUT_L, WIFI_WAVE_VAR_SPD_OUT_R,
+    WIFI_WAVE_VAR_ANG_OUT_L, WIFI_WAVE_VAR_ANG_OUT_R,
+    WIFI_WAVE_VAR_GYR_OUT_L, WIFI_WAVE_VAR_GYR_OUT_R,
+    WIFI_WAVE_VAR_TURN_OUT
+};
+
+static const wifi_wave_var_t k_wave_group_leg[] = {
+    WIFI_WAVE_VAR_LEG_OUT, WIFI_WAVE_VAR_LEG_SPEED_TILT,
+    WIFI_WAVE_VAR_LEG_X_OFFSET, WIFI_WAVE_VAR_LEG_X_TARGET,
+    WIFI_WAVE_VAR_LEG_TICK, WIFI_WAVE_VAR_LEG_X_GAIN_USED,
+    WIFI_WAVE_VAR_LEG_X_LIMIT_USED, WIFI_WAVE_VAR_LEG_X_STEP_USED,
+    WIFI_WAVE_VAR_LEG_X_LIMIT_HIT
+};
+
+static const wifi_wave_var_t k_wave_group_navigation[] = {
+    WIFI_WAVE_VAR_NAV_X, WIFI_WAVE_VAR_NAV_Y, WIFI_WAVE_VAR_NAV_V,
+    WIFI_WAVE_VAR_NAV_W, WIFI_WAVE_VAR_NAV_YAW, WIFI_WAVE_VAR_NAV_VALID
+};
+
+static const wifi_wave_var_t k_wave_group_motor_zero[] = {
+    WIFI_WAVE_VAR_MOTOR_ZERO_STATE, WIFI_WAVE_VAR_MOTOR_ZERO_ELAPSED,
+    WIFI_WAVE_VAR_MOTOR_ZERO_RX, WIFI_WAVE_VAR_MOTOR_ZERO_SPEED,
+    WIFI_WAVE_VAR_MOTOR_ZERO_START, WIFI_WAVE_VAR_MOTOR_ZERO_TX,
+    WIFI_WAVE_VAR_MOTOR_ZERO_TASK, WIFI_WAVE_VAR_MOTOR_ZERO_RX_COUNT
+};
+
+static const ui_wave_group_t k_wave_groups[] = {
+    {"Attitude",  k_wave_group_attitude,   ARRAY_SIZE(k_wave_group_attitude)},
+    {"Motor",     k_wave_group_motor,      ARRAY_SIZE(k_wave_group_motor)},
+    {"Target",    k_wave_group_target,     ARRAY_SIZE(k_wave_group_target)},
+    {"PID",       k_wave_group_pid,        ARRAY_SIZE(k_wave_group_pid)},
+    {"Leg",       k_wave_group_leg,        ARRAY_SIZE(k_wave_group_leg)},
+    {"Nav",       k_wave_group_navigation, ARRAY_SIZE(k_wave_group_navigation)},
+    {"MotorZero", k_wave_group_motor_zero, ARRAY_SIZE(k_wave_group_motor_zero)}
 };
 
 static void ui_set_screen(ui_screen_t screen);
@@ -894,6 +962,11 @@ static void ui_scan_keys(ui_key_event_t events[UI_KEY_COUNT])
             if (ui_keys[i].press_ticks >= UI_LONG_PRESS_TICKS && ui_keys[i].long_sent == 0)
             {
                 ui_keys[i].long_sent = 1;
+                events[i] = UI_EVENT_LONG;
+            }
+            else if ((i == UI_KEY_UP || i == UI_KEY_DOWN) && ui_keys[i].long_sent &&
+                     ((ui_keys[i].press_ticks - UI_LONG_PRESS_TICKS) % UI_REPEAT_PRESS_TICKS == 0))
+            {
                 events[i] = UI_EVENT_LONG;
             }
         }
@@ -1131,6 +1204,50 @@ static void ui_param_keep_visible(uint8_t selected, uint8_t *top, uint8_t count)
     }
 }
 
+
+static uint8_t ui_move_index(uint8_t current, uint8_t count, uint8_t step, uint8_t move_down)
+{
+    if (count <= 1)
+    {
+        return 0;
+    }
+    if (step == 0)
+    {
+        step = 1;
+    }
+    if (step >= count)
+    {
+        step = 1;
+    }
+
+    if (move_down)
+    {
+        return (uint8_t)((current + step) % count);
+    }
+    if (current >= step)
+    {
+        return (uint8_t)(current - step);
+    }
+    return (uint8_t)(count - (step - current));
+}
+
+static uint8_t ui_wave_group_count(void)
+{
+    return (uint8_t)ARRAY_SIZE(k_wave_groups);
+}
+
+static wifi_wave_var_t ui_wave_id_from_group_index(uint8_t group, uint8_t index)
+{
+    if (group >= ARRAY_SIZE(k_wave_groups))
+    {
+        return WIFI_WAVE_VAR_ROLL;
+    }
+    if (index >= k_wave_groups[group].count)
+    {
+        index = 0;
+    }
+    return k_wave_groups[group].items[index];
+}
 static ParamID_e ui_param_id_from_group_index(uint8_t group, uint8_t index)
 {
     if (group >= ARRAY_SIZE(k_param_groups))
@@ -1294,27 +1411,53 @@ static void ui_draw_wifi(void)
     ui_draw_footer_text(UI_TEXT_T_HINT_SET);
 }
 
+static void ui_draw_wifi_wave_group(void)
+{
+    char line[40];
+    uint8_t group_count = ui_wave_group_count();
+
+    ui_draw_title_text(UI_TEXT_T_WIFI_WAVE);
+    ips200_show_string(118, 8, "Groups");
+    ui_param_keep_visible(ui_wave_group, &ui_wave_group_top, group_count);
+
+    for (uint8_t row = 0; row < UI_PARAM_ROWS; row++)
+    {
+        uint8_t idx = ui_wave_group_top + row;
+        if (idx < group_count)
+        {
+            char marker = (idx == ui_wave_group) ? '>' : ' ';
+            sprintf(line, "%c%02d %.10s %2d", marker, idx + 1, k_wave_groups[idx].name, k_wave_groups[idx].count);
+            ips200_show_string(8, 36 + row * 32, line);
+        }
+    }
+
+    ui_draw_footer_text_str("UP/DN grp LUD pg OK vars");
+}
+
 static void ui_draw_wifi_wave_select(void)
 {
     char line[40];
     uint8_t row;
+    const ui_wave_group_t *group = &k_wave_groups[ui_wave_group];
 
     ui_draw_title_text(UI_TEXT_T_WIFI_WAVE);
-    sprintf(line, "SEL:%d/%d", wifi_wave_selected_count, WIFI_WAVE_MAX_SELECTED);
+    sprintf(line, "%s %d/%d SEL:%d/%d", group->name, ui_wave_var_index + 1, group->count, wifi_wave_selected_count, WIFI_WAVE_MAX_SELECTED);
     ips200_show_string(8, 32, line);
+    ui_param_keep_visible(ui_wave_var_index, &ui_wave_var_top, group->count);
 
     for (row = 0; row < UI_PARAM_ROWS; row++)
     {
-        uint8_t idx = ui_wave_var_top + row;
+        uint8_t item_index = ui_wave_var_top + row;
         uint16_t y = 56 + row * 28;
-        if (idx < WIFI_WAVE_VAR_COUNT)
+        if (item_index < group->count)
         {
-            sprintf(line, "%c%c %s", (idx == ui_wave_var_index) ? '>' : ' ', wifi_wave_is_selected(idx) ? '*' : ' ', wifi_wave_var_name((wifi_wave_var_t)idx));
+            wifi_wave_var_t id = group->items[item_index];
+            sprintf(line, "%c%c %02d %s", (item_index == ui_wave_var_index) ? '>' : ' ', wifi_wave_is_selected((uint8)id) ? '*' : ' ', (int)id + 1, wifi_wave_var_name(id));
             ips200_show_string(8, y, line);
         }
     }
 
-    ui_draw_footer_text_str("OK sel LongOK start BACK");
+    ui_draw_footer_text_str("OK sel LOK start LUD page");
 }
 static void ui_draw_modules(void)
 {
@@ -1330,16 +1473,9 @@ static void ui_draw_modules(void)
 
 static void ui_draw_system(void)
 {
-    char line[48];
     ui_draw_title_text(UI_TEXT_T_TITLE_SYSTEM);
     ui_draw_text_list(k_system_texts, ARRAY_SIZE(k_system_texts), ui_system_index, 0, ARRAY_SIZE(k_system_texts));
     ui_show_text(8, 202, UI_TEXT_T_FLASH_CONFIRM);
-    sprintf(line, "Z Req:%d St:%d Ms:%d", core_b_cmd.motor_zero_request, core_a_status.motor_zero_state, (int)core_a_status.motor_zero_elapsed_ms);
-    ips200_show_string(8, 226, line);
-    sprintf(line, "S:%d Tx:%d T:%d", (int)core_a_status.motor_zero_start_count, (int)core_a_status.motor_zero_tx_count, (int)core_a_status.motor_zero_task_count);
-    ips200_show_string(8, 242, line);
-    sprintf(line, "Rx:%d RB:%d SP:%d", (int)core_a_status.motor_zero_rx_count, (int)core_a_status.motor_zero_rx_seen, (int)core_a_status.motor_zero_speed_seen);
-    ips200_show_string(8, 258, line);
     ui_draw_footer_text(UI_TEXT_T_HINT_SELECT);
 }
 
@@ -1432,15 +1568,16 @@ static void ui_handle_monitor(ui_key_event_t events[UI_KEY_COUNT])
 static void ui_handle_param_page(ui_key_event_t events[UI_KEY_COUNT])
 {
     uint8_t group_count = ui_param_group_count();
+    uint8_t step = (events[UI_KEY_UP] == UI_EVENT_LONG || events[UI_KEY_DOWN] == UI_EVENT_LONG) ? UI_PARAM_ROWS : 1;
     if (events[UI_KEY_UP])
     {
-        ui_param_group = (ui_param_group == 0) ? (group_count - 1) : (ui_param_group - 1);
+        ui_param_group = ui_move_index(ui_param_group, group_count, step, 0);
         ui_param_keep_visible(ui_param_group, &ui_param_group_top, group_count);
         ui_set_screen(UI_SCREEN_PARAM_PAGE);
     }
     else if (events[UI_KEY_DOWN])
     {
-        ui_param_group = (ui_param_group + 1) % group_count;
+        ui_param_group = ui_move_index(ui_param_group, group_count, step, 1);
         ui_param_keep_visible(ui_param_group, &ui_param_group_top, group_count);
         ui_set_screen(UI_SCREEN_PARAM_PAGE);
     }
@@ -1455,19 +1592,19 @@ static void ui_handle_param_page(ui_key_event_t events[UI_KEY_COUNT])
         ui_set_screen(UI_SCREEN_HOME);
     }
 }
-
 static void ui_handle_param_select(ui_key_event_t events[UI_KEY_COUNT])
 {
     uint8_t count = k_param_groups[ui_param_group].count;
+    uint8_t step = (events[UI_KEY_UP] == UI_EVENT_LONG || events[UI_KEY_DOWN] == UI_EVENT_LONG) ? UI_PARAM_ROWS : 1;
     if (events[UI_KEY_UP])
     {
-        ui_param_row = (ui_param_row == 0) ? (count - 1) : (ui_param_row - 1);
+        ui_param_row = ui_move_index(ui_param_row, count, step, 0);
         ui_param_keep_visible(ui_param_row, &ui_param_top, count);
         ui_set_screen(UI_SCREEN_PARAM_SELECT);
     }
     else if (events[UI_KEY_DOWN])
     {
-        ui_param_row = (ui_param_row + 1) % count;
+        ui_param_row = ui_move_index(ui_param_row, count, step, 1);
         ui_param_keep_visible(ui_param_row, &ui_param_top, count);
         ui_set_screen(UI_SCREEN_PARAM_SELECT);
     }
@@ -1486,7 +1623,6 @@ static void ui_handle_param_select(ui_key_event_t events[UI_KEY_COUNT])
         ui_set_screen(UI_SCREEN_PARAM_PAGE);
     }
 }
-
 static void ui_handle_param_edit(ui_key_event_t events[UI_KEY_COUNT])
 {
     if (events[UI_KEY_UP] || events[UI_KEY_DOWN])
@@ -1575,23 +1711,26 @@ static void ui_handle_param_direct(ui_key_event_t events[UI_KEY_COUNT])
 }
 static void ui_handle_wifi(ui_key_event_t events[UI_KEY_COUNT])
 {
+    uint8_t step = (events[UI_KEY_UP] == UI_EVENT_LONG || events[UI_KEY_DOWN] == UI_EVENT_LONG) ? UI_PARAM_ROWS : 1;
     if (events[UI_KEY_UP])
     {
-        ui_wifi_index = (ui_wifi_index == 0) ? (ARRAY_SIZE(k_wifi_names) - 1) : (ui_wifi_index - 1);
+        ui_wifi_index = ui_move_index(ui_wifi_index, ARRAY_SIZE(k_wifi_names), step, 0);
         ui_set_screen(UI_SCREEN_WIFI);
     }
     else if (events[UI_KEY_DOWN])
     {
-        ui_wifi_index = (ui_wifi_index + 1) % ARRAY_SIZE(k_wifi_names);
+        ui_wifi_index = ui_move_index(ui_wifi_index, ARRAY_SIZE(k_wifi_names), step, 1);
         ui_set_screen(UI_SCREEN_WIFI);
     }
     else if (events[UI_KEY_OK])
     {
         if (ui_wifi_index == WIFI_MODE_WAVE)
         {
+            ui_wave_group = 0;
+            ui_wave_group_top = 0;
             ui_wave_var_index = 0;
             ui_wave_var_top = 0;
-            ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
+            ui_set_screen(UI_SCREEN_WIFI_WAVE_GROUP);
         }
         else
         {
@@ -1605,32 +1744,48 @@ static void ui_handle_wifi(ui_key_event_t events[UI_KEY_COUNT])
     }
 }
 
-static void ui_handle_wifi_wave_select(ui_key_event_t events[UI_KEY_COUNT])
+static void ui_handle_wifi_wave_group(ui_key_event_t events[UI_KEY_COUNT])
 {
+    uint8_t group_count = ui_wave_group_count();
+    uint8_t step = (events[UI_KEY_UP] == UI_EVENT_LONG || events[UI_KEY_DOWN] == UI_EVENT_LONG) ? UI_PARAM_ROWS : 1;
     if (events[UI_KEY_UP])
     {
-        ui_wave_var_index = (ui_wave_var_index == 0) ? (WIFI_WAVE_VAR_COUNT - 1) : (ui_wave_var_index - 1);
-        if (ui_wave_var_index < ui_wave_var_top)
-        {
-            ui_wave_var_top = ui_wave_var_index;
-        }
-        else if (ui_wave_var_index >= ui_wave_var_top + UI_PARAM_ROWS)
-        {
-            ui_wave_var_top = ui_wave_var_index - UI_PARAM_ROWS + 1;
-        }
+        ui_wave_group = ui_move_index(ui_wave_group, group_count, step, 0);
+        ui_param_keep_visible(ui_wave_group, &ui_wave_group_top, group_count);
+        ui_set_screen(UI_SCREEN_WIFI_WAVE_GROUP);
+    }
+    else if (events[UI_KEY_DOWN])
+    {
+        ui_wave_group = ui_move_index(ui_wave_group, group_count, step, 1);
+        ui_param_keep_visible(ui_wave_group, &ui_wave_group_top, group_count);
+        ui_set_screen(UI_SCREEN_WIFI_WAVE_GROUP);
+    }
+    else if (events[UI_KEY_OK])
+    {
+        ui_wave_var_index = 0;
+        ui_wave_var_top = 0;
+        ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        ui_set_screen(UI_SCREEN_WIFI);
+    }
+}
+
+static void ui_handle_wifi_wave_select(ui_key_event_t events[UI_KEY_COUNT])
+{
+    const ui_wave_group_t *group = &k_wave_groups[ui_wave_group];
+    uint8_t step = (events[UI_KEY_UP] == UI_EVENT_LONG || events[UI_KEY_DOWN] == UI_EVENT_LONG) ? UI_PARAM_ROWS : 1;
+    if (events[UI_KEY_UP])
+    {
+        ui_wave_var_index = ui_move_index(ui_wave_var_index, group->count, step, 0);
+        ui_param_keep_visible(ui_wave_var_index, &ui_wave_var_top, group->count);
         ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
     }
     else if (events[UI_KEY_DOWN])
     {
-        ui_wave_var_index = (ui_wave_var_index + 1) % WIFI_WAVE_VAR_COUNT;
-        if (ui_wave_var_index < ui_wave_var_top)
-        {
-            ui_wave_var_top = ui_wave_var_index;
-        }
-        else if (ui_wave_var_index >= ui_wave_var_top + UI_PARAM_ROWS)
-        {
-            ui_wave_var_top = ui_wave_var_index - UI_PARAM_ROWS + 1;
-        }
+        ui_wave_var_index = ui_move_index(ui_wave_var_index, group->count, step, 1);
+        ui_param_keep_visible(ui_wave_var_index, &ui_wave_var_top, group->count);
         ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
     }
     else if (events[UI_KEY_OK] == UI_EVENT_LONG)
@@ -1640,12 +1795,12 @@ static void ui_handle_wifi_wave_select(ui_key_event_t events[UI_KEY_COUNT])
     }
     else if (events[UI_KEY_OK] == UI_EVENT_SHORT)
     {
-        wifi_wave_toggle_selected(ui_wave_var_index);
+        wifi_wave_toggle_selected((uint8)ui_wave_id_from_group_index(ui_wave_group, ui_wave_var_index));
         ui_set_screen(UI_SCREEN_WIFI_WAVE_SELECT);
     }
     else if (events[UI_KEY_BACK])
     {
-        ui_set_screen(UI_SCREEN_WIFI);
+        ui_set_screen(UI_SCREEN_WIFI_WAVE_GROUP);
     }
 }
 static void ui_handle_modules(ui_key_event_t events[UI_KEY_COUNT])
@@ -1752,6 +1907,7 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         case UI_SCREEN_PARAM_ADJUST: ui_handle_param_adjust(events); break;
         case UI_SCREEN_PARAM_DIRECT: ui_handle_param_direct(events); break;
         case UI_SCREEN_WIFI:        ui_handle_wifi(events); break;
+        case UI_SCREEN_WIFI_WAVE_GROUP: ui_handle_wifi_wave_group(events); break;
         case UI_SCREEN_WIFI_WAVE_SELECT: ui_handle_wifi_wave_select(events); break;
         case UI_SCREEN_MODULES:     ui_handle_modules(events); break;
         case UI_SCREEN_SYSTEM:      ui_handle_system(events); break;
@@ -1792,6 +1948,9 @@ static void ui_render(void)
             break;
         case UI_SCREEN_WIFI:
             ui_draw_wifi();
+            break;
+        case UI_SCREEN_WIFI_WAVE_GROUP:
+            ui_draw_wifi_wave_group();
             break;
         case UI_SCREEN_WIFI_WAVE_SELECT:
             ui_draw_wifi_wave_select();

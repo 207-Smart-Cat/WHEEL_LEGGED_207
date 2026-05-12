@@ -65,13 +65,20 @@ int main(void)
 
     while(true)
     {
+        static uint8_t ipc_coreb_update_div = 0;
+
         screen_display_process();
         wifi_process_loop();
         wifi_report_task();
         wifi_health_check_task();
         wifi_auto_reconnect_task();
-        IPC_Update_Wifi_Status_From_CoreB(wifi_control_is_ready());
-        IPC_Flush_Log_To_CoreB();
+        ipc_coreb_update_div++;
+        if (ipc_coreb_update_div >= 10)
+        {
+            ipc_coreb_update_div = 0;
+            IPC_Update_Wifi_Status_From_CoreB(wifi_control_is_ready());
+            IPC_Flush_Log_To_CoreB();
+        }
         VOFA_UART_Process();
 
         system_delay_ms(1);

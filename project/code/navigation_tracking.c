@@ -502,8 +502,15 @@ void task_navigation_control(void) {
              
              //action.c接管动作                        @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
              
-             
              navi_switch_nexttargetpoint();
+             
+             // 声明一个静态变量，它的值在多次中断调用间会保持不变
+              static uint8_t end_printed_flag = 0; 
+              
+              // 如果当前是第0个点（说明是刚开机或刚重新加载地图），重置打印标志位
+              if (curr_idx == 0) {
+                  end_printed_flag = 0; 
+              }
              
                // ==========================================================
                // 【调试代码 】: 到达航点并切换的事件触发打印
@@ -518,9 +525,18 @@ void task_navigation_control(void) {
                                point_map[curr_idx+1].action_cmd);
                    
                } else {
-                   IPC_LOG_Printf("=============  >>> [事件] 终点已到达，导航结束！ =============\r\n");
+                  // 只有当标志位为 0 时，才执行最后这句打印
+                  if (end_printed_flag == 0) {
+                      IPC_LOG_Printf("=============  >>> [事件] 终点已到达，导航结束！ =============\r\n");
+                      
+                      // 打印完毕后置 1，这样后续千万次中断进来，都不会再打印了
+                      end_printed_flag = 1; 
+                      
+                      // 可选：如果希望到达终点后彻底关闭导航计算，可以取消下面这行的注释
+                       navi_ctrl.navi_mode_driver = 0; 
+                  }
 
-               }
+               } 
 
            }  
 //           else if (curr_idx < navi_ctrl.point_total_count - 1) {

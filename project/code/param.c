@@ -55,7 +55,7 @@ const float Nav_r_w_normal_init = 0.002f, Nav_r_w_slip_init = 0.002f;
 const float Nav_r_gyro_init = 0.01f;
 
 // 导航控制参数初始值：默认只计算定位，不接管速度/转向
-const float Navi_Mode_Driver_init = 0.0f;
+const float Navi_Mode_Driver_init = 1.0f;
 const float Navi_Mode_Map_init = 0.0f;
 const float Navi_Trigger_Record_init = 0.0f;
 const float Navi_Print_Pose_En_init = 1.0f;

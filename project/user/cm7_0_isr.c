@@ -93,11 +93,15 @@ void pit0_ch14_isr() // ÌøÔ¾¶¯×÷×´Ì¬»ú 1ms
     pit_isr_flag_clear(PIT_CH14);
 }
 
-void pit0_ch15_isr() // Navigation EKF positioning, 3ms
+void pit0_ch15_isr() // Navigation EKF positioning, 10ms
 {
     static uint8_t nav_origin_ready = 0;
 
+#if NAV_HAND_PUSH_TEST_MODE
+    if (!IMU_ready)
+#else
     if (!IMU_ready || !(g_runtime_status.module_enable_mask & RUNTIME_MODULE_BIT(RUNTIME_MODULE_NAVIGATION)))
+#endif
     {
         nav_origin_ready = 0;
         pit_isr_flag_clear(PIT_CH15);
@@ -109,11 +113,7 @@ void pit0_ch15_isr() // Navigation EKF positioning, 3ms
         Navi_Data_Set_Origin();
         nav_origin_ready = 1;
     }
-
     navi_ekf_update();
-    navi_ctrl.navi_mode_driver = (uint8_t)vofa_mode_driver;
-    navi_ctrl.navi_mode_map = (uint8_t)vofa_mode_map;
-    task_navigation_control();
     pit_isr_flag_clear(PIT_CH15);
 }
 

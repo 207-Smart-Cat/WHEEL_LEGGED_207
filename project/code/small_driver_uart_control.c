@@ -2,7 +2,7 @@
 #include "ipc_shared_data.h"
 #include "param.h"
 #include "runtime_status.h"
-#define MOTOR_STARTUP_DUTY_STEP      (120)
+#define MOTOR_STARTUP_DUTY_STEP      (1)
 #define MOTOR_DUTY_MAX_ABS           (MAX_DUTY * (PWM_DUTY_MAX / 100))
 #define MOTOR_ZERO_WAIT_MIN_MS       (4000U)
 #define MOTOR_ZERO_WAIT_TIMEOUT_MS   (8000U)
@@ -47,6 +47,19 @@ static int16 motor_duty_abs_limit(int16 target, int16 limit_abs)
     return target;
 }
 
+static uint8 small_driver_try_write_packet(const uint8 *buffer, uint32 length)
+{
+    volatile stc_SCB_t *uart_base = get_scb_module(SMALL_DRIVER_UART);
+    uint32 free_count = Cy_SCB_GetFifoSize(uart_base) - Cy_SCB_UART_GetNumInTxFifo(uart_base);
+
+    if (free_count < length)
+    {
+        return 0;
+    }
+
+    Cy_SCB_UART_PutArray(uart_base, (void *)buffer, length);
+    return 1;
+}
 static void motor_safety_reset(uint8 *enabled, int16 *startup_limit)
 {
     *enabled = 0;
@@ -179,7 +192,7 @@ void uart_control_callback(void)
 {
     uint8 receive_data;                                                                     // 定义临时变量
 
-    if(uart_query_byte(SMALL_DRIVER_UART, &receive_data))                                   // 接收串口数据
+    while(uart_query_byte(SMALL_DRIVER_UART, &receive_data))                                // 清空当前 RX FIFO，避免速度帧积压
     {
         motor_zero_dbg_rx_count++;
         if (small_driver_zero_calibration_is_active())
@@ -300,7 +313,7 @@ void small_driver_set_duty(int16 left_duty, int16 right_duty)
         motor_value.send_data_buffer[6] += motor_value.send_data_buffer[i];         // 计算校验位
     }
 
-    uart_write_buffer(SMALL_DRIVER_UART, motor_value.send_data_buffer, 7);                     // 发送设置占空比的 字节包 数据
+    (void)small_driver_try_write_packet(motor_value.send_data_buffer, 7);                    // 高频电机命令使用非阻塞 FIFO 写入
 }
 
 //-------------------------------------------------------------------------------------------------------------------
