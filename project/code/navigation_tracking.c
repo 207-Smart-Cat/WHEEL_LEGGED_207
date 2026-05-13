@@ -423,6 +423,32 @@ void task_navigation_control(void) {
 
             uint8_t curr_idx = navi_ctrl.point_current_idx;    
             
+            static uint8_t waypoint_hold_active = 0;
+            static uint16_t waypoint_hold_ticks = 0;
+            static uint16_t waypoint_hold_idx = 0;
+
+            if (waypoint_hold_active)
+            {
+                target_velocity = 0.0f;
+                target_angle = IMU_data.filter_result.yaw;
+
+                if (waypoint_hold_ticks < NAVI_WAYPOINT_HOLD_MS)
+                {
+                    waypoint_hold_ticks += (uint16_t)(ENCODER_DT * 1000.0f);
+                    break;
+                }
+
+                waypoint_hold_active = 0;
+                waypoint_hold_ticks = 0;
+                if (waypoint_hold_idx >= total_points - 1)
+                {
+                    navi_ctrl.navi_mode_driver = 0;
+                    break;
+                }
+
+                navi_switch_nexttargetpoint();
+                break;
+            }
             if (total_points == 0) {
               /* NAV observe-only mode: do not write target_velocity here. */
 //              IPC_LOG_Printf("\r\n>>>地图坐标数目为0，地图为建立<<<\r\n");
@@ -478,11 +504,9 @@ void task_navigation_control(void) {
                 // 导航系偏航角 = -(IMU偏航角 - 初始偏移)  -->  导航系增量 = -IMU增量
                 // 因此，导航系要求转 smooth_turn 度，对底层 IMU 来说就是转 -smooth_turn 度。
                 target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - smooth_turn);
-
-                if (!is_action_busy) {       // 判断是否在动作接管期              
-                  
-                  target_velocity = 300.0f;
-                }
+                /* Driver mode only updates heading here.
+                 * target_velocity stays controlled by remote/WiFi/manual command.
+                 */
             
             }
             
@@ -517,54 +541,36 @@ void task_navigation_control(void) {
             
            // 到达判定：如果进入 10cm 范围内，切换下一点，并执行该点动作
            if (navi_isreach_target_point(curr_idx)) {
-             
-             //action.c接管动作                        @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-             
-             navi_switch_nexttargetpoint();
-             
-             // 声明一个静态变量，它的值在多次中断调用间会保持不变
-              static uint8_t end_printed_flag = 0; 
-              
-              // 如果当前是第0个点（说明是刚开机或刚重新加载地图），重置打印标志位
-              if (curr_idx == 0) {
-                  end_printed_flag = 0; 
-              }
-             
-               // ==========================================================
-               // 【调试代码 】: 到达航点并切换的事件触发打印
-               // ==========================================================
-               uint8_t next_idx = navi_ctrl.point_current_idx;
-               
-               if (next_idx < navi_ctrl.point_total_count && next_idx != curr_idx) {
-                 IPC_LOG_Printf(" [到达航点] 下一个航点坐标为：X=%s%d.%02d, Y=%s%d.%02d  |  航点类型: %s  | 动作指令: %d\r\n", 
-                               F_ARG(point_map[curr_idx+1].x),
-                               F_ARG(point_map[curr_idx+1].y), 
-                               get_enum_name(point_map[curr_idx+1].type),
-                               point_map[curr_idx+1].action_cmd);
-                   
-               } else {
-                  // 只有当标志位为 0 时，才执行最后这句打印
-                  if (end_printed_flag == 0) {
-                      IPC_LOG_Printf("=============  >>> [事件] 终点已到达，导航结束！ =============\r\n");
-                      
-                      // 打印完毕后置 1，这样后续千万次中断进来，都不会再打印了
-                      end_printed_flag = 1; 
-                      
-                      // 可选：如果希望到达终点后彻底关闭导航计算，可以取消下面这行的注释
-                       navi_ctrl.navi_mode_driver = 0; 
-                  }
+             waypoint_hold_active = 1;
+             waypoint_hold_ticks = 0;
+             waypoint_hold_idx = curr_idx;
+             target_velocity = 0.0f;
+             target_angle = IMU_data.filter_result.yaw;
 
-               } 
-
+             if (curr_idx >= total_points - 1) {
+                 IPC_LOG_Printf("[NAVI] Final waypoint reached, hold 3s then stop navigation.\r\n");
+             } else {
+                 IPC_LOG_Printf("[NAVI] Waypoint %d reached, hold 3s then next: X=%s%d.%02d, Y=%s%d.%02d | Type:%s | Action:%d\r\n",
+                                curr_idx,
+                                F_ARG(point_map[curr_idx + 1].x),
+                                F_ARG(point_map[curr_idx + 1].y),
+                                get_enum_name(point_map[curr_idx + 1].type),
+                                point_map[curr_idx + 1].action_cmd);
+             }
+             break;
            }  
-           // 防切角死锁：判断是否离下一个点更近
            else if (curr_idx < navi_ctrl.point_total_count - 1) {              
                 float dist_to_curr = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx].x, point_map[curr_idx].y);
                 float dist_to_next = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx+1].x, point_map[curr_idx+1].y);
                 
                 // 如果离下一个点更近，说明已经越过了当前点所在切面，强制切走！
                 if (dist_to_next < dist_to_curr) {
-                    navi_switch_nexttargetpoint();
+                    waypoint_hold_active = 1;
+                    waypoint_hold_ticks = 0;
+                    waypoint_hold_idx = curr_idx;
+                    target_velocity = 0.0f;
+                    target_angle = IMU_data.filter_result.yaw;
+                    break;
                 }
            }
             

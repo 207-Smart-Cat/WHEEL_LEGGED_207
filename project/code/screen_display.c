@@ -10,10 +10,12 @@
 #include "vofa_protocol.h"
 #include "runtime_status.h"
 #include "vehicle_supervisor.h"
+#include "battery_monitor.h"
 // ** 全局变量区域 **
 uint8 IPS200_flag = 0;      // 屏幕显示flag（PIT中断置位）
 uint8 current_page = 0;     // Monitor 子页面索引 (0/1/2)
 uint8 force_ui_refresh = 1;
+static uint8_t ui_battery_low_active = 0;
 
 // Four-key setup UI. Active low with internal pull-up.
 #define UI_KEY_UP_PIN       P20_3
@@ -1971,12 +1973,51 @@ static void ui_render(void)
 }
 
 // ================= 主控：屏幕刷新与按键检测 ==============
+static uint8_t ui_is_battery_low(void)
+{
+    return (core_a_status.battery_voltage > BATTERY_VALID_MIN_V) &&
+           (core_a_status.battery_voltage < BATTERY_LOW_THRESHOLD_V);
+}
+
+static void ui_draw_battery_low(void)
+{
+    char line[32];
+
+    if (!ui_battery_low_active || force_ui_refresh)
+    {
+        ips200_clear();
+        ips200_draw_line(0, 50, 239, 50, RGB565_YELLOW);
+        ips200_draw_line(0, 260, 239, 260, RGB565_YELLOW);
+    }
+
+    ui_battery_low_active = 1;
+    ips200_set_color(RGB565_YELLOW, RGB565_BLACK);
+    ips200_show_string(56, 108, "BATTERY LOW");
+    sprintf(line, "Voltage: %-5.2fV", core_a_status.battery_voltage);
+    ips200_show_string(46, 142, line);
+    ips200_show_string(24, 178, "UI locked below 11V");
+    ips200_set_color(RGB565_WHITE, RGB565_BLACK);
+}
 void screen_display_process(void)
 {
     if (IPS200_flag)
     {
         ui_key_event_t events[UI_KEY_COUNT];
         IPS200_flag = 0;
+
+        if (ui_is_battery_low())
+        {
+            ui_draw_battery_low();
+            force_ui_refresh = 0;
+            return;
+        }
+
+        if (ui_battery_low_active)
+        {
+            ui_battery_low_active = 0;
+            force_ui_refresh = 1;
+            ips200_clear();
+        }
 
         ui_scan_keys(events);
         if (!ui_handle_emergency_combo())

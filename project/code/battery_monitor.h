@@ -3,16 +3,18 @@
 
 #include "zf_common_headfile.h"
 
-// Change these three values to match the actual battery divider hardware.
-#define BATTERY_ADC_CHANNEL          ADC0_CH00_P06_0
-#define BATTERY_ADC_REF_VOLTAGE      (3.3f)
-#define BATTERY_ADC_DIVIDER_RATIO    (11.0f)   // Example: 100k top, 10k bottom.
+// Seekfree motherboard battery voltage detect circuit.
+#define BATTERY_ADC_CHANNEL          ADC0_CH21_P07_5
+#define BATTERY_ADC_SCALE            (36.3f / 4096.0f)
 #define BATTERY_FILTER_ALPHA         (0.12f)
+#define BATTERY_LOW_THRESHOLD_V      (11.0f)
+#define BATTERY_VALID_MIN_V          (1.0f)
 
 extern float battery_voltage;
 extern uint16 battery_adc_raw;
 
 void battery_monitor_init(void);
 void battery_monitor_update(void);
+bool battery_monitor_is_low(void);
 
 #endif
