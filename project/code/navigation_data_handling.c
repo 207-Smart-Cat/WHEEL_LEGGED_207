@@ -552,7 +552,7 @@ static float Navi_Get_Forward_Mps(void)
 static float Navi_Get_YawRate_Enc(void)
 {
     // 右轮速度在直行时为反号，因此差速角速度使用 left + right。
-    return (filter_data.left_mps + filter_data.right_mps) / WHEEL_DISRANCE;
+    return -(filter_data.left_mps + filter_data.right_mps) / WHEEL_DISRANCE;
 }
 static void Navi_Slip_Detection(void) {
 

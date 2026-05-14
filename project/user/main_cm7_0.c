@@ -46,6 +46,7 @@ extern float temp_a, temp_b;
 // 外部变量引入
 extern RobotState_t robot_pose;
 extern bool IMU_ready;
+extern IMU_t IMU_data;
 extern volatile int jump_stop;
 
 extern uint32_t test_pit10_cnt;
@@ -181,6 +182,7 @@ int main(void)
   {
     static uint8_t battery_update_div = 0;
     static uint8_t ipc_status_push_div = 0;
+    static uint8_t gyro_nav_print_div = 0;
 #if !NAV_HAND_PUSH_TEST_MODE
     static uint8_t navigation_task_div = 0;
 #endif
@@ -217,6 +219,13 @@ int main(void)
     {
         ipc_status_push_div = 0;
         IPC_Push_Status_From_CoreA();
+    }
+
+    gyro_nav_print_div++;
+    if (gyro_nav_print_div >= 20)
+    {
+        gyro_nav_print_div = 0;
+        printf("%.3f,%.3f,%.3f,%.3f,%.3f\n", robot_pose.x, robot_pose.y, robot_pose.yaw, robot_pose.v, robot_pose.w);
     }
 
     // Core0 main-loop debug output disabled for balance timing test.
