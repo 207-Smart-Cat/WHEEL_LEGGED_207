@@ -50,8 +50,8 @@ float vofa_trigger_record = 0.0f;
 //====================================================全局变量定义=======================================================
 float vofa_mode_driver = 0.0f;
 float vofa_mode_map = 0.0f;
-float vofa_print_pose_en = 1.0f;
-float vofa_print_pose_period = 1000.0f; // 默认 1000ms 打印一次
+float vofa_print_pose_en = 0.0f;
+float vofa_print_pose_period = 3000.0f; // 默认 1000ms 打印一次
 float vofa_reserved_1 = 0.0f;
 float vofa_reserved_2 = 0.0f;
 
@@ -274,6 +274,10 @@ void navi_load_comprehensive_test_map(void) {
 
     navi_ctrl.point_total_count = i;
     navi_ctrl.point_current_idx = 0;
+    
+//    //对刚生成的 0.6m 静态地图进行 0.3m 的插值加密！
+//    navi_path_optimize();
+    
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -301,10 +305,10 @@ void navi_wifi_remote_cmd(void) {
             navi_ctrl.origin_set_flag = 0;
             break;
 
-        case 3: // 3: 无视航点，立刻强制执行轮腿跨越/跳跃动作 ,  直接将动作代码丢给 action.c 的状态机
-            action_fsm.state = (ActionState_e)wifi_in_action;
-            is_action_busy = 1; 
-            break;
+//        case 3: // 3: 无视航点，立刻强制执行轮腿跨越/跳跃动作 ,  直接将动作代码丢给 action.c 的状态机
+//            action_fsm.state = (ActionState_e)wifi_in_action;
+//            is_action_busy = 1; 
+//            break;
     }
 
     // 处理完毕，清空摇铃，等待下一次注入
@@ -322,96 +326,75 @@ void navi_wifi_remote_cmd(void) {
 void task_navigation_control(void) {
 
     static uint8_t last_mode_dricer = 0;
-    
     static uint8_t last_mode_map = 255;
     
-    // 监测地图方案切换
-    if (last_mode_map != navi_ctrl.navi_mode_map) {
-        IPC_LOG_Printf(">>> 地图模式切换: %d -> %d <<<\r\n", last_mode_map, navi_ctrl.navi_mode_map);
-        
-        // 核心逻辑：无论切到哪，先重置当前地图状态
-        navi_ctrl.point_total_count = 0;
+       
+    // 检测到模式切换，执行预处理
+    if (last_mode_dricer !=navi_ctrl.navi_mode_driver||last_mode_map != navi_ctrl.navi_mode_map)  {
         navi_ctrl.point_current_idx = 0;
-        navi_ctrl.origin_set_flag = 0;
-        memset(point_map, 0, sizeof(point_map)); // 物理清空
-
-        if (navi_ctrl.navi_mode_map == 0) {
-            // 模式 0：重新加载静态测试地图
-            navi_load_comprehensive_test_map();
-            IPC_LOG_Printf("[SYS] 已加载静态测试地图\r\n");
-        } 
-        else if (navi_ctrl.navi_mode_map == 1) {
-            // 模式 1：进入打点录制准备状态
-            IPC_LOG_Printf("[SYS] 录制模式：坐标系已重置，等待打点...（需手动切换模式driver = 2）\r\n");
-        }
+        Navi_Data_Set_Origin(); 
         
-                 // ==========================================================
-         // 【调试代码】: 打印全地图坐标序列
-         // =========================================================
-        if (navi_ctrl.navi_mode_driver == 1 && navi_ctrl.point_total_count > 0) {
-             IPC_LOG_Printf("====== 导航路线已就绪 (共 %d 个点) ======\r\n", navi_ctrl.point_total_count);
-             for(int i = 0; i < navi_ctrl.point_total_count; i++) {
-                IPC_LOG_Printf("航点[%02d]: X=%s%d.%2d, Y=%s%d.%2d, 类型=%s\r\n", 
-                          i,
-                          F_ARG(point_map[i].x), 
-                          F_ARG(point_map[i].y), 
-                          get_enum_name(point_map[i].type));
-             }
-             
-             IPC_LOG_Printf("=============================================\r\n");
+       //=============================导航切换==============================
+       if (navi_ctrl.navi_mode_driver == 0) {           //停止模式(0)，更新完状态直接退出，
+              last_mode_dricer = navi_ctrl.navi_mode_driver;
+              return; 
         }
-        last_mode_map = navi_ctrl.navi_mode_map;
-    }
-          
-   // 检测到模式切换，执行预处理
+              
+       if(navi_ctrl.navi_mode_driver== 1) {    //循迹模式（1）
+            navi_parse_global_path();       //路径动作预解析 
 
-    if (last_mode_dricer !=navi_ctrl.navi_mode_driver)  {
-      
-        // 如果当前是停止模式(0)，更新完状态直接退出，不打印任何东西
-        if (navi_ctrl.navi_mode_driver == 0) {
-            last_mode_dricer = navi_ctrl.navi_mode_driver;
-            last_mode_map = navi_ctrl.navi_mode_map;
-            return; 
-        }
+            if (navi_ctrl.navi_mode_map != 0) {   //线性插值
+                navi_path_optimize();       
+                IPC_LOG_Printf(" [路径预处理] 动态地图已开启线性插值加密\r\n");
+            } else {
+                IPC_LOG_Printf(" [路径预处理] 静态地图模式，跳过线性插值\r\n");
+            }
             
-       if(navi_ctrl.navi_mode_driver== 1 && navi_ctrl.navi_mode_map == 1) {    //循迹且打点
-         
-          Navi_Data_Set_Origin();             // 将当前物理位置重置为 (0,0)，并锁定当前车头为新0度
-          
-          navi_ctrl.point_current_idx = 0;    // 目标航点从头(第0个点)开始
-          
-          navi_parse_global_path();       //全局路径特殊动作点预解析 
-              
-//          navi_path_optimize();          // 路径坐标加密
-          
-          IPC_LOG_Printf("\r\n>>> [模式切换] 位姿已重新归零！将以当前位置复刻路线形状！ <<<\r\n");
-          
-        // ==========================================================
-        // 【调试代码】: 打印全地图坐标序列
-        // =========================================================
-        if (navi_ctrl.point_total_count > 0) {
-             IPC_LOG_Printf("====== 导航路线已就绪 (共 %d 个点) ======\r\n", navi_ctrl.point_total_count);
-             for(int i = 0; i < navi_ctrl.point_total_count; i++) {
-                IPC_LOG_Printf("航点[%02d]: X=%s%d.%02d, Y=%s%d.%02d, 类型=%s\r\n", 
-                          i,
-                          F_ARG(point_map[i].x), 
-                          F_ARG(point_map[i].y), 
-                          get_enum_name(point_map[i].type));
-             }
-             
-             IPC_LOG_Printf("=============================================\r\n");
-        }
-              
         }  
         last_mode_dricer = navi_ctrl.navi_mode_driver;
        
+       
+       //==============================地图切换===========================
+        if (last_mode_map != navi_ctrl.navi_mode_map) {
+              IPC_LOG_Printf(">>> 地图模式切换: %d -> %d <<<\r\n", last_mode_map, navi_ctrl.navi_mode_map);
+              
+              // 核心逻辑：无论切到哪，先重置当前地图状态
+              navi_ctrl.point_total_count = 0;
+              navi_ctrl.origin_set_flag = 0;
+              memset(point_map, 0, sizeof(point_map)); // 物理清空
+
+              if (navi_ctrl.navi_mode_map == 0) {           // 模式 0：静态地图
+                  navi_load_comprehensive_test_map();    
+                  IPC_LOG_Printf("[SYS] 已加载静态测试地图\r\n");
+              } 
+              else if (navi_ctrl.navi_mode_map == 1) {    // 模式 1：打点地图
+                  IPC_LOG_Printf("[SYS] 录制模式：坐标系已重置，等待打点...（需手动切换模式driver = 2）\r\n");
+              } 
+         }
+         last_mode_map = navi_ctrl.navi_mode_map;
+        
+       
+           // ==========================================================
+           // 打印地图坐标序列
+           // =========================================================
+          if (navi_ctrl.point_total_count > 0) {
+               IPC_LOG_Printf("====== 导航地图完成，共 %d 个航点 ======\r\n", navi_ctrl.point_total_count);
+               for(int i = 0; i < navi_ctrl.point_total_count; i++) {
+                  IPC_LOG_Printf("航点[%02d]: X=%s%d.%2d, Y=%s%d.%2d, 类型=%s\r\n", 
+                            i,
+                            F_ARG(point_map[i].x), 
+                            F_ARG(point_map[i].y), 
+                            get_enum_name(point_map[i].type));
+               }
+               IPC_LOG_Printf("=============================================\r\n");
+           }         
     }
     
     
     switch(navi_ctrl.navi_mode_driver)
     {
         case 0:   {            //停止
-                Navigation_Pose_Monitor_Task((int32_t)vofa_print_pose_period);     //打印位姿
+                Navigation_Pose_Monitor_Task();     //打印位姿
                 break;  
         }  
         
@@ -420,171 +403,122 @@ void task_navigation_control(void) {
          
                                                                     
             uint8_t total_points = navi_ctrl.point_total_count;
-
             uint8_t curr_idx = navi_ctrl.point_current_idx;    
+            if (total_points == 0)     break; 
+
+//            //动态前瞻搜索 ---计算当前速度自适应的前瞻距离  0.2f 是速度增益系数
+//
+//            float dynamic_lookahead = BASE_LOOKAHEAD_DIST + (RPM_TO_M_COEFF(fabsf(now_velocity)) * LOOKAHEAD_VEL_GAIN);
+//            dynamic_lookahead = fmaxf(BASE_LOOKAHEAD_DIST, fminf(1.0f, dynamic_lookahead));             // 限幅防止前瞻过远或过近：下限卡在 BASE_LOOKAHEAD_DIST，上限卡在 1.0f
+//
+//            //寻找最近的一个前瞻点
+//            uint8_t lookahead_idx= total_points - 1;
+//            for (uint8_t i = curr_idx; i < total_points; i++) {
+//              
+//                float dist = navi_get_two_points_distance( robot_pose.x  ,robot_pose.y  ,  point_map[i].x, point_map[i].y);
+//                
+//                if (dist >= dynamic_lookahead) {
+//                
+//                    lookahead_idx = i;
+//                    
+//                    break; // 找到足够远的前瞻点
+//                }
+//            }
             
-            static uint8_t waypoint_hold_active = 0;
-            static uint16_t waypoint_hold_ticks = 0;
-            static uint16_t waypoint_hold_idx = 0;
-
-            if (waypoint_hold_active)
-            {
-                target_velocity = 0.0f;
-                target_angle = IMU_data.filter_result.yaw;
-
-                if (waypoint_hold_ticks < NAVI_WAYPOINT_HOLD_MS)
-                {
-                    waypoint_hold_ticks += (uint16_t)(ENCODER_DT * 1000.0f);
-                    break;
-                }
-
-                waypoint_hold_active = 0;
-                waypoint_hold_ticks = 0;
-                if (waypoint_hold_idx >= total_points - 1)
-                {
-                    navi_ctrl.navi_mode_driver = 0;
-                    break;
-                }
-
-                navi_switch_nexttargetpoint();
-                break;
-            }
-            if (total_points == 0) {
-              /* NAV observe-only mode: do not write target_velocity here. */
-//              IPC_LOG_Printf("\r\n>>>地图坐标数目为0，地图为建立<<<\r\n");
-              break; 
-          }
-
-            // --- 1. 动态前瞻搜索 ---计算当前速度自适应的前瞻距离  0.2f 是速度增益系数
-
-            float dynamic_lookahead = BASE_LOOKAHEAD_DIST + (RPM_TO_M_COEFF(fabsf(now_velocity)) * LOOKAHEAD_VEL_GAIN);
-
-          // 限幅防止前瞻过远或过近：下限卡在 BASE_LOOKAHEAD_DIST，上限卡在 1.0f
-            dynamic_lookahead = fmaxf(BASE_LOOKAHEAD_DIST, fminf(1.0f, dynamic_lookahead));
-
-            
-            //寻找最近的一个前瞻点
-            uint8_t lookahead_idx= total_points - 1;
-            for (uint8_t i = curr_idx; i < total_points; i++) {
-              
-                float dist = navi_get_two_points_distance( robot_pose.x  ,robot_pose.y  ,  point_map[i].x, point_map[i].y);
-                
-                if (dist >= dynamic_lookahead) {
-                
-                    lookahead_idx = i;
-                    
-                    break; // 找到足够远的前瞻点
-                
-                }
-
-            }
-
-
-            double azimuth = 0.0, distance = 0.0;
-            
-            float print_turn_angle = 0.0f; // 新增：专门用于打印的转向角
+            uint8_t lookahead_idx = curr_idx;
 
             //计算到前瞻点的方位和距离
-
+            double azimuth = 0.0, distance = 0.0;
+            float print_turn_angle = 0.0f; //专门用于打印的转向角
+            float smooth_turn=  0.0f  ;
             if (navi_calcnavinfo(lookahead_idx, &azimuth, &distance)) {
 
                 float need_to_turn = navi_limit_angle180((float)azimuth - robot_pose.yaw);
-            
                 float k = (distance < 0.5f) ? 0.0f : 0.0f; 
-                
-                float smooth_turn = (1.0f - k) * need_to_turn;
-                
+                smooth_turn= (1.0f - k) * need_to_turn;
                 print_turn_angle = smooth_turn; // 保存下来用于下面的打印
                 
-                // 观察模式：只计算需要转向角和距离，不接管小车目标角度/目标速度。
-                // 如果之后要让导航真正接管，再把这里改为写 target_angle / target_velocity。
+                // 计算赋给底层的 target_angle！    推导过程：导航系偏航角 = -(IMU偏航角 - 初始偏移)  -->  导航系增量 = -IMU增量。
+                // 
                 
-                                // 【核心坐标系转换】计算赋给底层的 target_angle！
-                // 推导过程：
-                // 导航系偏航角 = -(IMU偏航角 - 初始偏移)  -->  导航系增量 = -IMU增量
-                // 因此，导航系要求转 smooth_turn 度，对底层 IMU 来说就是转 -smooth_turn 度。
-                target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - smooth_turn);
-                /* Driver mode only updates heading here.
-                 * target_velocity stays controlled by remote/WiFi/manual command.
-                 */
-            
             }
             
-            // 打印导航信息
+            
+            Navi_Action_Manager(navi_ctrl.point_current_idx);  //动作接管识别               
+            if (!is_action_busy) {  
+                  target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - smooth_turn);               //无动作，无接管时
+                  #if (USE_HOST_TARGET_VELOCITY == 0)
+                        target_velocity = DEFAULT_TRACKING_VELOCITY;
+                  #endif
+              }
+            
+ // 打印导航信息            
+#if WEIZHIJIANCE           
             if (vofa_print_pose_en > 0.5f) {
-                static int8_t dynamic_print_delay = 0;
-                // 需要的进入次数
-                int8_t target_delay_ticks = (int8_t)(vofa_print_pose_period / (ENCODER_DT * 1000));
-                if (target_delay_ticks == 0) target_delay_ticks = 5; // 防止除0或周期太小导致异常
+                // 1. 改用 uint16_t，防止超过 127 时发生数据溢出
+                static uint16_t dynamic_print_delay = 0;
+                
+                // 2. 获取并限制最小打印周期 (例如最小 500ms)，防止频率过高卡死通信
+                float current_period = vofa_print_pose_period;
+                if (current_period < 500.0f) {
+                    current_period = 500.0f; 
+                }
+
+                // 3. 正确的进入次数计算：周期(ms) / 中断时长(ms)
+                // 例如: 3000ms / 10ms = 300 次中断
+                uint16_t target_delay_ticks = (uint16_t)(current_period / ENCODER_DT);
+                
+                if (target_delay_ticks == 0) target_delay_ticks = 50; // 防止除0的终极兜底
                 
                 if (++dynamic_print_delay >= target_delay_ticks) {
                     dynamic_print_delay = 0;
 
-#if WEIZHIJIANCE
-          // 更新打印信息，加入累计角度和圈数
-          IPC_LOG_Printf("[位姿监测] 车姿(%s%d.%02d, %s%d.%02d) | Yaw=%s%d.%02d | "
-                         "累计角度:%s%d.%02d | 圈数:%s%d.%02d | "
-                         "去往前瞻点(%s%d.%02d, %s%d.%02d) 类型:%s | "
-                         "距目标:%s%d.%02d | 需转向:%s%d.%02d度\r\n",
-                F_ARG(robot_pose.x), F_ARG(robot_pose.y), F_ARG(robot_pose.yaw), 
-                F_ARG((float)robot_pose.cumulative_yaw), // 累计角度
-                F_ARG(robot_pose.turns),                 // 累计圈数
-                F_ARG(point_map[lookahead_idx].x), F_ARG(point_map[lookahead_idx].y), 
-                get_enum_name(point_map[lookahead_idx].type),
-                F_ARG((float)distance), F_ARG(print_turn_angle));
-#endif
-
+                    // 更新打印信息，加入累计角度和圈数
+                    IPC_LOG_Printf("[位姿监测] 车姿(%s%d.%02d, %s%d.%02d) | Yaw=%s%d.%02d | "
+                                 "累计角度:%s%d.%02d | 圈数:%s%d.%02d | "
+                                 "去往前瞻点(%s%d.%02d, %s%d.%02d) 类型:%s | "
+                                 "距目标:%s%d.%02d | 需转向:%s%d.%02d度\r\n",
+                        F_ARG(robot_pose.x), F_ARG(robot_pose.y), F_ARG(robot_pose.yaw), 
+                        F_ARG((float)robot_pose.cumulative_yaw), // 累计角度
+                        F_ARG(robot_pose.turns),                 // 累计圈数
+                        F_ARG(point_map[lookahead_idx].x), F_ARG(point_map[lookahead_idx].y), 
+                        get_enum_name(point_map[lookahead_idx].type),
+                        F_ARG((float)distance), F_ARG(print_turn_angle));
                 }
-
             }
+#endif     
             
-            
-           // 到达判定：如果进入 10cm 范围内，切换下一点，并执行该点动作
+           
+           // 到达判定：如果进入 DISTANCE_THRESHOLD  cm  范围内，切换下一点
            if (navi_isreach_target_point(curr_idx)) {
-             waypoint_hold_active = 1;
-             waypoint_hold_ticks = 0;
-             waypoint_hold_idx = curr_idx;
-             target_velocity = 0.0f;
-             target_angle = IMU_data.filter_result.yaw;
-
-             if (curr_idx >= total_points - 1) {
-                 IPC_LOG_Printf("[NAVI] Final waypoint reached, hold 3s then stop navigation.\r\n");
-             } else {
-                 IPC_LOG_Printf("[NAVI] Waypoint %d reached, hold 3s then next: X=%s%d.%02d, Y=%s%d.%02d | Type:%s | Action:%d\r\n",
-                                curr_idx,
-                                F_ARG(point_map[curr_idx + 1].x),
-                                F_ARG(point_map[curr_idx + 1].y),
-                                get_enum_name(point_map[curr_idx + 1].type),
-                                point_map[curr_idx + 1].action_cmd);
-             }
-             break;
-           }  
-           else if (curr_idx < navi_ctrl.point_total_count - 1) {              
-                float dist_to_curr = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx].x, point_map[curr_idx].y);
-                float dist_to_next = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx+1].x, point_map[curr_idx+1].y);
-                
-                // 如果离下一个点更近，说明已经越过了当前点所在切面，强制切走！
-                if (dist_to_next < dist_to_curr) {
-                    waypoint_hold_active = 1;
-                    waypoint_hold_ticks = 0;
-                    waypoint_hold_idx = curr_idx;
-                    target_velocity = 0.0f;
-                    target_angle = IMU_data.filter_result.yaw;
-                    break;
-                }
-           }
-            
-            //“到达终点”后,最大速度导航回到初始位置（或者初始位置的横向轴就行）                  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-            if (navi_ctrl.point_current_idx >= navi_ctrl.point_total_count - 1) {
-
-                if (navi_isreach_target_point(navi_ctrl.point_current_idx)) {
-                  
-                  //回到起始点或者起始轴线就行
-
-                }
-
-            } 
-                               
+                   IPC_LOG_Printf("\r\n============= >>> [到达事件] 已精准到达航点 [%d] <<< =============\r\n", curr_idx);                
+                   if (navi_switch_nexttargetpoint()) {
+                      uint8_t next_idx = navi_ctrl.point_current_idx;
+                      IPC_LOG_Printf(" [到达航点] 下一个航点坐标为：X=%s%d.%02d, Y=%s%d.%02d  |  航点类型: %s  | 动作指令: %d\r\n", 
+                               F_ARG(point_map[next_idx].x),
+                               F_ARG(point_map[next_idx].y), 
+                               get_enum_name(point_map[next_idx].type),
+                               point_map[next_idx].action_cmd);
+                   } else {
+                      static uint8_t end_printed_flag = 0;      
+                  // 只有当标志位为 0 时，才执行最后这句打印
+                      if (end_printed_flag == 0) {
+                          IPC_LOG_Printf("=============  >>> [事件] 路线终点已到达，导航圆满结束！ =============\r\n");                  
+                          end_printed_flag = 1;                  // 打印完毕后置 1，这样后续千万次中断进来，都不会再打印了
+                      }   
+                   }
+           }    
+//           // 防切角死锁：判断是否离下一个点更近
+//           else if (curr_idx < navi_ctrl.point_total_count - 1) {              
+//                float dist_to_curr = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx].x, point_map[curr_idx].y);
+//                float dist_to_next = navi_get_two_points_distance(robot_pose.x, robot_pose.y, point_map[curr_idx+1].x, point_map[curr_idx+1].y);
+//                
+//                // 如果离下一个点更近，说明已经越过了当前点所在切面，强制切走！          避免动作接管期发生强制切点
+//                if (dist_to_next < dist_to_curr && !is_action_busy) {
+//                    navi_switch_nexttargetpoint();
+//                    IPC_LOG_Printf(" [防死锁切角] 强制越过切面，切换至航点: %d\r\n", navi_ctrl.point_current_idx);
+//                }
+//           }                 
           break;
         }
 
@@ -609,12 +543,12 @@ void task_navigation_control(void) {
               
             }    
               
-            if(navi_ctrl.navi_mode_map == 2) {
-              
-                 navi_wifi_remote_cmd();                                                     //WiFi动态传地图
-              
-//                IPC_LOG_Printf("\r\n正在进行wifi远程画图\r\n");
-            }
+//            if(navi_ctrl.navi_mode_map == 2) {
+//              
+//                 navi_wifi_remote_cmd();                                                     //WiFi动态传地图
+//              
+////                IPC_LOG_Printf("\r\n正在进行wifi远程画图\r\n");
+//            }
           break;
           } 
         
@@ -790,7 +724,7 @@ uint8 navi_isreach_target_point(uint16 target_idx) {
 
     double distance_sq = dx*dx + dy*dy;
     
-    float current_threshold = DISTANCE_THRESHOLD; // 默认 0.2m
+    float current_threshold = DISTANCE_THRESHOLD; // 判定范围
     
     switch (point_map[target_idx].type) {
         case WP_TYPE_CONE_CONE:   // 绕锥桶：要求更精准，缩小阈值
@@ -800,7 +734,7 @@ uint8 navi_isreach_target_point(uint16 target_idx) {
             current_threshold *= 1.0f; 
             break;
         case WP_TYPE_STOP:        // 停车点：要求极高精度
-            current_threshold *= 0.5f; 
+            current_threshold *= 1.0f; 
             break;
         default:
             current_threshold *= 0.5f;
@@ -815,27 +749,31 @@ uint8 navi_isreach_target_point(uint16 target_idx) {
 
 /**
  * @brief  导航关闭时的位姿监测打印任务
- * @param  delta_ms: 距离上次调用的时间(毫秒)，用于非阻塞计时
+ * @param  delta_ms：多长时间打印一次
  */
-void Navigation_Pose_Monitor_Task(uint32_t delta_ms)
+void Navigation_Pose_Monitor_Task(void)
 {
-    static uint32_t print_timer = 0;
+    static uint16_t print_timer = 0;  // 【修改1】改为 uint16_t 防止溢出 (例如3000ms需要300次中断)
 
-    // 1. 判断循迹模式是否关闭 (vofa_mode_driver < 0.5 视为关闭)
-    if (vofa_mode_driver >= 0.5f) {
-        // 循迹开启时，为了保证控制实时性，不进行高频文本打印
+    // 1. 判断是否需要跳过打印：
+    // 当 循迹模式开启(>=0.5) 或者 打印未使能(<0.5) 时，不打印并退出
+    if (vofa_mode_driver >= 0.5f || vofa_print_pose_en < 0.5f) { 
         print_timer = 0; 
         return; 
     }
 
-    // 2. 检查上位机是否使能了打印
-    if (vofa_print_pose_en < 0.5f) {
-        return; 
+    // 2. 获取设定的打印周期，并限制最小值为 500ms
+    float current_period = vofa_print_pose_period;
+    if (current_period < 500.0f) {
+        current_period = 500.0f;
     }
 
-    // 3. 非阻塞延时控制打印频率
-    print_timer += delta_ms;
-    if (print_timer >= (uint32_t)vofa_print_pose_period) 
+    // 3. 计算需要多少次中断才能触发打印 (ENCODER_DT = 10ms)
+    // 例如：1000ms / 10ms = 100 次中断
+    uint16_t target_ticks = (uint16_t)(current_period / ENCODER_DT);
+
+    // 4. 非阻塞延时控制打印频率
+    if (++print_timer >= target_ticks)
     {
         print_timer = 0; // 重置计时器
 

@@ -1,6 +1,8 @@
 #include "navigation_action.h"
 #include "navigation_data_handling.h"
 #include "control.h"
+#include "ipc_shared_data.h"
+
 
 // ==================== 实例化状态机变量 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -33,7 +35,7 @@ void navi_parse_global_path(void) {
     action_seq.current_ptr = 0;
 
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
-        if (point_map[i].type != WP_TYPE_NORMAL && point_map[i].type != WP_TYPE_HOME) {
+        if (point_map[i].type != WP_TYPE_HOME) {
             action_seq.list[action_seq.total_count].wp_index = i;
             action_seq.list[action_seq.total_count].type = point_map[i].type;
             action_seq.total_count++;
@@ -89,7 +91,31 @@ switch (action_fsm.state) {
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
             }
+            else if (upcoming_type == WP_TYPE_NORMAL && navi_isreach_target_point(target_idx)) {
+                action_fsm.state = FSM_NORMAL_STOP;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;  // 接管控制权
+                
+                // 动作系统抢先打印到达信息
+                IPC_LOG_Printf("\r\n============= >>> [到达事件] 已精准到达航点 [%d]，开始静止 3 秒测试 <<< =============\r\n", target_idx);
+            }
             break;
+            
+        // 【规范修改 2】：标准化普通点停留动作 (未来你的蜂鸣器、云台测试都可以加在这里)
+        case FSM_NORMAL_STOP:
+            target_velocity = 0;       // 强制切断速度，保持停车
+            
+            // --> [预留测试区]：你可以在这里加入如 BEEP_ON(); 等测试代码 <--
+            
+            if (action_fsm.state_timer_ms > 3000) {  // 停滞 3 秒
+                action_fsm.state = FSM_IDLE;
+                is_action_busy = 0;       
+                
+                IPC_LOG_Printf(" [动作完成] 3秒等待结束，控制权已交还底层，继续循迹。\r\n");
+                // 交还控制权后，主循环 task_navigation_control 会识别到 !is_action_busy 从而自动调用 navi_switch_nexttargetpoint() 进行无缝切点。--
+            }
+            break;
+            
 
         // ------------------ 跳跃动作 ------------------
         case FSM_JUMP_PREPARE:
@@ -138,7 +164,7 @@ switch (action_fsm.state) {
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
                 jump_position = 0;     // 重新开启转向控制
-                navi_switch_nexttargetpoint();
+                
             }
             break;
 
@@ -159,7 +185,7 @@ switch (action_fsm.state) {
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
                 Bridge_position = 1;   // 关闭自适应
-                navi_switch_nexttargetpoint();
+                
             }
             break;
 
@@ -178,7 +204,7 @@ switch (action_fsm.state) {
             if (action_fsm.state_timer_ms > 2000) { // 模拟排雷停留2秒
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
-                navi_switch_nexttargetpoint();
+                
             }
             break;
 
@@ -198,7 +224,7 @@ switch (action_fsm.state) {
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
                 y_current = 0.08f;
-                navi_switch_nexttargetpoint();
+                
             }
             break;
 
@@ -219,19 +245,20 @@ switch (action_fsm.state) {
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
                 y_current = 0.08f;
-                navi_switch_nexttargetpoint();
+                
             }
             break;
 
         // ------------------ 终点停车 ------------------
-        case FSM_STOP_PARKING:
-            target_velocity = 0;
-            y_current = LEG_MIN;       // 降低重心防急刹翻车
-            if (fabsf(now_velocity) < 15.0f && action_fsm.state_timer_ms > 1000) {
-                jump_stop = 1;         // 底层触发：PidChange(&motor_speed, 0, 0, 0)
-                // 停止在这个状态，不再切回 IDLE，除非外部复位
+        case FSM_STOP_PARKING:      // 彻底关闭导航计算，防止回荡
+            navi_ctrl.navi_mode_driver = 0; 
+            target_velocity = 0.0f;
+            
+            static uint8_t stop_printed = 0;
+            if (!stop_printed) {
+            IPC_LOG_Printf("=============  >>> [事件] 终点已到达，动作接管并安全停车！ =============\r\n");                  
+            stop_printed = 1;
             }
-            // 终点死循环，不再退出
             break;
 
         default:
@@ -247,22 +274,32 @@ void Navi_Action_Manager(uint8_t curr_idx) {
     if (action_seq.total_count == 0) return; 
 
     uint8_t target_wp_idx = action_seq.list[action_seq.current_ptr].wp_index;
-    int index_diff = target_wp_idx - curr_idx;
-    if (index_diff < 0) index_diff += navi_ctrl.point_total_count;                   
-
-    if (index_diff == 0 || index_diff > (navi_ctrl.point_total_count - 10)) {
-        action_seq.current_ptr++;
-        if (action_seq.current_ptr >= action_seq.total_count) action_seq.current_ptr = 0; 
+    
+    if (is_action_busy) {
+        double real_distance = 0.0;
+        double dummy_azimuth = 0.0;
+        // 注意：计算的距离必须是离“动作目标点(target_wp_idx)”的距离，而不是主循环当前点
+        navi_calcnavinfo(target_wp_idx, &dummy_azimuth, &real_distance);
+        navi_action_fsm_update(target_wp_idx, real_distance);
         return; 
     }
-
-    if (index_diff > 0 && index_diff < 20) {
+    
+     // 如果主循迹因为某些无动作的普通点切走了，我们必须把剧本指针也往后追平
+    if (curr_idx > target_wp_idx) {
+        action_seq.current_ptr++;
+        if (action_seq.current_ptr >= action_seq.total_count) {
+            action_seq.current_ptr = 0; // 重置或卡在最大值
+        }
+        return; 
+    }
+    
+// 空闲且正好轮到这个点，开启动作预警检测
+    if (curr_idx == target_wp_idx) {
         double real_distance = 0.0;
         double dummy_azimuth = 0.0;
         navi_calcnavinfo(target_wp_idx, &dummy_azimuth, &real_distance);
         navi_action_fsm_update(target_wp_idx, real_distance);
-    } 
-    else {                                                                    
+    } else {                                                                    
         action_fsm.state = FSM_IDLE;
         is_action_busy = 0;
     }

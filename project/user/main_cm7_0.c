@@ -1,5 +1,7 @@
 #include "app_headfile.h"
 
+volatile bool system_fully_ready = false;
+
 // **************************** 核间通信区域 ****************************
 // 在 CM7_0 和 CM7_1 中都需要加入这段代码
 
@@ -46,7 +48,6 @@ extern float temp_a, temp_b;
 // 外部变量引入
 extern RobotState_t robot_pose;
 extern bool IMU_ready;
-extern IMU_t IMU_data;
 extern volatile int jump_stop;
 
 extern uint32_t test_pit10_cnt;
@@ -164,25 +165,18 @@ int main(void)
     interrupt_global_enable(0);
 //
     system_delay_ms(1000); // 额外等待1秒，确保卡尔曼完全静止收敛
-//
-//    // === 3. 重置导航原点 (0,0) ===
-//    Navi_Data_Set_Origin();
-//
-//    // === 4. 切断电机动力，开启纯推车模式 ===
-
-
-
 
   interrupt_global_enable(0); // 在初始化后使能中断
 
   system_delay_ms(1000);
+  
+  system_fully_ready = true; // 1秒等完后，再放行导航！
 
 
   while (true)
   {
     static uint8_t battery_update_div = 0;
     static uint8_t ipc_status_push_div = 0;
-    static uint8_t gyro_nav_print_div = 0;
 #if !NAV_HAND_PUSH_TEST_MODE
     static uint8_t navigation_task_div = 0;
 #endif
@@ -204,7 +198,6 @@ int main(void)
         {
             navi_ctrl.navi_mode_driver = (uint8_t)vofa_mode_driver;
             navi_ctrl.navi_mode_map = (uint8_t)vofa_mode_map;
-            task_navigation_control();
         }
     }
 #endif
@@ -219,13 +212,6 @@ int main(void)
     {
         ipc_status_push_div = 0;
         IPC_Push_Status_From_CoreA();
-    }
-
-    gyro_nav_print_div++;
-    if (gyro_nav_print_div >= 20)
-    {
-        gyro_nav_print_div = 0;
-        printf("%.3f,%.3f,%.3f,%.3f,%.3f\n", robot_pose.x, robot_pose.y, robot_pose.yaw, robot_pose.v, robot_pose.w);
     }
 
     // Core0 main-loop debug output disabled for balance timing test.

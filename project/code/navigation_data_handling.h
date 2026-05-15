@@ -63,9 +63,9 @@
 
 // =========================车模数据 ==========================
 
-#define WHEEL_DIAMETER   0.046F             //车轮直径
+#define WHEEL_DIAMETER   0.045F             //车轮直径
 
-#define WHEEL_DISRANCE   0.200f              //两轮轴距    
+#define WHEEL_DISRANCE   0.190f              //两轮轴距    
 
 
 //=========================运行参数===========================
@@ -145,11 +145,11 @@ typedef struct {
 
     float  v;               // 线速度 (m/s)
 
-    float  w;               // 角速度 (°/s)
+    float  w;               // 角速度 (rad /s)
     
     float  bias_ax;         //加速度零偏
 
-    float  bias_w;          // 陀螺仪Z轴零偏
+    float  bias_w;          // 陀螺仪Z轴零偏 (rad/s)
 
     uint8_t slip_level;     // 打滑状态 (0:正常, 1:轻微, 2:严重)
 

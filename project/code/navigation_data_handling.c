@@ -181,12 +181,10 @@ void navi_parse_data(void) {
     
     raw_data.roll  = -IMU_data.filter_result.pitch; // 轴映射+极性翻转：队友pitch映射为导航roll，且右倾为正oll;
 
-    // 角速度也需要对应翻转，确保 EKF 预测模型一致
-    raw_data.unbiased_gyro[0] = -IMU_data.gyro[1];  // 对应 pitch 角速度
-    
-    raw_data.unbiased_gyro[1] = -IMU_data.gyro[0];  // 对应 roll 角速度
-    
-    raw_data.unbiased_gyro[2] = -IMU_data.gyro[2];  // 对应 yaw 角速度
+    // 角速度也需要对应翻转，确保 EKF 预测模型一致  角速度全部转为 弧度/s
+    raw_data.unbiased_gyro[0] = ANGLE_TO_RAD(-IMU_data.gyro[1]);  
+    raw_data.unbiased_gyro[1] = ANGLE_TO_RAD(-IMU_data.gyro[0]);  
+    raw_data.unbiased_gyro[2] = ANGLE_TO_RAD(-IMU_data.gyro[2]);
     
     // 加速度计轴向映射 (假设加速度轴与陀螺仪轴一致)
     raw_data.accel[0] = -IMU_data.accel[1]; // 映射到车体前进方向 (X)
@@ -631,7 +629,7 @@ uint8_t navi_airborne_detection(void) {
     const float FREEFALL_MAX = 0.4f;   // 腾空判定上限：<0.4g 视为失重状态 (真实自由落体为0)
     const float FREEFALL_MIN = -0.4f;  // 腾空判定下限：允许一定传感器过冲
     
-    const float GYRO_SHOCK_MAX = 350.0f; // 1. 双判断上限：撞击地面瞬间角速度通常>500度/s，腾空飞行时相对平稳
+    const float GYRO_SHOCK_MAX = 6.1f; // 1. 双判断上限：撞击地面瞬间角速度通常>500度/s，腾空飞行时相对平稳
     
     const float LANDING_GRAVITY_MIN = 0.8f; // 落地判定：需恢复至接近 1g 正常重力
     const float LANDING_GRAVITY_MAX = 1.2f;

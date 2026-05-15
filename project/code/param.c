@@ -41,7 +41,7 @@ const float Target_Velocity_init = 0.0f, Target_Angle_init = 0.0f, Target_Motor_
 
 const float Leg_Kp_init = 0.0f,    Leg_Ki_init = 0.0f,    Leg_Kd_init = 0.0f;
 const float X_Current_init = 0.0f, Y_Current_init = 0.04f;
-const float Leg_X_Gain_init = 1.6f, Leg_X_Limit_init = 0.018f, Leg_X_Min_Step_init = 0.0008f, Leg_X_Step_Limit_init = 0.0012f;
+const float Leg_X_Gain_init = 5.0f, Leg_X_Limit_init = 0.020f, Leg_X_Min_Step_init = 0.0008f, Leg_X_Step_Limit_init = 0.0012f;
 const float Jump_Burst_Pwm_init = 1200.0f, Jump_Burst_Ms_init = 130.0f, Jump_Air_Retract_Y_init = 0.03f, Jump_Buffer_Y_init = 0.05f, Jump_Landing_Max_Ms_init = 600.0f;
 
 const float Air_roll_p_init = 3.0f, Air_roll_i_init = 0.03f, Air_roll_d_init = 0.0015f;
@@ -59,7 +59,7 @@ const float Navi_Mode_Driver_init = 0.0f;
 const float Navi_Mode_Map_init = 0.0f;
 const float Navi_Trigger_Record_init = 0.0f;
 const float Navi_Print_Pose_En_init = 0.0f;
-const float Navi_Print_Pose_Period_init = 1000.0f;
+const float Navi_Print_Pose_Period_init = 3000.0f;
 const float Navi_Wifi_Cmd_init = 0.0f;
 const float Navi_Wifi_Remote_Type_init = 0.0f;
 const float Navi_Wifi_In_Action_init = 0.0f;

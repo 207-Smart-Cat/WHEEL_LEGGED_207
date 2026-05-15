@@ -39,7 +39,7 @@
 
 #define NAVI_POINT_MAX   500                  //最大记录航点数
 
-#define DISTANCE_THRESHOLD   0.05f            //到达判定值
+#define DISTANCE_THRESHOLD   0.10f            //到达判定值
 
 #define INTERPOLATION_STEP  1.0f              //插值步长
 
@@ -51,7 +51,15 @@
 
 #define WEIZHIJIANCE   1
 
-#define NAVI_WAYPOINT_HOLD_MS 3000U
+
+
+// ============================================
+// 宏控制：循迹速度选择
+// 0: 使用默认循迹速度 DEFAULT_TRACKING_VELOCITY
+// 1: 使用上位机 (VOFA+) 下发的 target_velocity 
+// ============================================
+#define USE_HOST_TARGET_VELOCITY 0   
+#define DEFAULT_TRACKING_VELOCITY 150.0f
 
 
 //=================================================定义  结构体================================================
@@ -173,7 +181,7 @@ float navi_get_two_points_azimuth(float x1, float y1, float x2, float y2);
 
 void navi_wifi_remote_cmd(void) ;
 
-void Navigation_Pose_Monitor_Task(uint32_t delta_ms);                           //导航关闭时的位姿监测打印任务
+void Navigation_Pose_Monitor_Task(void);                           //导航关闭时的位姿监测打印任务
 
 // 将航点类型枚举转换为对应的中文字符串
 const char* get_enum_name(WayPoint_Type type);

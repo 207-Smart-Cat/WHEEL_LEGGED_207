@@ -5,6 +5,7 @@
 extern uint8 IPS200_flag;
 extern uint8 Motor_Control_flag;
 extern bool IMU_ready;
+extern volatile bool system_fully_ready;
 int cnt;
 
 volatile uint32_t test_pit10_cnt = 0;
@@ -98,9 +99,9 @@ void pit0_ch15_isr() // Navigation EKF positioning, 10ms
     static uint8_t nav_origin_ready = 0;
 
 #if NAV_HAND_PUSH_TEST_MODE
-    if (!IMU_ready)
+    if (!system_fully_ready|| !IMU_ready)
 #else
-    if (!IMU_ready || !(g_runtime_status.module_enable_mask & RUNTIME_MODULE_BIT(RUNTIME_MODULE_NAVIGATION)))
+    if (!system_fully_ready || !IMU_ready || !(g_runtime_status.module_enable_mask & RUNTIME_MODULE_BIT(RUNTIME_MODULE_NAVIGATION)))
 #endif
     {
         nav_origin_ready = 0;
@@ -114,6 +115,7 @@ void pit0_ch15_isr() // Navigation EKF positioning, 10ms
         nav_origin_ready = 1;
     }
     navi_ekf_update();
+    task_navigation_control();
     pit_isr_flag_clear(PIT_CH15);
 }
 

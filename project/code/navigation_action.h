@@ -8,11 +8,13 @@
 // ========================== 宏定义 ==========================
 #define MAX_ACTION_NUM  50    // 假设赛道上最多有 50 个特殊动作点
 
-#define TIMER_ACTION_PIR  0.01f       //中断周期
+#define TIMER_ACTION_PIR  10       //中断周期     10ms
 
 // ========================== 动作状态机枚举 ==========================
 typedef enum {
     FSM_IDLE = 0,             // 闲置/正常巡航
+    
+    FSM_NORMAL_STOP,  // 增加: 普通点停留 3 秒
     
 // --- 跳跃动作状态链 ---   
     FSM_JUMP_PREPARE,         // 准备期：压低重心，蓄力加速
@@ -68,5 +70,6 @@ extern uint8_t is_action_busy;
 
 void navi_parse_global_path(void);
 void navi_action_manager(uint8_t curr_idx);
+void Navi_Action_Manager(uint8_t curr_idx) ;
 
 #endif // NAVIGATION_ACTION_H_
