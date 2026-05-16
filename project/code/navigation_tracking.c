@@ -86,7 +86,10 @@ extern float now_velocity;       //当前速度(线速度)
 //====================================================函数声明=============================================
 
 static void navi_speed_profile_reset(void);
-static float navi_update_tracking_velocity(float distance, uint8_t reached, uint8_t nav_valid);
+static float navi_get_reach_threshold(uint16_t target_idx);
+static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_distance, uint16_t *speed_target_idx);
+static float navi_calc_turn_speed_limit(float turn_error_deg);
+static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid);
 
 
 
@@ -99,8 +102,75 @@ static void navi_speed_profile_reset(void)
     PidInit(&navi_speed_pid);
     navi_speed_last_output = 0.0f;
 }
+static float navi_get_reach_threshold(uint16_t target_idx)
+{
+    if (target_idx >= NAVI_POINT_MAX || !point_map[target_idx].valid)
+    {
+        return DISTANCE_THRESHOLD;
+    }
 
-static float navi_update_tracking_velocity(float distance, uint8_t reached, uint8_t nav_valid)
+    switch (point_map[target_idx].type)
+    {
+        case WP_TYPE_MINE_SWEEP:
+            return 0.05f;
+        case WP_TYPE_NORMAL:
+        case WP_TYPE_STOP:
+        case WP_TYPE_HOME:
+        default:
+            return DISTANCE_THRESHOLD;
+    }
+}
+
+static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_distance, uint16_t *speed_target_idx)
+{
+    float path_distance = current_distance;
+    uint16_t idx;
+
+    if (speed_target_idx != NULL)
+    {
+        *speed_target_idx = curr_idx;
+    }
+
+    if (curr_idx >= navi_ctrl.point_total_count)
+    {
+        return current_distance;
+    }
+
+    idx = curr_idx;
+    while (idx < (navi_ctrl.point_total_count - 1U) &&
+           (point_map[idx].type == WP_TYPE_NORMAL || point_map[idx].type == WP_TYPE_HOME))
+    {
+        double dx = point_map[idx + 1U].x - point_map[idx].x;
+        double dy = point_map[idx + 1U].y - point_map[idx].y;
+        path_distance += (float)sqrt(dx * dx + dy * dy);
+        idx++;
+    }
+
+    if (speed_target_idx != NULL)
+    {
+        *speed_target_idx = idx;
+    }
+
+    return path_distance;
+}
+
+static float navi_calc_turn_speed_limit(float turn_error_deg)
+{
+    float abs_turn = fabsf(turn_error_deg);
+
+    if (abs_turn <= 20.0f)
+    {
+        return 300.0f;
+    }
+    if (abs_turn >= 90.0f)
+    {
+        return 100.0f;
+    }
+
+    return 300.0f - (abs_turn - 20.0f) * (200.0f / 70.0f);
+}
+
+static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid)
 {
     uint8_t use_default_params = (navi_speed_kp == 0.0f && navi_speed_ki == 0.0f && navi_speed_kd == 0.0f &&
                                   navi_speed_max == 0.0f && navi_speed_max_step == 0.0f);
@@ -121,7 +191,7 @@ static float navi_update_tracking_velocity(float distance, uint8_t reached, uint
         navi_speed_profile_reset();
         return 0.0f;
     }
-    if (distance <= DISTANCE_THRESHOLD) {
+    if (distance <= stop_threshold) {
         navi_speed_profile_reset();
         return 0.0f;
     }
@@ -552,7 +622,13 @@ void task_navigation_control(void) {
             if (!is_action_busy) {
                 target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - smooth_turn);
 #if (USE_HOST_TARGET_VELOCITY == 0)
-                target_velocity = navi_update_tracking_velocity((float)distance, reached_current, nav_info_valid);
+                uint16_t speed_target_idx = curr_idx;
+                float speed_plan_distance = navi_calc_speed_plan_distance(curr_idx, (float)distance, &speed_target_idx);
+                float speed_stop_threshold = navi_get_reach_threshold(speed_target_idx);
+                uint8_t reached_speed_target = navi_isreach_target_point(speed_target_idx);
+                float speed_cmd = navi_update_tracking_velocity(speed_plan_distance, speed_stop_threshold, reached_speed_target, nav_info_valid);
+                float turn_speed_limit = navi_calc_turn_speed_limit(print_turn_angle);
+                target_velocity = (speed_cmd < turn_speed_limit) ? speed_cmd : turn_speed_limit;
 #endif
             } else {
                 navi_speed_profile_reset();
@@ -789,19 +865,7 @@ uint8 navi_isreach_target_point(uint16 target_idx) {
 
     double distance_sq = dx*dx + dy*dy;
     
-    float current_threshold = DISTANCE_THRESHOLD; // 判定范围
-    
-    switch (point_map[target_idx].type) {
-        case WP_TYPE_MINE_SWEEP:
-            current_threshold = 0.05f;
-            break;
-        case WP_TYPE_NORMAL:
-        case WP_TYPE_STOP:
-        case WP_TYPE_HOME:
-        default:
-            current_threshold = DISTANCE_THRESHOLD;
-            break;
-    }
+    float current_threshold = navi_get_reach_threshold(target_idx); // 判定范围
 
     return (distance_sq <= (current_threshold * current_threshold)) ? 1 : 0;
 

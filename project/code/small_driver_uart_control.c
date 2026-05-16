@@ -103,6 +103,13 @@ static void small_driver_stop_send(void)
     uart_write_buffer(SMALL_DRIVER_UART, stop_send_cmd, sizeof(stop_send_cmd) - 1);
 }
 
+static void small_driver_send_set_zero(void)
+{
+    uint8 set_zero_cmd[] = "SET-ZERO\n";
+
+    uart_write_buffer(SMALL_DRIVER_UART, set_zero_cmd, sizeof(set_zero_cmd) - 1);
+}
+
 uint8 small_driver_zero_calibration_is_active(void)
 {
     return (motor_zero_state == MOTOR_ZERO_STATE_WAIT_REPLY || motor_zero_state == MOTOR_ZERO_STATE_SETTLE) ? 1 : 0;
@@ -115,8 +122,6 @@ motor_zero_state_t small_driver_zero_calibration_state(void)
 
 void small_driver_zero_calibration_start(void)
 {
-    uint8 set_zero_cmd[7];
-
     motor_zero_dbg_start_count++;
 
     if (small_driver_zero_calibration_is_active())
@@ -134,14 +139,7 @@ void small_driver_zero_calibration_start(void)
     small_driver_send_zero_duty_direct();
     small_driver_stop_send();
 
-    set_zero_cmd[0] = 0xA5;
-    set_zero_cmd[1] = 0x03;
-    set_zero_cmd[2] = 0x00;
-    set_zero_cmd[3] = 0x00;
-    set_zero_cmd[4] = 0x00;
-    set_zero_cmd[5] = 0x00;
-    set_zero_cmd[6] = set_zero_cmd[0] + set_zero_cmd[1] + set_zero_cmd[2] + set_zero_cmd[3] + set_zero_cmd[4] + set_zero_cmd[5];
-    uart_write_buffer(SMALL_DRIVER_UART, set_zero_cmd, 7);
+    small_driver_send_set_zero();
     motor_zero_dbg_tx_count++;
 }
 

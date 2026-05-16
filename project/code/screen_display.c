@@ -238,9 +238,9 @@ static const uint16_t UI_TEXT_T_MODULE_REMOTE[] = {0x9065, 0x63A7, 0x63A5, 0x7BA
 static const uint16_t UI_TEXT_T_MODULE_NAV[] = {0x5BFC, 0x822A, 0x63A7, 0x5236, 0x0000};
 static const uint16_t UI_TEXT_T_MODULE_DEBUG[] = {0x8C03, 0x8BD5, 0x8F93, 0x51FA, 0x0000};
 static const uint16_t UI_TEXT_T_SOFT_ONLY[] = {0x4EC5, 0x9884, 0x7559, 0x8F6F, 0x5F00, 0x5173, 0x0000};
-static const uint16_t UI_TEXT_T_SYS_SAVE[] = {0x4FDD, 0x5B58, 0x53C2, 0x6570, 0x0000};
-static const uint16_t UI_TEXT_T_SYS_LOAD[] = {0x8BFB, 0x53D6, 0x53C2, 0x6570, 0x0000};
-static const uint16_t UI_TEXT_T_SYS_DEFAULT[] = {0x6062, 0x590D, 0x9ED8, 0x8BA4, 0x0000};
+static const uint16_t UI_TEXT_T_SYS_SAVE[] = {0x4FDD, 0x5B58, 0x0046, 0x006C, 0x0061, 0x0073, 0x0068, 0x0000};
+static const uint16_t UI_TEXT_T_SYS_LOAD[] = {0x8BFB, 0x53D6, 0x0046, 0x006C, 0x0061, 0x0073, 0x0068, 0x0000};
+static const uint16_t UI_TEXT_T_SYS_DEFAULT[] = {0x8BFB, 0x53D6, 0x9ED8, 0x8BA4, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_WIFI_RESTART[] = {0x0057, 0x0069, 0x0046, 0x0069, 0x91CD, 0x542F, 0x9884, 0x7559, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_MOTOR_ZERO[] = {0x004D, 0x006F, 0x0074, 0x006F, 0x0072, 0x0020, 0x005A, 0x0065, 0x0072, 0x006F, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_ABOUT[] = {0x5173, 0x4E8E, 0x0000};
@@ -755,9 +755,9 @@ static const char *const k_module_names[] = {
 };
 
 static const char *const k_system_items[] = {
-    "Save Params Flash",
-    "Load Params Flash",
-    "Restore Defaults",
+    "Save Flash Params",
+    "Load Flash Params",
+    "Load Param Defaults",
     "WiFi Restart TODO",
     "Motor Set Zero",
     "About"
@@ -1487,7 +1487,7 @@ static void ui_draw_confirm(void)
     const char *name = "None";
     if (ui_confirm_action == UI_ACTION_SAVE_FLASH) name = "Save Flash";
     else if (ui_confirm_action == UI_ACTION_LOAD_FLASH) name = "Load Flash";
-    else if (ui_confirm_action == UI_ACTION_DEFAULT_PARAMS) name = "Restore Defaults";
+    else if (ui_confirm_action == UI_ACTION_DEFAULT_PARAMS) name = "Load Param Init";
 
     ui_draw_title_text(UI_TEXT_T_TITLE_CONFIRM);
     ui_show_text(8, 70, UI_TEXT_T_ACTION);

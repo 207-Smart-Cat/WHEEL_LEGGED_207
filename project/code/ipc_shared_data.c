@@ -433,6 +433,15 @@ void IPC_Load_Params_From_Flash(void) {
         LOG_Printf(" [NavCtl] Type: %s%d.%04d, Action: %s%d.%04d\r\n",
                F_S(core_b_cmd.params[P_NAVI_WIFI_TYPE]), F_I(core_b_cmd.params[P_NAVI_WIFI_TYPE]), F_D(core_b_cmd.params[P_NAVI_WIFI_TYPE]),
                F_S(core_b_cmd.params[P_NAVI_WIFI_ACTION]), F_I(core_b_cmd.params[P_NAVI_WIFI_ACTION]), F_D(core_b_cmd.params[P_NAVI_WIFI_ACTION]));
+
+        LOG_Printf(" [NavSpd] Kp: %s%d.%04d, Ki: %s%d.%04d, Kd: %s%d.%04d\r\n",
+               F_S(core_b_cmd.params[P_NAVI_SPEED_KP]), F_I(core_b_cmd.params[P_NAVI_SPEED_KP]), F_D(core_b_cmd.params[P_NAVI_SPEED_KP]),
+               F_S(core_b_cmd.params[P_NAVI_SPEED_KI]), F_I(core_b_cmd.params[P_NAVI_SPEED_KI]), F_D(core_b_cmd.params[P_NAVI_SPEED_KI]),
+               F_S(core_b_cmd.params[P_NAVI_SPEED_KD]), F_I(core_b_cmd.params[P_NAVI_SPEED_KD]), F_D(core_b_cmd.params[P_NAVI_SPEED_KD]));
+
+        LOG_Printf(" [NavSpd] Max: %s%d.%04d, Step: %s%d.%04d\r\n",
+               F_S(core_b_cmd.params[P_NAVI_SPEED_MAX]), F_I(core_b_cmd.params[P_NAVI_SPEED_MAX]), F_D(core_b_cmd.params[P_NAVI_SPEED_MAX]),
+               F_S(core_b_cmd.params[P_NAVI_SPEED_MAX_STEP]), F_I(core_b_cmd.params[P_NAVI_SPEED_MAX_STEP]), F_D(core_b_cmd.params[P_NAVI_SPEED_MAX_STEP]));
         LOG_Printf(" [ Mag ]  off_x: %s%d.%04d, off_y: %s%d.%04d\r\n",
                F_S(core_b_cmd.params[P_MAG_OFFSET_X]), F_I(core_b_cmd.params[P_MAG_OFFSET_X]), F_D(core_b_cmd.params[P_MAG_OFFSET_X]),
                F_S(core_b_cmd.params[P_MAG_OFFSET_Y]), F_I(core_b_cmd.params[P_MAG_OFFSET_Y]), F_D(core_b_cmd.params[P_MAG_OFFSET_Y]));

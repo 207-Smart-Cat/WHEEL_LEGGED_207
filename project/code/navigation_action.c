@@ -14,7 +14,7 @@ extern float target_velocity;
 extern float target_angle;
 
 #define MINE_ROTATE_TARGET_DEG      1080.0f
-#define MINE_ROTATE_LEAD_DEG        35.0f
+#define MINE_ROTATE_LEAD_DEG        70.0f
 #define MINE_ROTATE_TIMEOUT_MS      15000U
 #define MINE_ROTATE_CCW_CMD         2U
 
