@@ -55,11 +55,11 @@
 
 // ============================================
 // 宏控制：循迹速度选择
-// 0: 使用默认循迹速度 DEFAULT_TRACKING_VELOCITY
+// 0: 使用导航距离 PID 生成 target_velocity
 // 1: 使用上位机 (VOFA+) 下发的 target_velocity 
 // ============================================
 #define USE_HOST_TARGET_VELOCITY 0   
-#define DEFAULT_TRACKING_VELOCITY 150.0f
+#define DEFAULT_TRACKING_VELOCITY 150.0f   // Legacy fallback, current tracking uses Navi_Speed_* PID
 
 
 //=================================================定义  结构体================================================

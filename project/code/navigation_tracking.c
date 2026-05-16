@@ -79,9 +79,62 @@ extern float now_velocity;       //当前速度(线速度)
 
 //====================================================函数声明=============================================
 
+static void navi_speed_profile_reset(void);
+static float navi_update_tracking_velocity(float distance, uint8_t reached, uint8_t nav_valid);
+
 
 
 //====================================================具体函数编写层=============================================
+
+static pid_param_t navi_speed_pid;
+static float navi_speed_last_output = 0.0f;
+static void navi_speed_profile_reset(void)
+{
+    PidInit(&navi_speed_pid);
+    navi_speed_last_output = 0.0f;
+}
+
+static float navi_update_tracking_velocity(float distance, uint8_t reached, uint8_t nav_valid)
+{
+    uint8_t use_default_params = (navi_speed_kp == 0.0f && navi_speed_ki == 0.0f && navi_speed_kd == 0.0f &&
+                                  navi_speed_max == 0.0f && navi_speed_max_step == 0.0f);
+    float speed_kp = use_default_params ? Navi_Speed_Kp_init : navi_speed_kp;
+    float speed_ki = use_default_params ? Navi_Speed_Ki_init : navi_speed_ki;
+    float speed_kd = use_default_params ? Navi_Speed_Kd_init : navi_speed_kd;
+    float max_velocity = (navi_speed_max > 0.0f) ? navi_speed_max : Navi_Speed_Max_init;
+    float max_step = (navi_speed_max_step > 0.0f) ? navi_speed_max_step : Navi_Speed_MaxStep_init;
+    float error = distance;
+    float raw_output;
+    float delta;
+    if (!nav_valid) {        navi_speed_profile_reset();
+        return 0.0f;
+    }
+    if (reached) {        navi_speed_profile_reset();
+        return 0.0f;
+    }
+    if (distance <= DISTANCE_THRESHOLD) {        navi_speed_profile_reset();
+        return 0.0f;
+    }
+
+    if (error < 0.0f) {
+        error = 0.0f;
+    }
+    if (max_velocity < 0.0f) {
+        max_velocity = 0.0f;    }
+    if (max_step <= 0.0f) {
+        max_step = Navi_Speed_MaxStep_init;    }
+    if (max_velocity <= 0.0f) {        navi_speed_profile_reset();
+        return 0.0f;
+    }
+
+    PidChange(&navi_speed_pid, speed_kp, speed_ki, speed_kd);
+    raw_output = PidLocCtrl(&navi_speed_pid, error);    raw_output = constrain_float(raw_output, 0.0f, max_velocity);
+
+    delta = constrain_float(raw_output - navi_speed_last_output, -max_step, max_step);
+    navi_speed_last_output = constrain_float(navi_speed_last_output + delta, 0.0f, max_velocity);
+
+    return navi_speed_last_output;
+}
 
 //初始化
 void Navi_Tracking_Init(void) {
@@ -261,16 +314,16 @@ void navi_load_comprehensive_test_map(void) {
     // 1. 起点
     point_map[i++] = (Navi_WayPoint_t){0.0,  0.0,   0.0, WP_TYPE_HOME,   0, 1};
     // 2. 直线走两块地砖 (X前进 1.2m)
-    point_map[i++] = (Navi_WayPoint_t){0.6f,  0.0f,   0.0f, WP_TYPE_NORMAL, 0, 1};
-    point_map[i++] = (Navi_WayPoint_t){1.2f,  0.0f,   0.0f, WP_TYPE_NORMAL, 0, 1};
-    // 3. 右转90度 (顺时针Yaw增加)，走一块地砖 (Y增加 0.6m)
-    point_map[i++] = (Navi_WayPoint_t){1.2f,  0.6f,  90.0f, WP_TYPE_NORMAL, 0, 1};
-    // 4. 右转90度，走两块地砖返回 (X减小回 0)
-    point_map[i++] = (Navi_WayPoint_t){0.6f,  0.6f, 180.0f, WP_TYPE_NORMAL, 0, 1};
-    point_map[i++] = (Navi_WayPoint_t){0.0f,  0.6f, 180.0f, WP_TYPE_NORMAL, 0, 1};
+ //   point_map[i++] = (Navi_WayPoint_t){1.8f,  0.0f,   0.0f, WP_TYPE_STOP, 0, 1};
+     point_map[i++] = (Navi_WayPoint_t){1.2f,  0.0f,   0.0f, WP_TYPE_NORMAL, 0, 1};
+     // 3. 右转90度 (顺时针Yaw增加)，走一块地砖 (Y增加 0.6m)
+     point_map[i++] = (Navi_WayPoint_t){1.2f,  0.6f,  90.0f, WP_TYPE_NORMAL, 0, 1};
+     // 4. 右转90度，走两块地砖返回 (X减小回 0)
+     point_map[i++] = (Navi_WayPoint_t){0.0f,  0.6f, 180.0f, WP_TYPE_NORMAL, 0, 1};
+//     point_map[i++] = (Navi_WayPoint_t){0.0f,  0.0f, 180.0f, WP_TYPE_NORMAL, 0, 1};
     
-    // 5. 右转90度，走一块地砖回到起点并停车
-    point_map[i++] = (Navi_WayPoint_t){0.0f,  0.0f, 270.0f, WP_TYPE_STOP,   0, 1};
+     // 5. 右转90度，走一块地砖回到起点并停车
+     point_map[i++] = (Navi_WayPoint_t){0.0f,  0.0f, 270.0f, WP_TYPE_STOP,   0, 1};
 
     navi_ctrl.point_total_count = i;
     navi_ctrl.point_current_idx = 0;
@@ -285,7 +338,6 @@ void navi_load_comprehensive_test_map(void) {
 //   WiFi动态插值
 
 //-------------------------------------------------------------------------------------------------------------------
-
 void navi_wifi_remote_cmd(void) {
   
     uint8_t  cmd_trigger = (uint8_t)  wifi_cmd_trigger;
@@ -333,6 +385,7 @@ void task_navigation_control(void) {
     if (last_mode_dricer !=navi_ctrl.navi_mode_driver||last_mode_map != navi_ctrl.navi_mode_map)  {
         navi_ctrl.point_current_idx = 0;
         Navi_Data_Set_Origin(); 
+        navi_speed_profile_reset();
         
        //=============================导航切换==============================
        if (navi_ctrl.navi_mode_driver == 0) {           //停止模式(0)，更新完状态直接退出，
@@ -394,6 +447,7 @@ void task_navigation_control(void) {
     switch(navi_ctrl.navi_mode_driver)
     {
         case 0:   {            //停止
+                navi_speed_profile_reset();
                 Navigation_Pose_Monitor_Task();     //打印位姿
                 break;  
         }  
@@ -404,7 +458,13 @@ void task_navigation_control(void) {
                                                                     
             uint8_t total_points = navi_ctrl.point_total_count;
             uint8_t curr_idx = navi_ctrl.point_current_idx;    
-            if (total_points == 0)     break; 
+            if (total_points == 0) {
+#if (USE_HOST_TARGET_VELOCITY == 0)
+                target_velocity = 0.0f;
+#endif
+                navi_speed_profile_reset();
+                break;
+            }
 
 //            //动态前瞻搜索 ---计算当前速度自适应的前瞻距离  0.2f 是速度增益系数
 //
@@ -431,7 +491,9 @@ void task_navigation_control(void) {
             double azimuth = 0.0, distance = 0.0;
             float print_turn_angle = 0.0f; //专门用于打印的转向角
             float smooth_turn=  0.0f  ;
-            if (navi_calcnavinfo(lookahead_idx, &azimuth, &distance)) {
+            uint8_t nav_info_valid = navi_calcnavinfo(lookahead_idx, &azimuth, &distance);
+            uint8_t reached_current = 0;
+            if (nav_info_valid) {
 
                 float need_to_turn = navi_limit_angle180((float)azimuth - robot_pose.yaw);
                 float k = (distance < 0.5f) ? 0.0f : 0.0f; 
@@ -442,17 +504,19 @@ void task_navigation_control(void) {
                 // 
                 
             }
+            reached_current = navi_isreach_target_point(curr_idx);
             
             
             Navi_Action_Manager(navi_ctrl.point_current_idx);  //动作接管识别               
             if (!is_action_busy) {  
                   target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - smooth_turn);               //无动作，无接管时
                   #if (USE_HOST_TARGET_VELOCITY == 0)
-                        target_velocity = DEFAULT_TRACKING_VELOCITY;
+                        target_velocity = navi_update_tracking_velocity((float)distance, reached_current, nav_info_valid);
                   #endif
+              } else {
+                  navi_speed_profile_reset();
               }
-            
- // 打印导航信息            
+// 打印导航信息            
 #if WEIZHIJIANCE           
             if (vofa_print_pose_en > 0.5f) {
                 // 1. 改用 uint16_t，防止超过 127 时发生数据溢出
@@ -466,7 +530,7 @@ void task_navigation_control(void) {
 
                 // 3. 正确的进入次数计算：周期(ms) / 中断时长(ms)
                 // 例如: 3000ms / 10ms = 300 次中断
-                uint16_t target_delay_ticks = (uint16_t)(current_period / ENCODER_DT);
+                uint16_t target_delay_ticks = (uint16_t)(current_period / (ENCODER_DT * 1000.0f));
                 
                 if (target_delay_ticks == 0) target_delay_ticks = 50; // 防止除0的终极兜底
                 
@@ -490,7 +554,7 @@ void task_navigation_control(void) {
             
            
            // 到达判定：如果进入 DISTANCE_THRESHOLD  cm  范围内，切换下一点
-           if (navi_isreach_target_point(curr_idx)) {
+           if (reached_current) {
                    IPC_LOG_Printf("\r\n============= >>> [到达事件] 已精准到达航点 [%d] <<< =============\r\n", curr_idx);                
                    if (navi_switch_nexttargetpoint()) {
                       uint8_t next_idx = navi_ctrl.point_current_idx;
@@ -770,7 +834,7 @@ void Navigation_Pose_Monitor_Task(void)
 
     // 3. 计算需要多少次中断才能触发打印 (ENCODER_DT = 10ms)
     // 例如：1000ms / 10ms = 100 次中断
-    uint16_t target_ticks = (uint16_t)(current_period / ENCODER_DT);
+    uint16_t target_ticks = (uint16_t)(current_period / (ENCODER_DT * 1000.0f));
 
     // 4. 非阻塞延时控制打印频率
     if (++print_timer >= target_ticks)
@@ -818,4 +882,5 @@ const char* get_enum_name(WayPoint_Type type) {
 //1.坐标原点重置时间：开机时 IMU 会有几秒钟的收敛期，必须等 IMU 稳定后再将当前位置设置为 (0,0)。
 //
 //2.导航算法必须放在严格定时的 10ms 中断里，并且要放在 balance_control() 之后，因为导航依赖它算出来的 now_velocity（实时线速度）。
+
 

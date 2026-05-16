@@ -78,7 +78,6 @@ void Remote_Init(void)
     s_RemoteData.channel[5] = REMOTE_SAFE_VALUE_CHother;
     Remote_UpdateDebugValues();
     Remote_ResetJumpTrigger();
-    target_angle = 180.0f;
 }
 
 void Remote_Update(void)
@@ -305,7 +304,6 @@ void Remote_control_callback(void)
         {
             remote_drive_active = false;
             target_velocity = 0.0f;
-            target_angle = 180.0f;
         }
         return;
     }
@@ -327,7 +325,6 @@ void Remote_control_callback(void)
             if (!remote_drive_active)
             {
                 remote_drive_active = true;
-                target_angle = 180.0f;
             }
 
             yaw_stick = (Remote_GetChannelData(1) - REMOTE_SAFE_VALUE_CH1) / 332.0f;
@@ -347,7 +344,6 @@ void Remote_control_callback(void)
             {
                 remote_drive_active = false;
                 target_velocity = 0.0f;
-                target_angle = 180.0f;
             }
         }
     }
@@ -361,7 +357,6 @@ void Remote_control_callback(void)
         {
             remote_drive_active = false;
             target_velocity = 0.0f;
-            target_angle = 180.0f;
         }
     }
 }

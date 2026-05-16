@@ -39,6 +39,8 @@ extern float Gyro_p, Gyro_i, Gyro_d;
 extern float Air_roll_p, Air_roll_i, Air_roll_d;
 extern float Direction_p, Direction_i, Direction_d;
 extern float leg_Kp, leg_Ki, leg_Kd;
+extern float navi_speed_kp, navi_speed_ki, navi_speed_kd;
+extern float navi_speed_max, navi_speed_max_step;
 extern float mag_offset_x, mag_offset_y, mag_scale_x, mag_scale_y;
 extern float wifi_cmd_trigger, wifi_remote_type, wifi_in_action;
 extern float vofa_trigger_record, vofa_mode_driver, vofa_mode_map;
@@ -65,6 +67,8 @@ extern const float Nav_r_v_normal_init, Nav_r_v_slip_init, Nav_r_w_normal_init, 
 extern const float Navi_Mode_Driver_init, Navi_Mode_Map_init, Navi_Trigger_Record_init;
 extern const float Navi_Print_Pose_En_init, Navi_Print_Pose_Period_init;
 extern const float Navi_Wifi_Cmd_init, Navi_Wifi_Remote_Type_init, Navi_Wifi_In_Action_init;
+extern const float Navi_Speed_Kp_init, Navi_Speed_Ki_init, Navi_Speed_Kd_init;
+extern const float Navi_Speed_Max_init, Navi_Speed_MaxStep_init;
 extern const float Mag_offset_x_init, Mag_offset_y_init, Mag_scale_x_init, Mag_scale_y_init;
 
 #endif // PARAM_H

@@ -56,3 +56,8 @@ PARAM_ITEM(P_NAVI_PRINT_PERIOD, vofa_print_pose_period, Navi_Print_Pose_Period_i
 PARAM_ITEM(P_NAVI_WIFI_CMD, wifi_cmd_trigger, Navi_Wifi_Cmd_init, "Navi_WifiCmd")
 PARAM_ITEM(P_NAVI_WIFI_TYPE, wifi_remote_type, Navi_Wifi_Remote_Type_init, "Navi_WifiType")
 PARAM_ITEM(P_NAVI_WIFI_ACTION, wifi_in_action, Navi_Wifi_In_Action_init, "Navi_WifiAction")
+PARAM_ITEM(P_NAVI_SPEED_KP, navi_speed_kp, Navi_Speed_Kp_init, "Navi_Speed_Kp")
+PARAM_ITEM(P_NAVI_SPEED_KI, navi_speed_ki, Navi_Speed_Ki_init, "Navi_Speed_Ki")
+PARAM_ITEM(P_NAVI_SPEED_KD, navi_speed_kd, Navi_Speed_Kd_init, "Navi_Speed_Kd")
+PARAM_ITEM(P_NAVI_SPEED_MAX, navi_speed_max, Navi_Speed_Max_init, "Navi_Speed_Max")
+PARAM_ITEM(P_NAVI_SPEED_MAX_STEP, navi_speed_max_step, Navi_Speed_MaxStep_init, "Navi_Speed_MaxStep")

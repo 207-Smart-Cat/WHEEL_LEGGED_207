@@ -57,8 +57,8 @@ switch (action_fsm.state) {
             action_fsm.is_airborne_expect = 0;
             jump_stop = 0;        
             jump_position = 0;    
-            target_motor_Stand = 2.2f; // 恢复机械中值
-            y_current = LEG_NOMINAL;
+            /* Do not overwrite stand angle or leg height while the action FSM is idle.
+             * Those values are owned by normal balance/leg control parameters. */
             
             // 距离判定预警分发
             if (upcoming_type == WP_TYPE_JUMP && distance < 1.0f) {

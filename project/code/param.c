@@ -25,6 +25,8 @@ float Gyro_p  = 0, Gyro_i  = 0, Gyro_d  = 0;
 float Air_roll_p = 0, Air_roll_i = 0, Air_roll_d = 0;
 float Direction_p = 0, Direction_i = 0, Direction_d = 0;
 float leg_Kp = 0, leg_Ki = 0, leg_Kd = 0;
+float navi_speed_kp = 0, navi_speed_ki = 0, navi_speed_kd = 0;
+float navi_speed_max = 0, navi_speed_max_step = 0;
 
 // ========================================================
 // 2. 【新增】系统全量默认初始值字典 (带有 _init 后缀)
@@ -63,6 +65,13 @@ const float Navi_Print_Pose_Period_init = 3000.0f;
 const float Navi_Wifi_Cmd_init = 0.0f;
 const float Navi_Wifi_Remote_Type_init = 0.0f;
 const float Navi_Wifi_In_Action_init = 0.0f;
+
+// 导航循迹速度决策参数：距离 -> 目标速度
+const float Navi_Speed_Kp_init = 220.0f;
+const float Navi_Speed_Ki_init = 0.0f;
+const float Navi_Speed_Kd_init = 20.0f;
+const float Navi_Speed_Max_init = 200.0f;
+const float Navi_Speed_MaxStep_init = 12.0f;
 
 // 磁力计参数初始值
 const float Mag_offset_x_init = 10.0f, Mag_offset_y_init = 0.01f;

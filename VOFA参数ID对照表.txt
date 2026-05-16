@@ -61,3 +61,8 @@ ID  HEX   参数名                  作用
 56  0x38  Navi_WifiCmd            导航 WiFi 动态地图命令入口：0待机，1追加点，2清空地图，3触发动作。
 57  0x39  Navi_WifiType           导航 WiFi 动态航点类型，对应 WayPoint_Type 枚举。
 58  0x3A  Navi_WifiAction         导航 WiFi 动态动作指令，对应动作状态/动作命令。
+59  0x3B  Navi_Speed_Kp           导航普通循迹速度决策 P 项，距离越远目标速度越高。
+60  0x3C  Navi_Speed_Ki           导航普通循迹速度决策 I 项，默认 0，避免近点积分过冲。
+61  0x3D  Navi_Speed_Kd           导航普通循迹速度决策 D 项，抑制距离变化导致的速度突变。
+62  0x3E  Navi_Speed_Max          导航普通循迹目标速度上限。
+63  0x3F  Navi_Speed_MaxStep      导航普通循迹目标速度每 10ms 最大变化量。

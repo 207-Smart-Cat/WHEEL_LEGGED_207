@@ -196,6 +196,11 @@ WAVE 1,4,6
 | 56 | 0x38 | Navi_WifiCmd | 导航 WiFi 动态地图命令入口：0待机，1追加点，2清空地图，3触发动作。 |
 | 57 | 0x39 | Navi_WifiType | 导航 WiFi 动态航点类型，对应 WayPoint_Type 枚举。 |
 | 58 | 0x3A | Navi_WifiAction | 导航 WiFi 动态动作指令，对应动作状态/动作命令。 |
+| 59 | 0x3B | Navi_Speed_Kp | 导航普通循迹速度决策 P 项，距离越远目标速度越高。 |
+| 60 | 0x3C | Navi_Speed_Ki | 导航普通循迹速度决策 I 项，默认 0，避免近点积分过冲。 |
+| 61 | 0x3D | Navi_Speed_Kd | 导航普通循迹速度决策 D 项，抑制距离变化导致的速度突变。 |
+| 62 | 0x3E | Navi_Speed_Max | 导航普通循迹目标速度上限。 |
+| 63 | 0x3F | Navi_Speed_MaxStep | 导航普通循迹目标速度每 10ms 最大变化量。 |
 
 ## 注意事项
 
@@ -203,4 +208,4 @@ WAVE 1,4,6
 - 新增参数后，如果 Flash 里保存的是旧参数表，新参数会使用 param.c 中的默认值。
 - 如果修改了参数但重启后丢失，需要发送 AA C3 88 55 保存到 Flash。
 - AA C5 88 55 可以读取当前 Core0 实际使用的参数，并返回一帧 AA C4 参数包。
-- 当前导航已改成观察模式：Navi_ModeDriver=1 只计算和打印，不写 target_angle / target_velocity。
+- 当前代码中 Navi_ModeDriver=1 会进入循迹模式，并在无动作接管时写入 target_angle / target_velocity。
