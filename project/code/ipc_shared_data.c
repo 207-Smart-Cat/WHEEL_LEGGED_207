@@ -148,11 +148,14 @@ void IPC_Push_Status_From_CoreA(void) {
     SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
 }
 
-// --- Core A -> Core B 日志邮箱：Core0 写入，Core1 主循环转发到现有 LOG_Printf ---
+// --- Core A -> Core B 日志队列：Core0 写入，Core1 主循环转发到现有 LOG_Printf ---
 void IPC_LOG_Printf(const char *format, ...)
 {
     char log_buf[IPC_LOG_TEXT_SIZE];
     uint32 i;
+    uint32 write_seq;
+    uint32 read_seq;
+    uint32 slot;
 
     va_list args;
     va_start(args, format);
@@ -161,9 +164,20 @@ void IPC_LOG_Printf(const char *format, ...)
     log_buf[IPC_LOG_TEXT_SIZE - 1U] = '\0';
 
     __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&ipc_log_box, sizeof(ipc_log_box));
+
+    write_seq = ipc_log_box.write_seq;
+    read_seq = ipc_log_box.read_seq;
+    if ((write_seq - read_seq) >= IPC_LOG_SLOT_COUNT)
+    {
+        ipc_log_box.read_seq = write_seq - IPC_LOG_SLOT_COUNT + 1U;
+        ipc_log_box.dropped_count++;
+    }
+
+    slot = write_seq % IPC_LOG_SLOT_COUNT;
     for (i = 0; i < IPC_LOG_TEXT_SIZE; i++)
     {
-        ipc_log_box.text[i] = log_buf[i];
+        ipc_log_box.text[slot][i] = log_buf[i];
         if (log_buf[i] == '\0')
         {
             break;
@@ -171,38 +185,43 @@ void IPC_LOG_Printf(const char *format, ...)
     }
     if (i >= IPC_LOG_TEXT_SIZE)
     {
-        ipc_log_box.text[IPC_LOG_TEXT_SIZE - 1U] = '\0';
+        ipc_log_box.text[slot][IPC_LOG_TEXT_SIZE - 1U] = '\0';
     }
-    ipc_log_box.pending = 1U;
-    ipc_log_box.seq++;
+
+    ipc_log_box.write_seq = write_seq + 1U;
     SCB_CleanInvalidateDCache_by_Addr(&ipc_log_box, sizeof(ipc_log_box));
     __enable_irq();
 }
 
 void IPC_Flush_Log_To_CoreB(void)
 {
-    static uint32 last_seq = 0U;
     char log_buf[IPC_LOG_TEXT_SIZE];
     uint32 i;
-    uint32 seq;
+    uint32 read_seq;
+    uint32 write_seq;
+    uint32 slot;
 
     SCB_CleanInvalidateDCache_by_Addr(&ipc_log_box, sizeof(ipc_log_box));
-    seq = ipc_log_box.seq;
-    if ((ipc_log_box.pending == 0U) || (seq == last_seq))
+    read_seq = ipc_log_box.read_seq;
+    write_seq = ipc_log_box.write_seq;
+    if (read_seq == write_seq)
     {
         return;
     }
 
+    slot = read_seq % IPC_LOG_SLOT_COUNT;
     for (i = 0; i < IPC_LOG_TEXT_SIZE; i++)
     {
-        log_buf[i] = ipc_log_box.text[i];
+        log_buf[i] = ipc_log_box.text[slot][i];
         if (log_buf[i] == '\0')
         {
             break;
         }
     }
     log_buf[IPC_LOG_TEXT_SIZE - 1U] = '\0';
-    last_seq = seq;
+
+    ipc_log_box.read_seq = read_seq + 1U;
+    SCB_CleanInvalidateDCache_by_Addr(&ipc_log_box, sizeof(ipc_log_box));
 
     LOG_Printf("%s", log_buf);
 }

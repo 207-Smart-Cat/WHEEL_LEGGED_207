@@ -114,7 +114,7 @@ typedef struct {
 
     uint8_t navi_mode_driver;      // 0: 停止, 1: 自动寻迹, 2: 记录模式
     
-    uint8_t navi_mode_map ;       //地图方案：0：静态地图        1. 打点画图          2.WiFi动态目标地图
+    uint8_t navi_mode_map ;       //地图方案：0 静态地图，1 手动打点记录地图，2 清空后台记录地图
 
     float   point_dist_to_target; // 到目标的剩余距离
 

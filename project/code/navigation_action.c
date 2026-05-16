@@ -15,6 +15,7 @@ extern Navi_Controller_t navi_ctrl;
 extern Navi_Sensor_Data_t filter_data;
 
 extern float target_velocity;    
+extern float target_angle;
 extern float now_velocity;
 extern float target_motor_Stand; // 默认中值为 2.2
 extern float x_current, y_current;
@@ -27,12 +28,25 @@ extern int Bridge_position;
 #define LEG_MAX 0.10f
 #define LEG_NOMINAL 0.08f
 
+#define MINE_ROTATE_TARGET_DEG      1080.0f
+#define MINE_ROTATE_LEAD_DEG        35.0f
+#define MINE_ROTATE_TIMEOUT_MS      15000U
+#define MINE_ROTATE_CCW_CMD         2U
+
+static float mine_rotate_start_yaw = 0.0f;
+static int8_t mine_rotate_dir = 1;
+static uint8_t mine_rotate_started = 0;
+
 // ==============================================================================
 // 全局路径预解析,找出特殊点位置 (在录制完成或发车前调用 1 次)
 // ==============================================================================
 void navi_parse_global_path(void) {
     action_seq.total_count = 0;
     action_seq.current_ptr = 0;
+    action_fsm.state = FSM_IDLE;
+    action_fsm.state_timer_ms = 0;
+    action_fsm.is_airborne_expect = 0;
+    is_action_busy = 0;
 
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
         if (point_map[i].type != WP_TYPE_HOME) {
@@ -71,10 +85,12 @@ switch (action_fsm.state) {
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
             }
-            else if (upcoming_type == WP_TYPE_MINE_SWEEP && distance < 0.5f) {
-                action_fsm.state = FSM_MINE_APPROACH;
+            else if (upcoming_type == WP_TYPE_MINE_SWEEP && navi_isreach_target_point(target_idx)) {
+                action_fsm.state = FSM_MINE_PROCESSING;
                 action_fsm.state_timer_ms = 0;
+                mine_rotate_started = 0;
                 is_action_busy = 1;
+                IPC_LOG_Printf("\r\n============= >>> [定点排雷] 已到达旋转点 [%d]，开始旋转动作 <<< =============\r\n", target_idx);
             }
             else if (upcoming_type == WP_TYPE_CONE_CONE && distance < 0.8f) {
                 action_fsm.state = FSM_CONE_APPROACH;
@@ -97,7 +113,7 @@ switch (action_fsm.state) {
                 is_action_busy = 1;  // 接管控制权
                 
                 // 动作系统抢先打印到达信息
-                IPC_LOG_Printf("\r\n============= >>> [到达事件] 已精准到达航点 [%d]，开始静止 3 秒测试 <<< =============\r\n", target_idx);
+                IPC_LOG_Printf("\r\n============= >>> [到达事件] 已精准到达航点 [%d]，开始静止 0.5 秒测试 <<< =============\r\n", target_idx);
             }
             break;
             
@@ -107,11 +123,11 @@ switch (action_fsm.state) {
             
             // --> [预留测试区]：你可以在这里加入如 BEEP_ON(); 等测试代码 <--
             
-            if (action_fsm.state_timer_ms > 3000) {  // 停滞 3 秒
+            if (action_fsm.state_timer_ms > 500) {  // 停滞 0.5 秒
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;       
                 
-                IPC_LOG_Printf(" [动作完成] 3秒等待结束，控制权已交还底层，继续循迹。\r\n");
+                IPC_LOG_Printf(" [动作完成] 0.5秒等待结束，控制权已交还底层，继续循迹。\r\n");
                 // 交还控制权后，主循环 task_navigation_control 会识别到 !is_action_busy 从而自动调用 navi_switch_nexttargetpoint() 进行无缝切点。--
             }
             break;
@@ -189,24 +205,38 @@ switch (action_fsm.state) {
             }
             break;
 
-        // ------------------ 定点排雷动作 ------------------
-        case FSM_MINE_APPROACH:
-            target_velocity = 200;     // 极低速靠近
-            if (distance < 0.05f || action_fsm.state_timer_ms > 2000) {
-                action_fsm.state = FSM_MINE_PROCESSING;
-                action_fsm.state_timer_ms = 0;
-            }
-            break;
+        // ------------------ 定点排雷动作：到点后原地旋转三圈 ------------------
+        case FSM_MINE_PROCESSING: {
+            float rotated_deg;
 
-        case FSM_MINE_PROCESSING:
-            target_velocity = 0;       // 停车
-            // jump_stop = 1;          // 若需要切断PID动力可解开此注释
-            if (action_fsm.state_timer_ms > 2000) { // 模拟排雷停留2秒
+            target_velocity = 0.0f;
+
+            if (!mine_rotate_started) {
+                mine_rotate_started = 1;
+                mine_rotate_start_yaw = (float)robot_pose.cumulative_yaw;
+                mine_rotate_dir = (point_map[target_idx].action_cmd == MINE_ROTATE_CCW_CMD) ? -1 : 1;
+                action_fsm.state_timer_ms = 0;
+                IPC_LOG_Printf(" [定点排雷] 开始%s旋转三圈。\r\n", mine_rotate_dir > 0 ? "顺时针" : "逆时针");
+            }
+
+            target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - mine_rotate_dir * MINE_ROTATE_LEAD_DEG);
+            rotated_deg = ((float)robot_pose.cumulative_yaw - mine_rotate_start_yaw) * mine_rotate_dir;
+
+            if (rotated_deg >= MINE_ROTATE_TARGET_DEG) {
+                mine_rotate_started = 0;
                 action_fsm.state = FSM_IDLE;
                 is_action_busy = 0;
-                
+                target_velocity = 0.0f;
+                IPC_LOG_Printf(" [定点排雷] 三圈旋转完成，继续前往下一个航点。\r\n");
+            } else if (action_fsm.state_timer_ms > MINE_ROTATE_TIMEOUT_MS) {
+                mine_rotate_started = 0;
+                action_fsm.state = FSM_IDLE;
+                is_action_busy = 0;
+                target_velocity = 0.0f;
+                IPC_LOG_Printf(" [定点排雷] 三圈旋转超时退出，已交还导航控制。\r\n");
             }
             break;
+        }
 
         // ------------------ 绕圆锥桶动作 ------------------
         case FSM_CONE_APPROACH:
@@ -271,36 +301,34 @@ switch (action_fsm.state) {
 // 模块 3：运行时动作调度器 (暴露给主循环)
 // ==============================================================================
 void Navi_Action_Manager(uint8_t curr_idx) {
-    if (action_seq.total_count == 0) return; 
+    if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count) {
+        return;
+    }
+
+    while (action_seq.current_ptr < action_seq.total_count &&
+           curr_idx > action_seq.list[action_seq.current_ptr].wp_index) {
+        action_seq.current_ptr++;
+    }
+
+    if (action_seq.current_ptr >= action_seq.total_count) {
+        return;
+    }
 
     uint8_t target_wp_idx = action_seq.list[action_seq.current_ptr].wp_index;
-    
+
     if (is_action_busy) {
         double real_distance = 0.0;
         double dummy_azimuth = 0.0;
-        // 注意：计算的距离必须是离“动作目标点(target_wp_idx)”的距离，而不是主循环当前点
+        // 动作执行期间始终用动作目标点计算距离，避免被主导航当前点干扰。
         navi_calcnavinfo(target_wp_idx, &dummy_azimuth, &real_distance);
         navi_action_fsm_update(target_wp_idx, real_distance);
-        return; 
+        return;
     }
-    
-     // 如果主循迹因为某些无动作的普通点切走了，我们必须把剧本指针也往后追平
-    if (curr_idx > target_wp_idx) {
-        action_seq.current_ptr++;
-        if (action_seq.current_ptr >= action_seq.total_count) {
-            action_seq.current_ptr = 0; // 重置或卡在最大值
-        }
-        return; 
-    }
-    
-// 空闲且正好轮到这个点，开启动作预警检测
+
     if (curr_idx == target_wp_idx) {
         double real_distance = 0.0;
         double dummy_azimuth = 0.0;
         navi_calcnavinfo(target_wp_idx, &dummy_azimuth, &real_distance);
         navi_action_fsm_update(target_wp_idx, real_distance);
-    } else {                                                                    
-        action_fsm.state = FSM_IDLE;
-        is_action_busy = 0;
     }
 }

@@ -13,7 +13,7 @@ __no_init CoreA_Status_t core_a_status;
 #pragma location = IPC_LOG_SHARED_ADDR
 __no_init IpcLogBox_t ipc_log_box;
 
-// 将 Core B 的指令数据放在 0x28001600 (扩大 Core A 共享区，避免日志与参数区重叠)
+// 将 Core B 的指令数据放在 0x28001800 (扩大日志区，避免日志与参数区重叠)
 #pragma location = IPC_CORE_B_SHARED_ADDR
 __no_init CoreB_Command_t core_b_cmd;
 

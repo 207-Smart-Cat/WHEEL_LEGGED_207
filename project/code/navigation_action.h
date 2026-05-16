@@ -14,7 +14,7 @@
 typedef enum {
     FSM_IDLE = 0,             // 闲置/正常巡航
     
-    FSM_NORMAL_STOP,  // 增加: 普通点停留 3 秒
+    FSM_NORMAL_STOP,  // 普通点短暂停留
     
 // --- 跳跃动作状态链 ---   
     FSM_JUMP_PREPARE,         // 准备期：压低重心，蓄力加速
@@ -27,8 +27,7 @@ typedef enum {
     FSM_BRIDGE_ON_BOARD,      // 上桥期：开启腿部独立自适应
     
     // --- 定点排雷动作状态链 ---
-    FSM_MINE_APPROACH,        // 接近期：减速寻点
-    FSM_MINE_PROCESSING,      // 处理期：停车，可扩展机械臂或蜂鸣器动作
+    FSM_MINE_PROCESSING,      // 到点后停车并旋转三圈
     
     // --- 绕圆锥桶状态链 ---
     FSM_CONE_APPROACH,        // 接近期：降速，准备大角度转向

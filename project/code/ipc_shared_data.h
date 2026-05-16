@@ -7,10 +7,11 @@
 #define IPC_PARAM_MAX_COUNT        (63U)
 #define IPC_CORE_A_SHARED_ADDR     (0x28001000UL)
 #define IPC_LOG_SHARED_ADDR        (0x28001400UL)
-#define IPC_CORE_B_SHARED_ADDR     (0x28001600UL)
+#define IPC_CORE_B_SHARED_ADDR     (0x28001800UL)
 #define IPC_CORE_A_SHARED_SIZE     (IPC_LOG_SHARED_ADDR - IPC_CORE_A_SHARED_ADDR)
 #define IPC_LOG_SHARED_SIZE        (IPC_CORE_B_SHARED_ADDR - IPC_LOG_SHARED_ADDR)
-#define IPC_LOG_TEXT_SIZE          (256U)
+#define IPC_LOG_SLOT_COUNT         (6U)
+#define IPC_LOG_TEXT_SIZE          (160U)
 
 // ==========================================================
 // 参数字典枚举
@@ -58,9 +59,10 @@ typedef struct {
 // Core A -> Core B 日志邮箱
 // ==========================================================
 typedef struct {
-    volatile uint32 seq;
-    volatile uint8 pending;
-    char text[IPC_LOG_TEXT_SIZE];
+    volatile uint32 write_seq;
+    volatile uint32 read_seq;
+    volatile uint32 dropped_count;
+    char text[IPC_LOG_SLOT_COUNT][IPC_LOG_TEXT_SIZE];
 } IpcLogBox_t;
 
 typedef char ipc_param_count_must_not_exceed_63[(PARAM_COUNT <= IPC_PARAM_MAX_COUNT) ? 1 : -1];
