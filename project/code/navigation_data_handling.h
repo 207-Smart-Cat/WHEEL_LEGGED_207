@@ -224,6 +224,7 @@ void navi_ekf_update(void) ;                       //¿¨¶ûÂüËã·¨Êı¾İÔ¤²â+¸üĞÂ+ÆäË
 
 //ÍâÖÃº¯Êı
 void Navi_Data_Set_Origin(void); // ¶ÀÁ¢Ô­µãÉèÖÃ API  ÖÃµ±Ç°Î»ÖÃÎª×ø±êÔ­µã (x=0, y=0)
+void Navi_Data_Reset_XY_Keep_Heading(void); // ÇåÁãµ¼º½Î»ÖÃ£¬µ«±£Áôµ±Ç°º½ÏòÁãµã
 
 float navi_limit_angle180(float angle);              //×ª½ÇÏŞ·ùº¯Êı
 uint8_t navi_airborne_detection();                                //ÌÚ¿Õ¼ì²âº¯Êı¡£

@@ -420,7 +420,7 @@ void task_navigation_control(void) {
             }
 #endif
 
-            Navi_Data_Set_Origin();
+            Navi_Data_Reset_XY_Keep_Heading();
             navi_parse_global_path();
             end_printed_flag = 0;
             navi_speed_profile_reset();
@@ -496,8 +496,8 @@ void task_navigation_control(void) {
             break;
 
         case 1: {
-            uint8_t total_points = navi_ctrl.point_total_count;
-            uint8_t curr_idx = navi_ctrl.point_current_idx;
+            uint16_t total_points = navi_ctrl.point_total_count;
+            uint16_t curr_idx = navi_ctrl.point_current_idx;
             if (total_points == 0) {
 #if (USE_HOST_TARGET_VELOCITY == 0)
                 target_velocity = 0.0f;
@@ -506,7 +506,7 @@ void task_navigation_control(void) {
                 break;
             }
 
-            uint8_t lookahead_idx = curr_idx;
+            uint16_t lookahead_idx = curr_idx;
             double azimuth = 0.0, distance = 0.0;
             float print_turn_angle = 0.0f;
             float smooth_turn = 0.0f;
@@ -521,6 +521,34 @@ void task_navigation_control(void) {
             }
 
             Navi_Action_Manager(navi_ctrl.point_current_idx);
+            if (Navi_Action_Consume_Done(curr_idx)) {
+                if (curr_idx >= (total_points - 1U)) {
+                    if (end_printed_flag == 0) {
+                        IPC_LOG_Printf("\r\n============= >>> [到达事件] 已到达终点航点 [%d] <<< =============\r\n", curr_idx);
+                        IPC_LOG_Printf("=============  >>> [事件] 路线终点已到达，导航结束！ =============\r\n");
+                        end_printed_flag = 1;
+                    }
+#if (USE_HOST_TARGET_VELOCITY == 0)
+                    target_velocity = 0.0f;
+#endif
+                    vofa_mode_driver = 0.0f;
+                    navi_ctrl.navi_mode_driver = 0;
+                    navi_speed_profile_reset();
+                    break;
+                }
+
+                IPC_LOG_Printf("\r\n============= >>> [动作完成] 航点 [%d] 动作已完成，切换下一个航点 <<< =============\r\n", curr_idx);
+                if (navi_switch_nexttargetpoint()) {
+                    uint16_t next_idx = navi_ctrl.point_current_idx;
+                    IPC_LOG_Printf(" [到达航点] 下一个航点坐标为：X=%s%d.%02d, Y=%s%d.%02d | 类型:%s | 动作指令:%d\r\n",
+                        F_ARG(point_map[next_idx].x),
+                        F_ARG(point_map[next_idx].y),
+                        get_enum_name(point_map[next_idx].type),
+                        point_map[next_idx].action_cmd);
+                }
+                break;
+            }
+
             if (!is_action_busy) {
                 target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - smooth_turn);
 #if (USE_HOST_TARGET_VELOCITY == 0)
@@ -555,6 +583,10 @@ void task_navigation_control(void) {
 #endif
 
             if (!is_action_busy && reached_current) {
+                if (point_map[curr_idx].type == WP_TYPE_MINE_SWEEP) {
+                    break;
+                }
+
                 if (curr_idx >= (total_points - 1U)) {
                     if (end_printed_flag == 0) {
                         IPC_LOG_Printf("\r\n============= >>> [到达事件] 已到达终点航点 [%d] <<< =============\r\n", curr_idx);
@@ -572,7 +604,7 @@ void task_navigation_control(void) {
 
                 IPC_LOG_Printf("\r\n============= >>> [到达事件] 已到达航点 [%d] <<< =============\r\n", curr_idx);
                 if (navi_switch_nexttargetpoint()) {
-                    uint8_t next_idx = navi_ctrl.point_current_idx;
+                    uint16_t next_idx = navi_ctrl.point_current_idx;
                     IPC_LOG_Printf(" [到达航点] 下一个航点坐标为：X=%s%d.%02d, Y=%s%d.%02d | 类型:%s | 动作指令:%d\r\n",
                         F_ARG(point_map[next_idx].x),
                         F_ARG(point_map[next_idx].y),
@@ -760,17 +792,14 @@ uint8 navi_isreach_target_point(uint16 target_idx) {
     float current_threshold = DISTANCE_THRESHOLD; // 判定范围
     
     switch (point_map[target_idx].type) {
-        case WP_TYPE_CONE_CONE:   // 绕锥桶：要求更精准，缩小阈值
-            current_threshold *= 0.8f; 
+        case WP_TYPE_MINE_SWEEP:
+            current_threshold = 0.05f;
             break;
-        case WP_TYPE_NORMAL:      // 普通直线：为了高速顺滑，放大阈值提前切点
-            current_threshold *= 1.0f; 
-            break;
-        case WP_TYPE_STOP:        // 停车点：要求极高精度
-            current_threshold *= 1.0f; 
-            break;
+        case WP_TYPE_NORMAL:
+        case WP_TYPE_STOP:
+        case WP_TYPE_HOME:
         default:
-            current_threshold *= 0.5f;
+            current_threshold = DISTANCE_THRESHOLD;
             break;
     }
 
@@ -831,11 +860,7 @@ void Navigation_Pose_Monitor_Task(void)
 const char* get_enum_name(WayPoint_Type type) {
     switch (type) {
         case WP_TYPE_NORMAL:      return "普通循迹";
-        case WP_TYPE_BRIDGE:      return "单边桥";
-        case WP_TYPE_JUMP:        return "跳跃台阶";
         case WP_TYPE_MINE_SWEEP:  return "定点排雷";
-        case WP_TYPE_CONE_CONE:   return "绕圆锥桶";
-        case WP_TYPE_SIDE_SLOPE:  return "侧倾坡道";
         case WP_TYPE_STOP:        return "终点返航";
         case WP_TYPE_HOME:        return "原点";
         default:                  return "未知类型";

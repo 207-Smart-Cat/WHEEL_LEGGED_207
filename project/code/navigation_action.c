@@ -1,8 +1,6 @@
 #include "navigation_action.h"
 #include "navigation_data_handling.h"
-#include "control.h"
 #include "ipc_shared_data.h"
-
 
 // ==================== 实例化状态机变量 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -10,23 +8,10 @@ ActionSequence_t action_seq = {0};
 uint8_t is_action_busy = 0;  // 0:循迹控制 1:动作接管
 
 // ==================== 引入外部需要的依赖 ====================
-extern Navi_WayPoint_t point_map[NAVI_POINT_MAX]; 
+extern Navi_WayPoint_t point_map[NAVI_POINT_MAX];
 extern Navi_Controller_t navi_ctrl;
-extern Navi_Sensor_Data_t filter_data;
-
-extern float target_velocity;    
+extern float target_velocity;
 extern float target_angle;
-extern float now_velocity;
-extern float target_motor_Stand; // 默认中值为 2.2
-extern float x_current, y_current;
-extern int jump_position;        // 告诉底层进入跳跃/腾空模式 (关闭转向)
-extern int jump_stop;            // 强制切断电机PID
-extern int Bridge_position;
-
-// 定义腿长边界 (与 control.c 保持一致)
-#define LEG_MIN 0.04f
-#define LEG_MAX 0.10f
-#define LEG_NOMINAL 0.08f
 
 #define MINE_ROTATE_TARGET_DEG      1080.0f
 #define MINE_ROTATE_LEAD_DEG        35.0f
@@ -35,21 +20,61 @@ extern int Bridge_position;
 
 static float mine_rotate_start_yaw = 0.0f;
 static int8_t mine_rotate_dir = 1;
-static uint8_t mine_rotate_started = 0;
+static uint8_t action_done_pending = 0;
+static uint16_t action_done_idx = 0;
 
-// ==============================================================================
-// 全局路径预解析,找出特殊点位置 (在录制完成或发车前调用 1 次)
-// ==============================================================================
-void navi_parse_global_path(void) {
+static void navi_action_mark_done(uint16_t target_idx)
+{
+    action_done_pending = 1;
+    action_done_idx = target_idx;
+
+    if (action_seq.current_ptr < action_seq.total_count &&
+        action_seq.list[action_seq.current_ptr].wp_index == target_idx)
+    {
+        action_seq.current_ptr++;
+    }
+
+    action_fsm.state = FSM_IDLE;
+    action_fsm.state_timer_ms = 0;
+    is_action_busy = 0;
+}
+
+static void navi_enter_mine_rotate(uint16_t target_idx)
+{
+    mine_rotate_start_yaw = (float)robot_pose.cumulative_yaw;
+    mine_rotate_dir = (point_map[target_idx].action_cmd == MINE_ROTATE_CCW_CMD) ? -1 : 1;
+
+    action_fsm.state = FSM_MINE_PROCESSING;
+    action_fsm.state_timer_ms = 0;
+    is_action_busy = 1;
+
+    target_velocity = 0.0f;
+    target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - mine_rotate_dir * MINE_ROTATE_LEAD_DEG);
+
+    IPC_LOG_Printf("\r\n============= >>> [定点排雷] 已到达旋转点 [%d]，开始%s旋转三圈 <<< =============\r\n",
+                   target_idx,
+                   mine_rotate_dir > 0 ? "顺时针" : "逆时针");
+}
+
+// ===============================================================================
+// 全局路径预解析：只提取需要动作 FSM 接管的航点。
+// 普通点/起点/终点由 navigation_tracking.c 直接处理，不进入动作队列。
+// ===============================================================================
+void navi_parse_global_path(void)
+{
     action_seq.total_count = 0;
     action_seq.current_ptr = 0;
     action_fsm.state = FSM_IDLE;
     action_fsm.state_timer_ms = 0;
     action_fsm.is_airborne_expect = 0;
     is_action_busy = 0;
+    action_done_pending = 0;
+    action_done_idx = 0;
 
-    for (int i = 0; i < navi_ctrl.point_total_count; i++) {
-        if (point_map[i].type != WP_TYPE_HOME) {
+    for (int i = 0; i < navi_ctrl.point_total_count; i++)
+    {
+        if (point_map[i].type == WP_TYPE_MINE_SWEEP)
+        {
             action_seq.list[action_seq.total_count].wp_index = i;
             action_seq.list[action_seq.total_count].type = point_map[i].type;
             action_seq.total_count++;
@@ -58,277 +83,90 @@ void navi_parse_global_path(void) {
     }
 }
 
-// ==============================================================================
-// 模块 2：异步动作状态机
-// ==============================================================================
-static void navi_action_fsm_update(uint8_t target_idx, double distance) {
-    WayPoint_Type upcoming_type = point_map[target_idx].type;
-    action_fsm.state_timer_ms += TIMER_ACTION_PIR; 
+static void navi_action_fsm_update(uint16_t target_idx)
+{
+    float rotated_deg;
 
-switch (action_fsm.state) {
+    action_fsm.state_timer_ms += TIMER_ACTION_PIR;
+
+    switch (action_fsm.state)
+    {
         case FSM_IDLE:
-            // 休闲时自动巡航 / 正常状态恢复
-            action_fsm.is_airborne_expect = 0;
-            jump_stop = 0;        
-            jump_position = 0;    
-            /* Do not overwrite stand angle or leg height while the action FSM is idle.
-             * Those values are owned by normal balance/leg control parameters. */
-            
-            // 距离判定预警分发
-            if (upcoming_type == WP_TYPE_JUMP && distance < 1.0f) {
-                action_fsm.state = FSM_JUMP_PREPARE;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1; 
-            }
-            else if (upcoming_type == WP_TYPE_BRIDGE && distance < 0.8f) {
-                action_fsm.state = FSM_BRIDGE_APPROACH;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-            }
-            else if (upcoming_type == WP_TYPE_MINE_SWEEP && navi_isreach_target_point(target_idx)) {
-                action_fsm.state = FSM_MINE_PROCESSING;
-                action_fsm.state_timer_ms = 0;
-                mine_rotate_started = 0;
-                is_action_busy = 1;
-                IPC_LOG_Printf("\r\n============= >>> [定点排雷] 已到达旋转点 [%d]，开始旋转动作 <<< =============\r\n", target_idx);
-            }
-            else if (upcoming_type == WP_TYPE_CONE_CONE && distance < 0.8f) {
-                action_fsm.state = FSM_CONE_APPROACH;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-            }
-            else if (upcoming_type == WP_TYPE_SIDE_SLOPE && distance < 0.8f) {
-                action_fsm.state = FSM_SLOPE_APPROACH;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-            }
-            else if (upcoming_type == WP_TYPE_STOP && distance < 0.3f) {
-                action_fsm.state = FSM_STOP_PARKING;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-            }
-            else if (upcoming_type == WP_TYPE_NORMAL && navi_isreach_target_point(target_idx)) {
-                action_fsm.state = FSM_NORMAL_STOP;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;  // 接管控制权
-                
-                // 动作系统抢先打印到达信息
-                IPC_LOG_Printf("\r\n============= >>> [到达事件] 已精准到达航点 [%d]，开始静止 0.5 秒测试 <<< =============\r\n", target_idx);
-            }
-            break;
-            
-        // 【规范修改 2】：标准化普通点停留动作 (未来你的蜂鸣器、云台测试都可以加在这里)
-        case FSM_NORMAL_STOP:
-            target_velocity = 0;       // 强制切断速度，保持停车
-            
-            // --> [预留测试区]：你可以在这里加入如 BEEP_ON(); 等测试代码 <--
-            
-            if (action_fsm.state_timer_ms > 500) {  // 停滞 0.5 秒
-                action_fsm.state = FSM_IDLE;
-                is_action_busy = 0;       
-                
-                IPC_LOG_Printf(" [动作完成] 0.5秒等待结束，控制权已交还底层，继续循迹。\r\n");
-                // 交还控制权后，主循环 task_navigation_control 会识别到 !is_action_busy 从而自动调用 navi_switch_nexttargetpoint() 进行无缝切点。--
-            }
-            break;
-            
-
-        // ------------------ 跳跃动作 ------------------
-        case FSM_JUMP_PREPARE:
-            // 准备期：加速并下蹲蓄力
-            target_velocity = 650;     // 提速
-            y_current = LEG_MIN;       // 重心压到最低
-            target_motor_Stand = 3.0f; // 身体前倾
-            
-            if (distance < 0.1f || action_fsm.state_timer_ms > 1500) {
-                action_fsm.state = FSM_JUMP_TAKEOFF;
-                action_fsm.state_timer_ms = 0;
+            if (point_map[target_idx].type == WP_TYPE_MINE_SWEEP && navi_isreach_target_point(target_idx))
+            {
+                navi_enter_mine_rotate(target_idx);
             }
             break;
 
-        case FSM_JUMP_TAKEOFF:
-            // 起跳期：腿部瞬间伸展到最大，开启跳跃屏蔽模式
-            y_current = LEG_MAX;       // 瞬间蹬腿 (MAX_LEG_LENGTH 0.1)
-            jump_position = 1;         // 通知 control.c 切断转向，只保直立
-            
-            // 利用您底层的失重判断函数
-            if (navi_airborne_detection() || action_fsm.state_timer_ms > 200) { 
-                action_fsm.state = FSM_JUMP_AIRBORNE;
-                action_fsm.state_timer_ms = 0;
-            }
-            break;
-
-        case FSM_JUMP_AIRBORNE:
-            // 腾空期：收腿防止磕碰，并在空中维持姿态
-            y_current = LEG_MIN;       // 空中缩腿
-            target_velocity = 0;       // 防止轮子在空中疯转产生陀螺效应
-            
-            // 底层的 control.c 会在此期间自动用 air_roll_pid 维持平衡
-            
-            if (!navi_airborne_detection() || action_fsm.state_timer_ms > 800) {
-                action_fsm.state = FSM_JUMP_LANDING;
-                action_fsm.state_timer_ms = 0;
-            }
-
-        case FSM_JUMP_LANDING:
-            // 落地缓冲期
-            y_current = LEG_MIN;       // 保持屈腿缓冲冲击
-            target_velocity = 400;     // 恢复正常速度防摔
-            target_motor_Stand = 1.6f; // 重心后仰防前翻
-            
-            if (action_fsm.state_timer_ms > 400) { 
-                action_fsm.state = FSM_IDLE;
-                is_action_busy = 0;
-                jump_position = 0;     // 重新开启转向控制
-                
-            }
-            break;
-
-        // ------------------ 单边桥动作 ------------------
-        case FSM_BRIDGE_APPROACH:
-            target_velocity = 400;
-            y_current = LEG_NOMINAL;
-            if (distance < 0.1f || action_fsm.state_timer_ms > 2000) {
-                action_fsm.state = FSM_BRIDGE_ON_BOARD;
-                action_fsm.state_timer_ms = 0;
-                Bridge_position = 0;   // 开启单边桥自适应
-            }
-            break;
-
-        case FSM_BRIDGE_ON_BOARD:
-            target_velocity = 400;
-            if (action_fsm.state_timer_ms > 3000) { // 假定3秒过桥，可改为基于位移的判定
-                action_fsm.state = FSM_IDLE;
-                is_action_busy = 0;
-                Bridge_position = 1;   // 关闭自适应
-                
-            }
-            break;
-
-        // ------------------ 定点排雷动作：到点后原地旋转三圈 ------------------
-        case FSM_MINE_PROCESSING: {
-            float rotated_deg;
-
+        case FSM_MINE_PROCESSING:
             target_velocity = 0.0f;
-
-            if (!mine_rotate_started) {
-                mine_rotate_started = 1;
-                mine_rotate_start_yaw = (float)robot_pose.cumulative_yaw;
-                mine_rotate_dir = (point_map[target_idx].action_cmd == MINE_ROTATE_CCW_CMD) ? -1 : 1;
-                action_fsm.state_timer_ms = 0;
-                IPC_LOG_Printf(" [定点排雷] 开始%s旋转三圈。\r\n", mine_rotate_dir > 0 ? "顺时针" : "逆时针");
-            }
-
             target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - mine_rotate_dir * MINE_ROTATE_LEAD_DEG);
             rotated_deg = ((float)robot_pose.cumulative_yaw - mine_rotate_start_yaw) * mine_rotate_dir;
 
-            if (rotated_deg >= MINE_ROTATE_TARGET_DEG) {
-                mine_rotate_started = 0;
-                action_fsm.state = FSM_IDLE;
-                is_action_busy = 0;
+            if (rotated_deg >= MINE_ROTATE_TARGET_DEG)
+            {
                 target_velocity = 0.0f;
-                IPC_LOG_Printf(" [定点排雷] 三圈旋转完成，继续前往下一个航点。\r\n");
-            } else if (action_fsm.state_timer_ms > MINE_ROTATE_TIMEOUT_MS) {
-                mine_rotate_started = 0;
-                action_fsm.state = FSM_IDLE;
-                is_action_busy = 0;
+                IPC_LOG_Printf(" [定点排雷] 三圈旋转完成，等待主导航切换航点。\r\n");
+                navi_action_mark_done(target_idx);
+            }
+            else if (action_fsm.state_timer_ms > MINE_ROTATE_TIMEOUT_MS)
+            {
                 target_velocity = 0.0f;
-                IPC_LOG_Printf(" [定点排雷] 三圈旋转超时退出，已交还导航控制。\r\n");
+                IPC_LOG_Printf(" [定点排雷] 三圈旋转超时退出，等待主导航切换航点。\r\n");
+                navi_action_mark_done(target_idx);
             }
             break;
-        }
-
-        // ------------------ 绕圆锥桶动作 ------------------
-        case FSM_CONE_APPROACH:
-            target_velocity = 350;     // 降速防止侧滑
-            y_current = 0.05f;         // 降低重心增加抓地力
-            if (distance < 0.2f) {
-                action_fsm.state = FSM_CONE_NAVIGATE;
-                action_fsm.state_timer_ms = 0;
-            }
-            break;
-
-        case FSM_CONE_NAVIGATE:
-            target_velocity = 350;
-            if (action_fsm.state_timer_ms > 2500) { // 根据实际绕桩时间调整
-                action_fsm.state = FSM_IDLE;
-                is_action_busy = 0;
-                y_current = 0.08f;
-                
-            }
-            break;
-
-        // ------------------ 侧倾坡道动作 ------------------
-        case FSM_SLOPE_APPROACH:
-            target_velocity = 450;
-            y_current = 0.04f;         // 极致低重心
-            if (distance < 0.1f) {
-                action_fsm.state = FSM_SLOPE_ONBOARD;
-                action_fsm.state_timer_ms = 0;
-            }
-            break;
-
-        case FSM_SLOPE_ONBOARD:
-            target_velocity = 500;
-            // 依靠 leg_control 内置的 roll 补偿即可应对侧倾
-            if (action_fsm.state_timer_ms > 3000) {
-                action_fsm.state = FSM_IDLE;
-                is_action_busy = 0;
-                y_current = 0.08f;
-                
-            }
-            break;
-
-        // ------------------ 终点停车 ------------------
-        case FSM_STOP_PARKING:      // 彻底关闭导航计算，防止回荡
-            navi_ctrl.navi_mode_driver = 0; 
-            target_velocity = 0.0f;
-            
-            static uint8_t stop_printed = 0;
-            if (!stop_printed) {
-            IPC_LOG_Printf("=============  >>> [事件] 终点已到达，动作接管并安全停车！ =============\r\n");                  
-            stop_printed = 1;
-            }
-            break;
-
         default:
             action_fsm.state = FSM_IDLE;
+            is_action_busy = 0;
             break;
     }
 }
 
-// ==============================================================================
-// 模块 3：运行时动作调度器 (暴露给主循环)
-// ==============================================================================
-void Navi_Action_Manager(uint8_t curr_idx) {
-    if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count) {
+uint8_t Navi_Action_Consume_Done(uint16_t curr_idx)
+{
+    if (action_done_pending && action_done_idx == curr_idx)
+    {
+        action_done_pending = 0;
+        return 1;
+    }
+
+    return 0;
+}
+
+// ===============================================================================
+// 运行时动作调度器：只在当前目标航点正好是动作点时接管。
+// ===============================================================================
+void Navi_Action_Manager(uint16_t curr_idx)
+{
+    uint16_t target_wp_idx;
+
+    if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count)
+    {
         return;
     }
 
     while (action_seq.current_ptr < action_seq.total_count &&
-           curr_idx > action_seq.list[action_seq.current_ptr].wp_index) {
+           curr_idx > action_seq.list[action_seq.current_ptr].wp_index)
+    {
         action_seq.current_ptr++;
     }
 
-    if (action_seq.current_ptr >= action_seq.total_count) {
+    if (action_seq.current_ptr >= action_seq.total_count)
+    {
         return;
     }
 
-    uint8_t target_wp_idx = action_seq.list[action_seq.current_ptr].wp_index;
+    target_wp_idx = action_seq.list[action_seq.current_ptr].wp_index;
 
-    if (is_action_busy) {
-        double real_distance = 0.0;
-        double dummy_azimuth = 0.0;
-        // 动作执行期间始终用动作目标点计算距离，避免被主导航当前点干扰。
-        navi_calcnavinfo(target_wp_idx, &dummy_azimuth, &real_distance);
-        navi_action_fsm_update(target_wp_idx, real_distance);
+    if (is_action_busy)
+    {
+        navi_action_fsm_update(target_wp_idx);
         return;
     }
 
-    if (curr_idx == target_wp_idx) {
-        double real_distance = 0.0;
-        double dummy_azimuth = 0.0;
-        navi_calcnavinfo(target_wp_idx, &dummy_azimuth, &real_distance);
-        navi_action_fsm_update(target_wp_idx, real_distance);
+    if (curr_idx == target_wp_idx)
+    {
+        navi_action_fsm_update(target_wp_idx);
     }
 }

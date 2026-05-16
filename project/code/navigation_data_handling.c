@@ -287,6 +287,28 @@ void Navi_Data_Set_Origin(void) {
 }
 
 
+void Navi_Data_Reset_XY_Keep_Heading(void) {
+    robot_pose.x = 0;
+    robot_pose.y = 0;
+    robot_pose.v = 0.0f;
+    robot_pose.w = 0.0f;
+    robot_pose.bias_ax = 0.0f;
+    robot_pose.bias_w = 0.0f;
+    robot_pose.slip_level = 0;
+
+#if NAVI_USE_LOCAL_FRAME
+    float relative_yaw = navi_limit_angle180(IMU_data.filter_result.yaw - initial_yaw_offset);
+    robot_pose.yaw = navi_limit_angle180(-relative_yaw);
+#else
+    robot_pose.yaw = navi_limit_angle180(-IMU_data.filter_result.yaw);
+#endif
+
+    robot_pose.cumulative_yaw = 0.0;
+    robot_pose.turns = 0.0f;
+    robot_pose.last_yaw_for_cum = robot_pose.yaw;
+    robot_pose.is_valid = 1;
+}
+
 
 
 //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@2

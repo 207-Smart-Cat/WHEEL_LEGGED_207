@@ -65,22 +65,10 @@
 //=================================================定义  结构体================================================
 // 航点动作类型
 typedef enum {
-  
-    WP_TYPE_NORMAL = 0,     // 普通循迹点
-    
-    WP_TYPE_BRIDGE,     // 单边桥 
-        
-    WP_TYPE_JUMP,           // 跳跃台阶 (爆发抬腿)
-    
-    WP_TYPE_MINE_SWEEP,     // 定点排雷 (今年新增项目：预留)
-    
-    WP_TYPE_CONE_CONE,      // 绕圆锥桶 (今年新增项目：预留)
-        
-    WP_TYPE_SIDE_SLOPE,     // 侧倾坡道 (侧倾自适应)
-    
-    WP_TYPE_STOP,           // 终点返航
-    
-    WP_TYPE_HOME            // 原点
+    WP_TYPE_NORMAL = 0,      // 普通循迹点
+    WP_TYPE_MINE_SWEEP = 3,  // 定点排雷：到点后旋转三圈，保留原 VOFA 类型值 3
+    WP_TYPE_STOP = 6,        // 终点/停车点，保留原类型值 6
+    WP_TYPE_HOME = 7         // 起点/原点，保留原类型值 7
 } WayPoint_Type;
 
 
