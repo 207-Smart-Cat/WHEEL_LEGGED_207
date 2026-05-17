@@ -5,10 +5,34 @@
 // 定义遥控器通道数量 (6个)
 #define REMOTE_CHANNEL_NUM  6
 
-// 定义遥控器失控时的安全默认值 (通常摇杆回中值为1500，取决于具体遥控器)
-#define REMOTE_SAFE_VALUE_CH1   888
-#define REMOTE_SAFE_VALUE_CH2   1000
-#define REMOTE_SAFE_VALUE_CHother   192
+// 遥控器通道标定值，来自实测 SBUS 解码结果。
+// CH1 默认 888，CH2 默认 1000；CH3/5/6 为两档开关；CH4 为三档开关。
+// 通道用途说明：
+// CH1：方向调节，用于遥控接管时调整 target_angle。
+// CH2：油门/速度调节，用于遥控接管时调整 target_velocity。
+// CH3：SWA，两档开关，目前用于紧急制动/恢复。
+// CH4：SWB，三档开关；科目二打点模式下，低/中位打普通点，高位打排雷旋转点。
+// CH5：两档开关，用于选择遥控是否接管小车。
+// CH6：两档开关；正常遥控时触发跳跃，导航打点模式下触发打点。
+#define REMOTE_CH1_CENTER        888
+#define REMOTE_CH2_CENTER        1000
+#define REMOTE_SWITCH_LOW        192
+#define REMOTE_SWITCH_MID        992
+#define REMOTE_SWITCH_HIGH       1792
+#define REMOTE_CH3_LOW           REMOTE_SWITCH_LOW
+#define REMOTE_CH3_HIGH          REMOTE_SWITCH_HIGH
+#define REMOTE_CH4_LOW           REMOTE_SWITCH_LOW
+#define REMOTE_CH4_MID           REMOTE_SWITCH_MID
+#define REMOTE_CH4_HIGH          REMOTE_SWITCH_HIGH
+#define REMOTE_CH5_LOW           REMOTE_SWITCH_LOW
+#define REMOTE_CH5_HIGH          REMOTE_SWITCH_HIGH
+#define REMOTE_CH6_LOW           REMOTE_SWITCH_LOW
+#define REMOTE_CH6_HIGH          REMOTE_SWITCH_HIGH
+
+// 遥控器失控时的安全默认值。
+#define REMOTE_SAFE_VALUE_CH1    REMOTE_CH1_CENTER
+#define REMOTE_SAFE_VALUE_CH2    REMOTE_CH2_CENTER
+#define REMOTE_SAFE_VALUE_OTHER  REMOTE_SWITCH_LOW
 // 遥控器连接状态枚举
 typedef enum {
     REMOTE_DISCONNECTED = 0, // 失控/断开

@@ -41,6 +41,11 @@ Navi_WayPoint_t     point_map[NAVI_POINT_MAX];               // foreground map c
 
 static Navi_WayPoint_t record_point_map[NAVI_POINT_MAX];      // background map recorded manually
 static uint16_t record_point_count = 0;
+float navi_record_count_status = 0.0f;
+float navi_record_last_idx_status = 0.0f;
+float navi_record_last_type_status = 0.0f;
+float navi_record_last_x_status = 0.0f;
+float navi_record_last_y_status = 0.0f;
 
 static Navi_WayPoint_t static_point_map[NAVI_POINT_MAX];      // built-in static test map
 static uint16_t static_point_count = 0;
@@ -86,22 +91,84 @@ extern float now_velocity;       //当前速度(线速度)
 //====================================================函数声明=============================================
 
 static void navi_speed_profile_reset(void);
+static void navi_record_update_status(void)
+{
+    navi_record_count_status = (float)record_point_count;
+    if (record_point_count == 0)
+    {
+        navi_record_last_idx_status = -1.0f;
+        navi_record_last_type_status = -1.0f;
+        navi_record_last_x_status = 0.0f;
+        navi_record_last_y_status = 0.0f;
+        return;
+    }
+
+    uint16_t idx = (uint16_t)(record_point_count - 1U);
+    navi_record_last_idx_status = (float)idx;
+    navi_record_last_type_status = (float)record_point_map[idx].type;
+    navi_record_last_x_status = record_point_map[idx].x;
+    navi_record_last_y_status = record_point_map[idx].y;
+}
+
+void navi_record_fill_preview(uint16 start, IpcNavRecordPreviewPoint_t *out, uint16 max_count, uint16 *actual_start, uint16 *actual_count)
+{
+    uint16 i;
+    uint16 safe_start = start;
+
+    if (out == NULL || actual_start == NULL || actual_count == NULL)
+    {
+        return;
+    }
+
+    if (record_point_count == 0)
+    {
+        safe_start = 0;
+    }
+    else if (safe_start >= record_point_count)
+    {
+        safe_start = (uint16)(record_point_count - 1U);
+    }
+
+    *actual_start = safe_start;
+    *actual_count = record_point_count;
+
+    for (i = 0; i < max_count; i++)
+    {
+        uint16 idx = (uint16)(safe_start + i);
+        out[i].idx = idx;
+        if (idx < record_point_count && record_point_map[idx].valid)
+        {
+            out[i].valid = 1;
+            out[i].type = (uint8)record_point_map[idx].type;
+            out[i].x = record_point_map[idx].x;
+            out[i].y = record_point_map[idx].y;
+            out[i].yaw = record_point_map[idx].yaw;
+        }
+        else
+        {
+            out[i].valid = 0;
+            out[i].type = 0;
+            out[i].x = 0.0f;
+            out[i].y = 0.0f;
+            out[i].yaw = 0.0f;
+        }
+    }
+}
+
+static void navi_record_clear_map(void);
+static void navi_record_undo_last(void);
 static float navi_get_reach_threshold(uint16_t target_idx);
 static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_distance, uint16_t *speed_target_idx);
-static float navi_calc_turn_speed_limit(float turn_error_deg);
-static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid);
-
-
-
-//====================================================具体函数编写层=============================================
 
 static pid_param_t navi_speed_pid;
 static float navi_speed_last_output = 0.0f;
+
 static void navi_speed_profile_reset(void)
 {
     PidInit(&navi_speed_pid);
     navi_speed_last_output = 0.0f;
 }
+
 static float navi_get_reach_threshold(uint16_t target_idx)
 {
     if (target_idx >= NAVI_POINT_MAX || !point_map[target_idx].valid)
@@ -153,7 +220,154 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
 
     return path_distance;
 }
+static void navi_record_update_status(void)
+{
+    navi_record_count_status = (float)record_point_count;
+    if (record_point_count == 0)
+    {
+        navi_record_last_idx_status = -1.0f;
+        navi_record_last_type_status = -1.0f;
+        navi_record_last_x_status = 0.0f;
+        navi_record_last_y_status = 0.0f;
+        return;
+    }
 
+    uint16_t idx = (uint16_t)(record_point_count - 1U);
+    navi_record_last_idx_status = (float)idx;
+    navi_record_last_type_status = (float)record_point_map[idx].type;
+    navi_record_last_x_status = record_point_map[idx].x;
+    navi_record_last_y_status = record_point_map[idx].y;
+}
+
+void navi_record_fill_preview(uint16 start, IpcNavRecordPreviewPoint_t *out, uint16 max_count, uint16 *actual_start, uint16 *actual_count)
+{
+    uint16 i;
+    uint16 safe_start = start;
+
+ 
+
+
+   if (out == NULL || actual_start == NULL || actual_count == NULL)
+    {
+        return;
+    }
+
+    if (record_point_count == 0)
+    {
+        safe_start = 0;
+    }
+    else if (safe_start >= record_point_count)
+    {
+        safe_start = (uint16)(record_point_count - 1U);
+    }
+
+    *actual_start = safe_start;
+    *actual_count = record_point_count;
+
+    for (i = 0; i < max_count; i++)
+    {
+        uint16 idx = (uint16)(safe_start + i);
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       out[i].idx = idx;
+        if (idx < record_point_count && record_point_map[idx].valid)
+        {
+            out[i].valid = 1;
+            out[i].type = (uint8)record_point_map[idx].type;
+            out[i].x = record_point_map[idx].x;
+            out[i].y = record_point_map[idx].y;
+            out[i].yaw = record_point_map[idx].yaw;
+        }
+        else
+        {
+ 
+
+
+
+
+
+
+
+
+
+
+           out[i].valid = 0;
+            out[i].type = 0;
+            out[i].x = 0.0f;
+            out[i].y = 0.0f;
+            out[i].yaw = 0.0f;
+        }
+    }
+}
+
+static void navi_record_clear_map(void)
+'
+
+
+
+
+
+
+
+
+
+@
+$t=[regex]::Replace($t,$funcPattern,$funcNew,1)
+Set-Content -Encoding Default -NoNewline -Path $p -Value $t
+'NAV_CLE
+
+
+AN_DONE'
+
+
+{
+    record_point_count = 0;
+    navi_ctrl.origin_set_flag = 0;
+    navi_ctrl.trigger_record = 0;
+    navi_ctrl.point_total_count = 0;
+    navi_ctrl.point_current_idx = 0;
+    memset(record_point_map, 0, sizeof(record_point_map));
+    memset(point_map, 0, sizeof(point_map));
+    navi_record_update_status();
+}
+
+static void navi_record_undo_last(void)
+{
+    if (record_point_count == 0)
+    {
+        IPC_LOG_Printf("\r\n>>> [撤销打点] 当前记录地图为空，无法撤销 <<<\r\n");
+        navi_record_update_status();
+        return;
+    }
+
+    record_point_count--;
+    memset(&record_point_map[record_point_count], 0, sizeof(record_point_map[record_point_count]));
+    navi_ctrl.point_total_count = record_point_count;
+    if (record_point_count == 0)
+    {
+        navi_ctrl.origin_set_flag = 0;
+    }
+    navi_record_update_status();
+    IPC_LOG_Printf("\r\n>>> [撤销打点] 已删除最后一个航点，剩余 %d 个 <<<\r\n", record_point_count);
+}
 static float navi_calc_turn_speed_limit(float turn_error_deg)
 {
     float abs_turn = fabsf(turn_error_deg);
@@ -235,6 +449,7 @@ void Navi_Tracking_Init(void) {
     memset(static_point_map, 0, sizeof(static_point_map));
 
     navi_load_comprehensive_test_map();
+    navi_record_update_status();
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -304,16 +519,37 @@ void navi_path_optimize(void) {
 void navi_auto_record_task(void) {
     static float last_vofa_trigger = 0.0f;
 
-    if (navi_ctrl.navi_mode_driver != 2 || navi_ctrl.navi_mode_map != 1 || !robot_pose.is_valid) {
+    if (navi_ctrl.navi_mode_driver != 2) {
         last_vofa_trigger = vofa_trigger_record;
         return;
     }
 
-    if (vofa_trigger_record > 0.5f && last_vofa_trigger <= 0.5f) {
+    if (vofa_trigger_record > 2.5f) {
+        // Navi_TrigRecord = 3：撤销上一个打点，不要求位姿有效。
+        navi_record_undo_last();
+        vofa_trigger_record = 0.0f;
+        last_vofa_trigger = 0.0f;
+        return;
+    }
+
+    if (!robot_pose.is_valid) {
+        last_vofa_trigger = vofa_trigger_record;
+        return;
+    }
+
+    if (vofa_trigger_record > 1.5f) {
+        // Navi_TrigRecord = 2：收到后立即打点一次，不依赖 0->1 边沿。
         navi_ctrl.trigger_record = 1;
         vofa_trigger_record = 0.0f;
+        last_vofa_trigger = 0.0f;
+    } else if (vofa_trigger_record > 0.5f && last_vofa_trigger <= 0.5f) {
+        // Navi_TrigRecord = 1：保持原有 0->1 边沿触发打点。
+        navi_ctrl.trigger_record = 1;
+        vofa_trigger_record = 0.0f;
+        last_vofa_trigger = 0.0f;
+    } else {
+        last_vofa_trigger = vofa_trigger_record;
     }
-    last_vofa_trigger = vofa_trigger_record;
 
     if (!navi_ctrl.trigger_record) {
         return;
@@ -338,6 +574,7 @@ void navi_auto_record_task(void) {
 
         record_point_count = 1;
         navi_ctrl.origin_set_flag = 1;
+        navi_record_update_status();
         IPC_LOG_Printf("\r\n>>> [手动打点] 第1次触发，坐标系原点(Home)已成功建立 <<<\r\n");
     } else {
         uint16_t idx = record_point_count;
@@ -349,6 +586,7 @@ void navi_auto_record_task(void) {
         record_point_map[idx].action_cmd = (uint16_t)wifi_in_action;
         record_point_map[idx].valid = 1;
         record_point_count++;
+        navi_record_update_status();
 
         IPC_LOG_Printf(" >>> [手动打点] 记录点[%03d]: X=%s%d.%02d, Y=%s%d.%02d | 类型:%s | 动作指令:%d <<<\r\n",
             idx,
@@ -439,6 +677,12 @@ void task_navigation_control(void) {
     navi_ctrl.navi_mode_map = (uint8_t)vofa_mode_map;
     uint8_t current_print_cmd = (uint8_t)vofa_print_pose_en;
 
+    if (vofa_trigger_record > 2.5f) {
+        navi_record_undo_last();
+        vofa_trigger_record = 0.0f;
+        navi_ctrl.trigger_record = 0;
+    }
+
     if (last_mode_driver != navi_ctrl.navi_mode_driver || last_mode_map != navi_ctrl.navi_mode_map) {
         if (last_mode_driver == 1 && navi_ctrl.navi_mode_driver != 1) {
 #if (USE_HOST_TARGET_VELOCITY == 0)
@@ -452,12 +696,7 @@ void task_navigation_control(void) {
         }
 
         if (navi_ctrl.navi_mode_map == 2 && navi_ctrl.navi_mode_driver != 1) {
-            record_point_count = 0;
-            navi_ctrl.origin_set_flag = 0;
-            navi_ctrl.point_total_count = 0;
-            navi_ctrl.point_current_idx = 0;
-            memset(record_point_map, 0, sizeof(record_point_map));
-            memset(point_map, 0, sizeof(point_map));
+            navi_record_clear_map();
             IPC_LOG_Printf("\r\n============= >>> [地图清空] 后台记录地图已成功清空 <<< =============\r\n");
         }
 
@@ -495,15 +734,9 @@ void task_navigation_control(void) {
             end_printed_flag = 0;
             navi_speed_profile_reset();
             is_action_busy = 0;
-        } else if (navi_ctrl.navi_mode_driver == 2) {
-            if (navi_ctrl.navi_mode_map == 1 && (last_mode_driver != 2 || last_mode_map != 1)) {
-                record_point_count = 0;
-                navi_ctrl.origin_set_flag = 0;
-                navi_ctrl.trigger_record = 0;
-                memset(record_point_map, 0, sizeof(record_point_map));
-                Navi_Data_Set_Origin();
-                IPC_LOG_Printf("\r\n[状态切换] 进入手动打点模式，后台记录地图已清空，下一次打点会建立 HOME 原点\r\n");
-            }
+        } else if (navi_ctrl.navi_mode_driver == 2 && last_mode_driver != 2) {
+            navi_ctrl.trigger_record = 0;
+            IPC_LOG_Printf("\r\n[状态切换] 进入打点采集模式，记录地图保留，可用清空打点重新开始\r\n");
         }
 
         last_mode_driver = navi_ctrl.navi_mode_driver;
@@ -516,6 +749,8 @@ void task_navigation_control(void) {
         print_map_idx = 0;
         preview_print_phase = 0;
         preview_print_wait = 0;
+        vofa_print_pose_en = 0.0f;
+        current_print_cmd = 0;
     }
     last_print_cmd = current_print_cmd;
 
@@ -692,9 +927,7 @@ void task_navigation_control(void) {
         }
 
         case 2:
-            if (navi_ctrl.navi_mode_map == 1) {
-                navi_auto_record_task();
-            }
+            navi_auto_record_task();
             break;
 
         default:

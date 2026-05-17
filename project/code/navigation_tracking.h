@@ -123,7 +123,13 @@ extern Navi_WayPoint_t     point_map[NAVI_POINT_MAX];               // Ô¤ÉèµÄ¡°Â
 extern float wifi_cmd_trigger;        // Ò¡Áå±äÁ¿         0: ´ı»ú, 1: ×·¼ÓÒ»¸öº½µã, 2: Çå¿Õµ±Ç°µØÍ¼, 3: Á¢¿Ì½Ó¹ÜÖ´ĞĞ¶¯×÷
 extern float wifi_remote_type;                                  //¸³Öµº½µãÀàĞÍ,°´ÕÕÃ¶¾ÙÒÀ´Î´Ó0µ½¡¤¡¤¡¤
 extern float wifi_in_action;            //¶¯×÷Ö¸Áî
-extern float vofa_trigger_record; // ĞÂÔö£ºÓÃÓÚ½ÓÊÕWiFiÔ¶³Ì´òµãÖ¸ÁîµÄ¸¡µã±äÁ¿     
+extern float vofa_trigger_record; // Navi_TrigRecord: 0¿ÕÏĞ£¬1±£³ÖÔ­0->1±ßÑØ´òµã£¬2ÊÕµ½ºóÁ¢¼´´òµãÒ»´Î£¬3³·ÏúÉÏÒ»¸ö´òµã
+
+extern float navi_record_count_status;
+extern float navi_record_last_idx_status;
+extern float navi_record_last_type_status;
+extern float navi_record_last_x_status;
+extern float navi_record_last_y_status;
 
 // ========================== VOFA+ ÔÚÏßµ÷²Î±äÁ¿ ==========================
 extern float vofa_mode_driver;       // ¶ÔÓ¦ navi_mode_driver

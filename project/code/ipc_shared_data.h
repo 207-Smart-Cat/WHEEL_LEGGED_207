@@ -12,6 +12,7 @@
 #define IPC_LOG_SHARED_SIZE        (IPC_CORE_B_SHARED_ADDR - IPC_LOG_SHARED_ADDR)
 #define IPC_LOG_SLOT_COUNT         (6U)
 #define IPC_LOG_TEXT_SIZE          (160U)
+#define IPC_NAV_RECORD_PREVIEW_ROWS (4U)
 
 // ==========================================================
 // 参数字典枚举
@@ -26,9 +27,22 @@ typedef enum {
 // Core A (Core 0) 状态结构体
 // ==========================================================
 typedef struct {
+    uint16 idx;
+    uint8 valid;
+    uint8 type;
+    float x;
+    float y;
+    float yaw;
+} IpcNavRecordPreviewPoint_t;
+
+typedef struct {
 #define STATUS_ITEM(type, name, source_expr) type name;
 #include "status_registry.def"
 #undef STATUS_ITEM
+    uint16 navi_record_preview_start;
+    uint16 navi_record_preview_count;
+    IpcNavRecordPreviewPoint_t navi_record_preview[IPC_NAV_RECORD_PREVIEW_ROWS];
+
     uint32 heartbeat;
     uint8 motor_reason;
     uint8 balance_reason;
@@ -52,6 +66,7 @@ typedef struct {
     uint8 vehicle_mode;
     uint8 runtime_status_valid;
     uint8 motor_zero_request;
+    uint16 nav_record_preview_start;
     uint32 runtime_module_enable_mask;
 } CoreB_Command_t;
 
@@ -86,6 +101,7 @@ uint64_t IPC_Get_All_Param_Mask(void);
 void IPC_Request_Param_Update(ParamID_e id, float value);
 void IPC_Request_All_Params_Update(void);
 void IPC_Request_Motor_Zero_Calibration(void);
+void IPC_Set_Nav_Record_Preview_Start(uint16 start);
 uint8 IPC_Consume_Motor_Zero_Request_Core0(void);
 void IPC_Update_Motor_Zero_State_From_Core0(uint8 state);
 void IPC_LOG_Printf(const char *format, ...);

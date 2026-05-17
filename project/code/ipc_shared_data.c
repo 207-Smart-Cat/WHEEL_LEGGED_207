@@ -15,6 +15,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+extern void navi_record_fill_preview(uint16 start, IpcNavRecordPreviewPoint_t *out, uint16 max_count, uint16 *actual_start, uint16 *actual_count);
 // --- 1. 绝对地址内存分配 ---
 #pragma location = IPC_CORE_A_SHARED_ADDR
 __no_init CoreA_Status_t core_a_status;
@@ -98,6 +99,14 @@ uint8 IPC_Consume_Motor_Zero_Request_Core0(void)
     return request;
 }
 
+void IPC_Set_Nav_Record_Preview_Start(uint16 start)
+{
+    __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    core_b_cmd.nav_record_preview_start = start;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    __enable_irq();
+}
 void IPC_Update_Motor_Zero_State_From_Core0(uint8 state)
 {
     core_a_status.motor_zero_state = state;
@@ -136,6 +145,13 @@ void IPC_Push_Status_From_CoreA(void) {
     for(int i = 0; i < PARAM_COUNT; i++) {
             core_a_status.act_params[i] = *(param_map[i]);
         }
+
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    navi_record_fill_preview(core_b_cmd.nav_record_preview_start,
+                             core_a_status.navi_record_preview,
+                             IPC_NAV_RECORD_PREVIEW_ROWS,
+                             &core_a_status.navi_record_preview_start,
+                             &core_a_status.navi_record_preview_count);
 
     // 3. 更新时间戳防卡死
     core_a_status.heartbeat++;

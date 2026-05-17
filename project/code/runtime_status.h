@@ -3,6 +3,16 @@
 
 #include "zf_common_headfile.h"
 
+// 开机设置界面选择的小车模式。
+// 目前主要用于遥控功能分配，导航/科目流程后续再逐步接入。
+typedef enum
+{
+    VEHICLE_MODE_MANUAL = 0,       // 手动调试
+    VEHICLE_MODE_COURSE_1 = 1,     // 科目一
+    VEHICLE_MODE_COURSE_2 = 2,     // 科目二
+    VEHICLE_MODE_COURSE_3 = 3      // 科目三
+} vehicle_mode_t;
+
 // 运行时可控制的模块。枚举顺序会作为 module_enable_mask 里的 bit 位序号使用。
 typedef enum
 {
