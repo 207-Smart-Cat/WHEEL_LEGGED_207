@@ -3,25 +3,30 @@
 #include "FiveBarLinkageData.h"
 #include "engine.h"
 #include "imu.h"
-#include "small_driver_uart_control.h"
 
-#define JUMP_PREPARE_X       (0.00f)
-#define JUMP_PREPARE_Y       (0.03f)
+#define JUMP_PREPARE_PWM     (420) //270
 #define JUMP_BURST_PWM       (1200)
 #define JUMP_SERVO_SUM       (1500)
-#define JUMP_SERVO_MIN_PWM   (300)
-#define JUMP_SERVO_MAX_PWM   (1200)
-#define JUMP_AIR_RETRACT_X   (0.01f)
-#define JUMP_AIR_RETRACT_Y   (0.03f)
-#define JUMP_EXE_BUFFER_X    (+0.05f)
-#define JUMP_EXE_BUFFER_Y    (0.05f)
-#define JUMP_RECOVER_X       (0.00f)
-#define JUMP_RECOVER_Y       (0.04f)
 
-#define JUMP_PREPARE_MS      (50U)
-#define JUMP_BURST_MS        (130U)
-#define JUMP_AIR_RETRACT_MS  (80U)
-#define JUMP_RECOVER_MS      (50U)
+#define JUMP_SERVO_MIN_PWM   (270)
+#define JUMP_SERVO_MAX_PWM   (1230)
+#define JUMP_PREPARE_START_PWM (JUMP_SERVO_SUM / 2)
+
+#define JUMP_AIR_RETRACT_X   (-0.00f)//-0.030
+#define JUMP_AIR_RETRACT_Y   (0.030f)
+
+#define JUMP_EXE_BUFFER_X    (+0.00f)
+#define JUMP_EXE_BUFFER_Y    (0.035f)
+
+#define JUMP_RECOVER_X       (0.00f)
+#define JUMP_RECOVER_Y       (0.03f)
+#define JUMP_RECOVER_PWM     (420)
+
+#define JUMP_PREPARE_MS      (1000U)//50
+#define JUMP_BURST_MS        (120U) //原先90
+#define JUMP_AIR_RETRACT_MS  (100U)//100
+#define JUMP_RECOVER_MS      (50U)//50
+#define JUMP_END_MS          (50U)//50
 #define JUMP_LANDING_MAX_MS  (600U)
 #define JUMP_LAND_ACCEL_G    (1.0f)
 
@@ -35,26 +40,26 @@ volatile uint32 jump_dbg_trigger_count = 0;
 
 static uint16 jump_state_elapsed_ms = 0;
 
-static void jump_set_suspend(uint8 engine_suspend, uint8 encoder_suspend);
+static void jump_clear_motion_suspend(void);
 
 static void jump_restore_control(void)
 {
-    jump_set_suspend(0, 0);
+    jump_clear_motion_suspend();
     jump_position = 0;
 }
 
-static void jump_set_suspend(uint8 engine_suspend, uint8 encoder_suspend)
+static void jump_clear_motion_suspend(void)
 {
-    jump_engine_suspend = engine_suspend;
-    jump_encoder_suspend = encoder_suspend;
-    jump_stop = engine_suspend;
+    jump_engine_suspend = 0;
+    jump_encoder_suspend = 0;
+    jump_stop = 0;
 }
 
 static void jump_set_state(JumpState next_state)
 {
     jump_state = next_state;
     jump_dbg_state = (uint8)next_state;
-    jump_state_elapsed_ms = 0;
+    jump_state_elapsed_ms = 0;                             
     jump_dbg_elapsed_ms = 0;
 }
 
@@ -82,6 +87,27 @@ static void jump_drive_symmetric_pwm(int pwm1)
     engine_right_maintain(pwm1, pwm2);
 }
 
+static int jump_calc_prepare_pwm(void)
+{
+    uint16 half_prepare_ms = (uint16)(JUMP_PREPARE_MS / 2U);
+    float progress;
+    float pwm;
+
+    if (half_prepare_ms == 0U || jump_state_elapsed_ms >= half_prepare_ms)
+    {
+        return JUMP_PREPARE_PWM;
+    }
+
+    progress = (float)jump_state_elapsed_ms / (float)half_prepare_ms;
+    pwm = (float)JUMP_PREPARE_START_PWM + ((float)JUMP_PREPARE_PWM - (float)JUMP_PREPARE_START_PWM) * progress;
+
+    if (pwm >= 0.0f)
+    {
+        return (int)(pwm + 0.5f);
+    }
+    return (int)(pwm - 0.5f);
+}
+
 static void jump_drive_symmetric_xy(float x, float y)
 {
     int left_1;
@@ -103,9 +129,8 @@ uint8 jump_start(void)
         return 0;
     }
 
-    jump_position = 1;
-    jump_set_suspend(1, 1);
-    small_driver_set_duty(0, 0);
+    jump_clear_motion_suspend();
+    jump_position = 0;
     jump_dbg_trigger_count++;
     jump_set_trigger_block_reason(JUMP_BLOCK_STARTED);
     jump_set_state(JUMP_PREPARE);
@@ -119,12 +144,12 @@ uint8 jump_is_active(void)
 
 uint8 jump_should_suspend_engine(void)
 {
-    return jump_engine_suspend;
+    return 0;
 }
 
 uint8 jump_should_suspend_encoder(void)
 {
-    return jump_encoder_suspend;
+    return 0;
 }
 
 void jump_set_trigger_block_reason(JumpTriggerBlockReason reason)
@@ -147,9 +172,7 @@ void jump_process_control(float *current_x, float *current_y)
     switch (jump_state)
     {
         case JUMP_PREPARE:
-            *current_x = JUMP_PREPARE_X;
-            *current_y = JUMP_PREPARE_Y;
-            jump_drive_symmetric_xy(*current_x, *current_y);
+            jump_drive_symmetric_pwm(jump_calc_prepare_pwm());
             if (jump_state_elapsed_ms >= JUMP_PREPARE_MS)
             {
                 jump_set_state(JUMP_BURST);
@@ -178,23 +201,19 @@ void jump_process_control(float *current_x, float *current_y)
             *current_x = JUMP_EXE_BUFFER_X;
             *current_y = JUMP_EXE_BUFFER_Y;
             jump_drive_symmetric_xy(*current_x, *current_y);
-            if (IMU_data.accel[2] >= JUMP_LAND_ACCEL_G || jump_state_elapsed_ms >= JUMP_LANDING_MAX_MS)
+            if (IMU_data.accel[2] >= 1.5*JUMP_LAND_ACCEL_G || jump_state_elapsed_ms >= JUMP_LANDING_MAX_MS)
             {
                 jump_set_state(JUMP_RECOVER);
             }
             break;
 
         case JUMP_RECOVER:
-            *current_x = JUMP_RECOVER_X;
-            *current_y = JUMP_RECOVER_Y;
-            jump_drive_symmetric_xy(*current_x, *current_y);
+            jump_drive_symmetric_pwm(JUMP_RECOVER_PWM);
             if (jump_state_elapsed_ms >= JUMP_RECOVER_MS)
             {
-                jump_restore_control();
-                jump_set_state(JUMP_FREE);
+                jump_set_state(JUMP_END);
             }
             break;
-
         case JUMP_FREE:
         default:
             jump_restore_control();

@@ -10,7 +10,8 @@ typedef enum
     JUMP_BURST,
     JUMP_AIR_RETRACT,
     JUMP_EXE_BUFFER,
-    JUMP_RECOVER
+    JUMP_RECOVER,
+    JUMP_END
 } JumpState;
 
 typedef enum
