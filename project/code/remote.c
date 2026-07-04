@@ -12,7 +12,8 @@ extern float target_velocity;
 #define REMOTE_CH3_EMERGENCY_RECOVER_FRAMES 300
 #define REMOTE_CH6_JUMP_THRESHOLD 1000           // CH6: 192/1792，两档切换，超过该阈值视为高位
 #define REMOTE_CH6_JUMP_ARM_FRAMES 5
-#define REMOTE_CH4_MINE_SWEEP_THRESHOLD 1400
+#define REMOTE_CH4_MID_THRESHOLD 800
+#define REMOTE_CH4_HIGH_THRESHOLD 1400
 // ------------------- 内部结构体定义 -------------------
 // 将数据结构体定义在 .c 文件中，实现对外隐藏（封装）
 typedef struct
@@ -252,13 +253,37 @@ static WayPoint_Type Remote_GetRecordPointType(void)
 {
     uint8 mode = Runtime_Get_Vehicle_Mode();
 
-    if (mode == VEHICLE_MODE_COURSE_2 && Remote_GetChannelData(4) > REMOTE_CH4_MINE_SWEEP_THRESHOLD)
+    if (mode == VEHICLE_MODE_COURSE_2)
     {
-        return WP_TYPE_MINE_SWEEP;
+        int32_t ch4 = Remote_GetChannelData(4);
+
+        if (ch4 > REMOTE_CH4_HIGH_THRESHOLD)
+        {
+            return WP_TYPE_JUMP;
+        }
+        if (ch4 > REMOTE_CH4_MID_THRESHOLD)
+        {
+            return WP_TYPE_MINE_SWEEP;
+        }
     }
 
     return WP_TYPE_NORMAL;
 }
+
+//static WayPoint_Type Remote_GetRecordPointType(void)
+//{
+//    // 读取 CH4 (旋钮/多段开关) 通道数据
+//    // 遥控器通道下限一般在 300 左右，上限在 1700 左右
+//    int32_t ch4_val = Remote_GetChannelData(4);
+//    
+//    // 将通道值域分割为 6 段，对应 6 种类型
+//    if      (ch4_val < 500)  return WP_TYPE_NORMAL;      // 普通循迹点 (极低位)
+//    else if (ch4_val < 800)  return WP_TYPE_MINE_SWEEP    ;   // 定点排雷    (低位)
+//    else if (ch4_val < 1100) return WP_TYPE_CONE_CONE;  //   绕圆锥桶(中低位)
+//    else if (ch4_val < 1400) return WP_TYPE_BRIDGE;      // 单边桥     (中高位)
+//    else if (ch4_val < 1700) return WP_TYPE_JUMP;        // 跳跃台阶   (高位)
+//    else                     return WP_TYPE_STOP;        // 终点停车   (极高位)
+//}
 
 static void Remote_CheckRecordTrigger(uint8 remote_drive_enabled)
 {
@@ -286,7 +311,7 @@ static void Remote_CheckRecordTrigger(uint8 remote_drive_enabled)
 
     if (remote_drive_enabled && remote_record_armed)
     {
-        wifi_remote_type = (float)Remote_GetRecordPointType();
+        wifi_remote_type = Remote_GetRecordPointType();
         wifi_in_action = 0.0f;
         vofa_trigger_record = 2.0f;
         navi_ctrl.trigger_record = 0;

@@ -159,6 +159,9 @@ typedef struct {
     double cumulative_yaw;  // ÀÛ¼ÆÕæÊµ½Ç¶È (²»ÏŞÖÆ·¶Î§£¬¶È)
     float  turns;           // ÀÛ¼ÆÈ¦Êı (×Ô¶¯¼ÆËã±ÈÀı£¬Èç 1.05)
     float  last_yaw_for_cum; // ÉÏÒ»Ö¡µÄ Yaw Öµ£¬ÓÃÓÚ¼ì²âÌø×ª
+    
+    // ¡¾ĞÂÔö¡¿ÊÖ¶¯×ø±ê¸üĞÂÄ£Ê½±êÖ¾Î» (1: ¿ªÆôÊÖ¶¯²¹³¥, ÔİÍ£×Ô¶¯¸üĞÂ; 0: ×Ô¶¯¸üĞÂ)
+    uint8_t manual_update_mode;
 
 } RobotState_t;
 
@@ -201,7 +204,6 @@ typedef struct {
 extern RobotState_t robot_pose;                                  // È«¾ÖÊµÊ±Î»×Ë£¬¹©Íâ²¿Ö»¶Á·ÃÎÊ
 extern Navi_Sensor_Data_t filter_data;                        //ÂË²¨+´¦ÀíºóµÄ³õÊ¼Êı¾İÊı¾İ
 
-
 //=================================================ÉùÃ÷  »ù´¡º¯Êı================================================
 
 //Êı¾İÔ¤´¦Àí /»ù´¡º¯Êı
@@ -223,11 +225,14 @@ void navi_ekf_update(void) ;                       //¿¨¶ûÂüËã·¨Êı¾İÔ¤²â+¸üĞÂ+ÆäË
 
 
 //ÍâÖÃº¯Êı
-void Navi_Data_Set_Origin(void); // ¶ÀÁ¢Ô­µãÉèÖÃ API  ÖÃµ±Ç°Î»ÖÃÎª×ø±êÔ­µã (x=0, y=0)
-void Navi_Data_Reset_XY_Keep_Heading(void); // ÇåÁãµ¼º½Î»ÖÃ£¬µ«±£Áôµ±Ç°º½ÏòÁãµã
+void Navi_Data_Set_Origin(uint8_t reset_yaw) ;// ¶ÀÁ¢Ô­µãÉèÖÃ API  ÖÃµ±Ç°Î»ÖÃÎª×ø±êÔ­µã (x=0, y=0)
 
 float navi_limit_angle180(float angle);              //×ª½ÇÏŞ·ùº¯Êı
 uint8_t navi_airborne_detection();                                //ÌÚ¿Õ¼ì²âº¯Êı¡£
+
+
+void Navi_Set_Manual_Update_Mode(uint8_t enable);
+void Navi_Manual_Add_Pose(float val1, float val2, uint8_t frame);
 
 //=================================================ÉùÃ÷  »ù´¡º¯Êı================================================
 

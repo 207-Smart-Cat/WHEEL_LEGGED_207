@@ -75,7 +75,7 @@ void pit0_ch13_isr() // Servo control, fixed period
 {
     extern float x_current, y_current;
     PERF_PROBE_HIGH(PERF_PROBE_LEG);
-    if (!jump_is_active() && !Vehicle_Is_Emergency_Stop())
+    if (!jump_is_active() && !navigation_jump_is_active() && !Vehicle_Is_Emergency_Stop())
     {
         leg_control(&x_current, &y_current);
     }
@@ -111,7 +111,7 @@ void pit0_ch15_isr() // Navigation EKF positioning, 10ms
 
     if (!nav_origin_ready)
     {
-        Navi_Data_Set_Origin();
+        Navi_Data_Set_Origin(1);
         nav_origin_ready = 1;
     }
     navi_ekf_update();

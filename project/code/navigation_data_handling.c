@@ -252,42 +252,12 @@ void navi_parse_data(void) {
 
  */
 
-void Navi_Data_Set_Origin(void) {
-    robot_pose.x = 0;
-    
-    robot_pose.y = 0;
-    
-    // 【新增】：锁定当前车头朝向，作为相对坐标系的 0 度参考
-#if NAVI_USE_LOCAL_FRAME
-    if (yaw_hist_filled) {
-        float sum_sin = 0.0f;
-        float sum_cos = 0.0f;
-        // 累加最近 YAW_HISTORY_LEN 次的向量
-        for(uint16_t i = 0; i < YAW_HISTORY_LEN; i++) {
-            sum_sin += yaw_history_sin[i];
-            sum_cos += yaw_history_cos[i];
-        }
-        // 使用 atan2f 还原平均角度，完美解决 180/-180 翻转突变问题
-        float avg_yaw_rad = atan2f(sum_sin, sum_cos);
-        initial_yaw_offset = RAD_TO_ANGLE(avg_yaw_rad);
-    } else {
-        // 兜底逻辑：如果开机瞬间太快（还没跑够10个周期），直接取当前值
-        initial_yaw_offset = IMU_data.filter_result.yaw;
-    }
-#endif
-    
-    // --- 新增：初始化累计角度和圈数 ---
-    robot_pose.cumulative_yaw = 0.0;
-    robot_pose.turns = 0.0f;
-    robot_pose.last_yaw_for_cum = 0.0f; // 重置后 Yaw 为 0
-    // ----------------------------
-
-    robot_pose.is_valid = 1;
-
-}
-
-
-void Navi_Data_Reset_XY_Keep_Heading(void) {
+/**
+ * @brief 导航数据重置函数
+ * @param reset_yaw: 1 - 重新捕获当前车头作为0度基准(标定);                    0 - 仅重置坐标和累积误差，保持原航向基准
+ */
+void Navi_Data_Set_Origin(uint8_t reset_yaw){
+    // 1. 基础状态重置 (你提到的那几个变量)
     robot_pose.x = 0;
     robot_pose.y = 0;
     robot_pose.v = 0.0f;
@@ -295,7 +265,27 @@ void Navi_Data_Reset_XY_Keep_Heading(void) {
     robot_pose.bias_ax = 0.0f;
     robot_pose.bias_w = 0.0f;
     robot_pose.slip_level = 0;
+    robot_pose.manual_update_mode = 0;
 
+    // 2. 航向基准处理
+#if NAVI_USE_LOCAL_FRAME
+    if (reset_yaw) {
+        // 场景 A: 重新标定，从滑动窗口获取新的零点偏置
+        if (yaw_hist_filled) {
+            float sum_sin = 0.0f, sum_cos = 0.0f;
+            for(uint16_t i = 0; i < YAW_HISTORY_LEN; i++) {
+                sum_sin += yaw_history_sin[i];
+                sum_cos += yaw_history_cos[i];
+            }
+            initial_yaw_offset = RAD_TO_ANGLE(atan2f(sum_sin, sum_cos));
+        } else {
+            initial_yaw_offset = IMU_data.filter_result.yaw;
+        }
+    }
+    // 如果 reset_yaw == 0，保持原有的 initial_yaw_offset 不动
+#endif
+
+    // 3. 统一更新当前航向角
 #if NAVI_USE_LOCAL_FRAME
     float relative_yaw = navi_limit_angle180(IMU_data.filter_result.yaw - initial_yaw_offset);
     robot_pose.yaw = navi_limit_angle180(-relative_yaw);
@@ -303,11 +293,14 @@ void Navi_Data_Reset_XY_Keep_Heading(void) {
     robot_pose.yaw = navi_limit_angle180(-IMU_data.filter_result.yaw);
 #endif
 
+    // 4. 累计角度和圈数重置
     robot_pose.cumulative_yaw = 0.0;
     robot_pose.turns = 0.0f;
     robot_pose.last_yaw_for_cum = robot_pose.yaw;
+    
     robot_pose.is_valid = 1;
 }
+
 
 
 
@@ -513,8 +506,10 @@ void navi_ekf_update(void) {
     }
 
     // 将增量累加进全局坐标系
-    robot_pose.x += dx;
-    robot_pose.y += dy;
+    if (robot_pose.manual_update_mode == 0) {         //自动时才更新
+        robot_pose.x += dx;
+        robot_pose.y += dy;
+    }
 
 //    float half_dtheta = (opt_w * dt) / 2.0f; // opt_w 是 EKF 融合后的角速度 (弧度制)
 //    robot_pose.x += opt_v * cosf(yaw_rad + half_dtheta) * dt;
@@ -532,15 +527,7 @@ void navi_ekf_update(void) {
     
     robot_pose.yaw     = navi_limit_angle180(filter_data.yaw);
     
-    // --- 新增：累计角度计算逻辑 ---
-    float delta_yaw = robot_pose.yaw - robot_pose.last_yaw_for_cum;
-    
-    // 检测从 180° 跳到 -180° 的情况（顺时针增加）
-    if (delta_yaw < -180.0f) delta_yaw += 360.0f;
-    // 检测从 -180° 跳到 180° 的情况（逆时针减小）
-    else if (delta_yaw > 180.0f) delta_yaw -= 360.0f;
-    
-    robot_pose.cumulative_yaw += delta_yaw;
+    robot_pose.cumulative_yaw += navi_limit_angle180(robot_pose.yaw - robot_pose.last_yaw_for_cum);
     robot_pose.turns = (float)(robot_pose.cumulative_yaw / 360.0);
     robot_pose.last_yaw_for_cum = robot_pose.yaw;
     // ----------------------------
@@ -709,4 +696,49 @@ uint8_t navi_airborne_detection(void) {
 
     return is_latching_airborne;
 }
+
+
+//===================================================================
+// 位姿更新模式
+//0:自动更新   1:手动模式
+//===================================================================
+
+/**位姿更新模式
+ * @param enable 1:开启手动模式(坐标停止自动更新)，0:关闭并恢复自动更新
+ */
+void Navi_Set_Manual_Update_Mode(uint8_t enable) {
+    robot_pose.manual_update_mode = enable;
+}
+
+/**
+ * @brief 手动给当前位姿坐标添加一个固定值
+ * @param val1  、val2 ：偏移量1、2
+ * @param frame 偏移量参考坐标系选择:  0(全局) 或 1：当前车体的坐标系
+ */
+void Navi_Manual_Add_Pose(float val1, float val2, uint8_t frame) {
+    // 如果没有开启手动模式，直接返回，不执行补偿
+    if (!robot_pose.manual_update_mode) {
+        return; 
+    }
+
+    if (frame == 1) {
+        // --- 车体相对坐标系模式 (方案二) ---
+        // val1: forward_m, val2: right_m
+        float yaw_rad = ANGLE_TO_RAD(robot_pose.yaw);
+        
+        // 转换到全局 dx, dy
+        double dx_global = val1 * cosf(yaw_rad) - val2 * sinf(yaw_rad);
+        double dy_global = val1 * sinf(yaw_rad) + val2 * cosf(yaw_rad);
+        
+        robot_pose.x += dx_global;
+        robot_pose.y += dy_global;
+    } 
+    else if (frame == 0) {
+        // --- 全局坐标系模式 (方案一) ---
+        // val1: dx_m, val2: dy_m
+        robot_pose.x += val1;
+        robot_pose.y += val2;
+    }
+}
+
 

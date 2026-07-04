@@ -1230,7 +1230,7 @@ static void ui_nav_undo_record_point(void)
 
 static void ui_nav_clear_record_map(void)
 {
-    ui_send_param_update(P_NAVI_MODE_DRIVER, 0.0f);
+    ui_send_param_update(P_NAVI_MODE_DRIVER, 2.0f);
     ui_send_param_update(P_NAVI_MODE_MAP, 2.0f);
 }
 static void ui_restore_default_params(void)
