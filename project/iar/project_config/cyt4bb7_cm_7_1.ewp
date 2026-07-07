@@ -1149,6 +1149,12 @@
             <name>$PROJ_DIR$\..\..\code\engine.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\jump_control.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\jump_control.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\filter_function.c</name>
         </file>
         <file>
