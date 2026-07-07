@@ -5,6 +5,7 @@
 #include "jump_control.h"
 #include "imu.h"
 #include "small_driver_uart_control.h"
+#include "vehicle_supervisor.h"
 
 // ==================== 动作状态机实例 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -39,6 +40,7 @@ static float jump_motion_count = 0.0f;
 static float jump_motion_last_x = 0.0f;
 static uint8_t jump_touch_sample_count = 0;
 static uint8_t jump_touch_hit_count = 0;
+static uint8_t remote_jump_active = 0;
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif
@@ -168,6 +170,65 @@ static void navi_jump_pose_update_end(void)
 #endif
 }
 
+// ============================================================================
+// ==================== REMOTE CH6 NAVIGATION JUMP BRIDGE =====================
+// ============================================================================
+// CH6 trigger entry: reuse navigation_action.c FSM_JUMP_* jump flow.
+// The waypoint navigation flow is kept intact; Remote uses this start/tick bridge.
+// ============================================================================
+uint8_t Navi_Action_Remote_Jump_Active(void)
+{
+    return remote_jump_active;
+}
+
+uint8_t Navi_Action_Start_Remote_Jump(void)
+{
+    if (remote_jump_active || is_action_busy || navigation_jump_is_active() || jump_is_active())
+    {
+        return 0;
+    }
+
+    remote_jump_active = 1;
+    is_action_busy = 1;
+    action_fsm.state = FSM_JUMP_EXPLORE;
+    action_fsm.state_timer_ms = 0;
+    action_fsm.is_airborne_expect = 0;
+
+#if (NAVI_JUMP_ACTION_MODE == 2U)
+    jump_sequence_done_count = 0;
+    jump_course_back_yaw = 0.0f;
+#endif
+    jump_sequence_hold_yaw = navi_limit_angle180(target_angle);
+    navi_jump_motion_reset();
+    navi_jump_touch_window_reset();
+    navi_jump_pose_update_end();
+
+    jump_stop = 0;
+    jump_position = 0;
+    jump_engine_suspend = 0;
+    target_velocity = NAVI_JUMP_EXPLORE_SPEED;
+    target_angle = jump_sequence_hold_yaw;
+
+    return 1;
+}
+
+static void navi_action_remote_jump_clear(void)
+{
+    remote_jump_active = 0;
+    is_action_busy = 0;
+    action_fsm.state = FSM_IDLE;
+    action_fsm.state_timer_ms = 0;
+    action_fsm.is_airborne_expect = 0;
+    navi_jump_pose_update_end();
+    jump_engine_suspend = 0;
+    jump_stop = 0;
+    jump_position = 0;
+}
+
+// ============================================================================
+// ================== END REMOTE CH6 NAVIGATION JUMP BRIDGE ===================
+// ============================================================================
+
 // ==============================================================================
 // 全局路径预处理：提取需要动作接管的特殊航点
 // ==============================================================================
@@ -207,7 +268,10 @@ void navi_parse_global_path(void) {
 // 异步动作状态机
 // ==============================================================================
 static void navi_action_fsm_update(uint16_t target_idx, float distance) {
-    WayPoint_Type upcoming_type = point_map[target_idx].type;
+    WayPoint_Type upcoming_type = WP_TYPE_NORMAL;
+    if (!remote_jump_active) {
+        upcoming_type = point_map[target_idx].type;
+    }
     action_fsm.state_timer_ms += (uint32_t)(ENCODER_DT * 1000.0f);
     // 注意：状态切换时要清零 state_timer_ms。
 
@@ -509,11 +573,13 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 #endif
 #endif
 #if (NAVI_JUMP_ACTION_MODE != 2U) || (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE)
-                action_done_pending = 1;
-                action_done_idx = target_idx;
-                if (action_seq.current_ptr < action_seq.total_count &&
-                    action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
-                    action_seq.current_ptr++;
+                if (!remote_jump_active) {
+                    action_done_pending = 1;
+                    action_done_idx = target_idx;
+                    if (action_seq.current_ptr < action_seq.total_count &&
+                        action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
+                        action_seq.current_ptr++;
+                    }
                 }
                 action_fsm.state = FSM_IDLE;
                 action_fsm.state_timer_ms = 0;
@@ -580,11 +646,13 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             target_velocity = NAVI_TRIPLE_JUMP_STAIR_SPEED;
             target_angle = jump_course_back_yaw;
             if (action_fsm.state_timer_ms >= NAVI_TRIPLE_JUMP_STAIR_DOWN_MS) {
-                action_done_pending = 1;
-                action_done_idx = target_idx;
-                if (action_seq.current_ptr < action_seq.total_count &&
-                    action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
-                    action_seq.current_ptr++;
+                if (!remote_jump_active) {
+                    action_done_pending = 1;
+                    action_done_idx = target_idx;
+                    if (action_seq.current_ptr < action_seq.total_count &&
+                        action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
+                        action_seq.current_ptr++;
+                    }
                 }
                 action_fsm.state = FSM_IDLE;
                 action_fsm.state_timer_ms = 0;
@@ -648,11 +716,41 @@ uint8_t Navi_Action_Consume_Done(uint16_t curr_idx)
     return 0;
 }
 
+// ============================================================================
+// ==================== REMOTE CH6 NAVIGATION JUMP BRIDGE =====================
+// ============================================================================
+void Navi_Action_Remote_Jump_Tick(void)
+{
+    if (!remote_jump_active)
+    {
+        return;
+    }
+
+    if (Vehicle_Is_Emergency_Stop())
+    {
+        navi_action_remote_jump_clear();
+        return;
+    }
+
+    navi_action_fsm_update(0, 0.0f);
+
+    if (action_fsm.state == FSM_IDLE)
+    {
+        navi_action_remote_jump_clear();
+    }
+}
+
+// ============================================================================
+// ================== END REMOTE CH6 NAVIGATION JUMP BRIDGE ===================
+// ============================================================================
+
 
 // ==============================================================================
 // 动作管理入口：由循迹层周期调用
 // ==============================================================================
 void Navi_Action_Manager(uint16_t  curr_idx) {
+    if (remote_jump_active) return;
+
     if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count) return; 
 
     uint16_t  target_wp_idx = action_seq.list[action_seq.current_ptr].wp_index;

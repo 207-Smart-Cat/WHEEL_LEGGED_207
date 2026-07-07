@@ -106,6 +106,9 @@ extern uint8_t is_action_busy;
 
 uint8_t navigation_jump_is_active(void);
 uint8_t Navi_Action_Servo_Takeover_Active(void);
+uint8_t Navi_Action_Start_Remote_Jump(void);
+void Navi_Action_Remote_Jump_Tick(void);
+uint8_t Navi_Action_Remote_Jump_Active(void);
 void navi_parse_global_path(void);
 void Navi_Action_Manager(uint16_t curr_idx) ;
 uint8_t Navi_Action_Consume_Done(uint16_t curr_idx);

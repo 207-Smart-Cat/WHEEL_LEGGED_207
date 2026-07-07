@@ -68,6 +68,9 @@ void pit0_ch11_isr() // 双核参数同步，10ms
 void pit0_ch12_isr() // 遥控器控制，重要（10ms）
 {
     Remote_control_callback();
+    /* ==================== NEW CH6 NAVI JUMP TICK ==================== */
+    Navi_Action_Remote_Jump_Tick();
+    /* ==================== END NEW CH6 NAVI JUMP TICK ==================== */
     pit_isr_flag_clear(PIT_CH12);
 }
 
