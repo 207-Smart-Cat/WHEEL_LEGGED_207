@@ -4,6 +4,7 @@
 #include "param.h"
 #include "jump_control.h"
 #include "imu.h"
+#include "small_driver_uart_control.h"
 
 // ==================== 动作状态机实例 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -33,22 +34,24 @@ static uint16_t action_done_idx = 0;
 static uint8_t jump_sequence_done_count = 0;
 static float jump_course_back_yaw = 0.0f;
 #endif
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 2U)
-static float jump_interval_start_x = 0.0f;
-static float jump_interval_start_y = 0.0f;
-#endif
 static float jump_sequence_hold_yaw = 0.0f;
+static float jump_motion_count = 0.0f;
+static float jump_motion_last_x = 0.0f;
+static uint8_t jump_touch_sample_count = 0;
+static uint8_t jump_touch_hit_count = 0;
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif
 
 uint8_t navigation_jump_is_active(void)
 {
-    return (action_fsm.state == FSM_JUMP_PREPARE ||
+    return (action_fsm.state == FSM_JUMP_EXPLORE ||
+            action_fsm.state == FSM_JUMP_EDGE_TOUCH ||
+            action_fsm.state == FSM_JUMP_BACKOFF ||
+            action_fsm.state == FSM_JUMP_PREPARE ||
             action_fsm.state == FSM_JUMP_TAKEOFF ||
             action_fsm.state == FSM_JUMP_AIRBORNE ||
             action_fsm.state == FSM_JUMP_LANDING ||
-            action_fsm.state == FSM_JUMP_TRIPLE_INTERVAL ||
             action_fsm.state == FSM_JUMP_RAMP_DOWN ||
             action_fsm.state == FSM_JUMP_TURN_BACK ||
             action_fsm.state == FSM_JUMP_RAMP_UP ||
@@ -66,6 +69,13 @@ uint8_t Navi_Action_Servo_Takeover_Active(void)
 #define NAVI_JUMP_FORWARD_SPEED       NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_AIRBORNE_SPEED      NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_LANDING_SPEED       NAVI_JUMP_RUNUP_SPEED
+#define NAVI_JUMP_EXPLORE_SPEED       (120.0f)
+#define NAVI_JUMP_BACKOFF_SPEED       (-120.0f)
+#define NAVI_JUMP_TOUCH_LOW_SPEED     (10)
+#define NAVI_JUMP_TOUCH_SAMPLE_COUNT  (10U)
+#define NAVI_JUMP_TOUCH_HIT_THRESHOLD (2U)
+#define NAVI_JUMP_BACKOFF_X_TARGET    (0.20f)
+#define NAVI_JUMP_RUNUP_X_TARGET      (0.35f)
 #define NAVI_JUMP_BURST_PWM           (1300)
 #define NAVI_JUMP_AIR_RETRACT_X       (-0.00f)
 #define NAVI_JUMP_AIR_RETRACT_Y       (0.015f)
@@ -80,22 +90,54 @@ uint8_t Navi_Action_Servo_Takeover_Active(void)
 #define NAVI_JUMP_LAND_ACCEL_G        (1.0f)
 
 #define NAVI_TRIPLE_JUMP_TOTAL_COUNT      (3U)
-#define NAVI_TRIPLE_JUMP_INTERVAL_SPEED   NAVI_JUMP_RUNUP_SPEED
-#define NAVI_TRIPLE_JUMP_INTERVAL_MS      (100U)
-#define NAVI_TRIPLE_JUMP_INTERVAL_DX_M    (0.10f)
 
 #if (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY) && \
     (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE)
 #error "Invalid NAVI_TRIPLE_JUMP_AFTER_MODE"
 #endif
 
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE != 1U) && (NAVI_TRIPLE_JUMP_INTERVAL_MODE != 2U)
-#error "Invalid NAVI_TRIPLE_JUMP_INTERVAL_MODE"
-#endif
-
 #if (NAVI_JUMP_POSE_UPDATE_MODE != 1U) && (NAVI_JUMP_POSE_UPDATE_MODE != 2U)
 #error "Invalid NAVI_JUMP_POSE_UPDATE_MODE"
 #endif
+
+static void navi_jump_motion_reset(void)
+{
+    jump_motion_count = 0.0f;
+    jump_motion_last_x = robot_pose.x;
+}
+
+static void navi_jump_motion_update(void)
+{
+    jump_motion_count += fabsf(robot_pose.x - jump_motion_last_x);
+    jump_motion_last_x = robot_pose.x;
+}
+
+static void navi_jump_touch_window_reset(void)
+{
+    jump_touch_sample_count = 0;
+    jump_touch_hit_count = 0;
+}
+
+static uint8_t navi_jump_touch_update(void)
+{
+    float avg_speed_abs = (fabsf((float)motor_value.receive_left_speed_data) +
+                           fabsf((float)motor_value.receive_right_speed_data)) * 0.5f;
+
+    jump_touch_sample_count++;
+    if (avg_speed_abs <= (float)NAVI_JUMP_TOUCH_LOW_SPEED)
+    {
+        jump_touch_hit_count++;
+    }
+
+    if (jump_touch_sample_count >= NAVI_JUMP_TOUCH_SAMPLE_COUNT)
+    {
+        uint8_t touched = (jump_touch_hit_count >= NAVI_JUMP_TOUCH_HIT_THRESHOLD) ? 1U : 0U;
+        navi_jump_touch_window_reset();
+        return touched;
+    }
+
+    return 0U;
+}
 
 static void navi_jump_pose_update_begin(void)
 {
@@ -142,11 +184,9 @@ void navi_parse_global_path(void) {
     jump_sequence_done_count = 0;
     jump_course_back_yaw = 0.0f;
 #endif
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 2U)
-    jump_interval_start_x = 0.0f;
-    jump_interval_start_y = 0.0f;
-#endif
     jump_sequence_hold_yaw = 0.0f;
+    navi_jump_motion_reset();
+    navi_jump_touch_window_reset();
     navi_jump_pose_update_end();
     jump_engine_suspend = 0;
 
@@ -194,20 +234,24 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
 #elif (NAVI_JUMP_ACTION_MODE == 1U)
-                jump_sequence_hold_yaw = (float)IMU_data.filter_result.yaw;
-                action_fsm.state = FSM_JUMP_RUNUP;
+                jump_sequence_hold_yaw = navi_limit_angle180(point_map[target_idx].yaw);
+                navi_jump_motion_reset();
+                navi_jump_touch_window_reset();
+                action_fsm.state = FSM_JUMP_EXPLORE;
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
-                target_velocity = NAVI_JUMP_RUNUP_SPEED;
+                target_velocity = NAVI_JUMP_EXPLORE_SPEED;
                 target_angle = jump_sequence_hold_yaw;
 #elif (NAVI_JUMP_ACTION_MODE == 2U)
                 jump_sequence_done_count = 0;
                 jump_course_back_yaw = 0.0f;
-                jump_sequence_hold_yaw = (float)IMU_data.filter_result.yaw;
-                action_fsm.state = FSM_JUMP_RUNUP;
+                jump_sequence_hold_yaw = navi_limit_angle180(point_map[target_idx].yaw);
+                navi_jump_motion_reset();
+                navi_jump_touch_window_reset();
+                action_fsm.state = FSM_JUMP_EXPLORE;
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
-                target_velocity = NAVI_JUMP_RUNUP_SPEED;
+                target_velocity = NAVI_JUMP_EXPLORE_SPEED;
                 target_angle = jump_sequence_hold_yaw;
 #else
 #error "Invalid NAVI_JUMP_ACTION_MODE"
@@ -304,6 +348,54 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             break;
         }
         // ------------------ 跳跃动作 ------------------
+        case FSM_JUMP_EXPLORE:
+            is_action_busy = 1;
+            action_fsm.is_airborne_expect = 0;
+            jump_stop = 0;
+            jump_position = 0;
+            jump_engine_suspend = 0;
+            target_velocity = NAVI_JUMP_EXPLORE_SPEED;
+            target_angle = jump_sequence_hold_yaw;
+
+            if (navi_jump_touch_update())
+            {
+                action_fsm.state = FSM_JUMP_EDGE_TOUCH;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;
+            }
+            break;
+
+        case FSM_JUMP_EDGE_TOUCH:
+            is_action_busy = 1;
+            action_fsm.is_airborne_expect = 0;
+            jump_stop = 0;
+            jump_position = 0;
+            jump_engine_suspend = 0;
+            target_velocity = 0.0f;
+            target_angle = jump_sequence_hold_yaw;
+            navi_jump_motion_reset();
+            action_fsm.state = FSM_JUMP_BACKOFF;
+            action_fsm.state_timer_ms = 0;
+            break;
+
+        case FSM_JUMP_BACKOFF:
+            is_action_busy = 1;
+            action_fsm.is_airborne_expect = 0;
+            jump_stop = 0;
+            jump_position = 0;
+            jump_engine_suspend = 0;
+            target_velocity = NAVI_JUMP_BACKOFF_SPEED;
+            target_angle = jump_sequence_hold_yaw;
+            navi_jump_motion_update();
+
+            if (jump_motion_count >= NAVI_JUMP_BACKOFF_X_TARGET) {
+                navi_jump_motion_reset();
+                action_fsm.state = FSM_JUMP_RUNUP;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;
+            }
+            break;
+
         case FSM_JUMP_RUNUP:
             is_action_busy = 1;
             action_fsm.is_airborne_expect = 0;
@@ -312,8 +404,9 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_RUNUP_SPEED;
             target_angle = jump_sequence_hold_yaw;
+            navi_jump_motion_update();
 
-            if (action_fsm.state_timer_ms >= NAVI_JUMP_RUNUP_MS) {
+            if (jump_motion_count >= NAVI_JUMP_RUNUP_X_TARGET) {
                 navi_jump_pose_update_begin();
                 action_fsm.state = FSM_JUMP_PREPARE;
                 action_fsm.state_timer_ms = 0;
@@ -328,9 +421,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             jump_position = 0;
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_FORWARD_SPEED;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
             target_angle = jump_sequence_hold_yaw;
-#endif
             jump_drive_symmetric_pwm(jump_calc_prepare_pwm((uint16)action_fsm.state_timer_ms));
 
             if (action_fsm.state_timer_ms >= NAVI_JUMP_PREPARE_MS) {
@@ -345,9 +436,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             action_fsm.is_airborne_expect = 0;
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_FORWARD_SPEED;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
             target_angle = jump_sequence_hold_yaw;
-#endif
             jump_drive_symmetric_pwm(NAVI_JUMP_BURST_PWM);
 
             if (action_fsm.state_timer_ms >= NAVI_JUMP_BURST_MS) {
@@ -366,9 +455,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             action_fsm.is_airborne_expect = 1;
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_AIRBORNE_SPEED;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
             target_angle = jump_sequence_hold_yaw;
-#endif
 
             if (action_fsm.state_timer_ms < NAVI_JUMP_AIR_RETRACT_MS) {
                 jump_drive_symmetric_xy(NAVI_JUMP_AIR_RETRACT_X, NAVI_JUMP_AIR_RETRACT_Y);
@@ -390,9 +477,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             action_fsm.is_airborne_expect = 0;
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_LANDING_SPEED;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
             target_angle = jump_sequence_hold_yaw;
-#endif
             jump_drive_symmetric_pwm(NAVI_JUMP_RECOVER_PWM);
 
             if (action_fsm.state_timer_ms >= NAVI_JUMP_RECOVER_MS) {
@@ -401,11 +486,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 #if (NAVI_JUMP_ACTION_MODE == 2U)
                 jump_sequence_done_count++;
                 if (jump_sequence_done_count < NAVI_TRIPLE_JUMP_TOTAL_COUNT) {
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 2U)
-                    jump_interval_start_x = robot_pose.x;
-                    jump_interval_start_y = robot_pose.y;
-#endif
-                    action_fsm.state = FSM_JUMP_TRIPLE_INTERVAL;
+                    navi_jump_motion_reset();
+                    action_fsm.state = FSM_JUMP_BACKOFF;
                     action_fsm.state_timer_ms = 0;
                     is_action_busy = 1;
                     action_fsm.is_airborne_expect = 0;
@@ -444,38 +526,6 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             }
             break;
 
-        case FSM_JUMP_TRIPLE_INTERVAL:
-        {
-            is_action_busy = 1;
-            action_fsm.is_airborne_expect = 0;
-            jump_engine_suspend = 0;
-            jump_position = 0;
-            jump_stop = 0;
-            target_velocity = NAVI_TRIPLE_JUMP_INTERVAL_SPEED;
-            target_angle = jump_sequence_hold_yaw;
-
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 1U)
-            if (action_fsm.state_timer_ms >= NAVI_TRIPLE_JUMP_INTERVAL_MS) {
-                action_fsm.state = FSM_JUMP_RUNUP;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-            }
-#elif (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 2U)
-            {
-                float dx = robot_pose.x - jump_interval_start_x;
-                float dy = robot_pose.y - jump_interval_start_y;
-                float interval_dist_sq = dx * dx + dy * dy;
-                float target_dist_sq = NAVI_TRIPLE_JUMP_INTERVAL_DX_M * NAVI_TRIPLE_JUMP_INTERVAL_DX_M;
-
-                if (interval_dist_sq >= target_dist_sq) {
-                    action_fsm.state = FSM_JUMP_RUNUP;
-                    action_fsm.state_timer_ms = 0;
-                    is_action_busy = 1;
-                }
-            }
-#endif
-            break;
-        }
         case FSM_JUMP_RAMP_DOWN:
             is_action_busy = 1;
             action_fsm.is_airborne_expect = 0;
@@ -635,6 +685,3 @@ void Navi_Action_Manager(uint16_t  curr_idx) {
 //===========================================================================================================
 //================================================动作封装函数=======================================================
 //========================================================================================================
-
-
-

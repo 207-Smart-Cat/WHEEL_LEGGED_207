@@ -14,11 +14,6 @@
 // 2U = 跳跃点执行三级跳
 #define NAVI_JUMP_ACTION_MODE  2U
 
-// 三级跳两次跳跃之间的间隔选择：
-// 1U = 定时行走一段时间后进入下一跳
-// 2U = 按位姿距离行走到固定距离后进入下一跳
-#define NAVI_TRIPLE_JUMP_INTERVAL_MODE  1U
-
 #define NAVI_TRIPLE_JUMP_AFTER_MODE  1U
 #define NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY  0U
 #define NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE  1U
@@ -44,7 +39,6 @@
 // RUNUP 阶段只接管速度和航向，不接管舵机，让常规 leg_control 产生前倾助跑。
 // 进入 PREPARE/TAKEOFF 后再接管舵机，避免普通腿控覆盖压腿和爆发输出。
 #define NAVI_JUMP_RUNUP_SPEED      350.0f
-#define NAVI_JUMP_RUNUP_MS         (250U)
 
 // ========================== 动作状态机枚举 ==========================
 typedef enum {
@@ -57,12 +51,14 @@ typedef enum {
     FSM_MINE_PROCESSING,      // 排雷旋转执行中
     
     // --- 跳跃动作状态 ---
+    FSM_JUMP_EXPLORE,         // 探索期：低速前进，寻找台阶边缘
+    FSM_JUMP_EDGE_TOUCH,      // 触边确认期：清零距离计数，准备后退
+    FSM_JUMP_BACKOFF,         // 后退期：从台阶边缘后退到安全助跑距离
     FSM_JUMP_RUNUP,           // 助跑期：保持常规腿控，建立前向速度
     FSM_JUMP_PREPARE,         // 准备期：压腿蓄力
     FSM_JUMP_TAKEOFF,         // 起跳期：伸腿爆发
     FSM_JUMP_AIRBORNE,        // 空中期：收腿/缓冲
     FSM_JUMP_LANDING,         // 落地期：恢复姿态
-    FSM_JUMP_TRIPLE_INTERVAL, // 三级跳间隔行走
     FSM_JUMP_RAMP_DOWN,
     FSM_JUMP_TURN_BACK,
     FSM_JUMP_RAMP_UP,
