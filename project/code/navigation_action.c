@@ -118,6 +118,16 @@ static void navi_jump_motion_update(void)
     jump_motion_last_x = robot_pose.x;
 }
 
+static void navi_jump_motion_update_forward_x(void)
+{
+    float dx = robot_pose.x - jump_motion_last_x;
+
+    if (dx > 0.0f) {
+        jump_motion_count += dx;
+    }
+    jump_motion_last_x = robot_pose.x;
+}
+
 static void navi_jump_touch_window_reset(void)
 {
     Navi_JumpTouchLogic_Reset(&jump_touch_logic);
@@ -479,7 +489,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_RUNUP_SPEED;
             target_angle = jump_sequence_hold_yaw;
-            navi_jump_motion_update();
+            navi_jump_motion_update_forward_x();
 
             if (jump_motion_count >= NAVI_JUMP_RUNUP_X_TARGET) {
                 navi_jump_pose_update_begin();
