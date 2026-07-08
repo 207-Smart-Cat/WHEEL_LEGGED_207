@@ -1,20 +1,16 @@
-# Project build outputs and local IDE state
+# ============================================================
+# 207-Smart-Cat: CYT4BB7 ���� Git �������
+# ============================================================
 
-# IAR build directories
+# --- IAR ���gݔ���c�������� ---
 Debug/
 Release/
 project/iar/Debug_m7_0/
 project/iar/Debug_m7_1/
-project/iar/**/Debug_m7_0/
-project/iar/**/Debug_m7_1/
-
-# IAR local settings and caches
 settings/
-project/iar/settings/
-project/iar/project_config/settings/
 .cyt4bb7_cm_7_0_build_cache
 
-# Object/dependency files
+# --- ���g�a�������g�n�� ---
 *.o
 *.obj
 *.dep
@@ -24,12 +20,13 @@ project/iar/project_config/settings/
 *.tmp
 *.o.iar_deps
 
-# Ninja generated files
+# --- Ninja ����ϵ�y���P ---
 *.ninja_log
 *.ninja_deps
 build.ninja
 
-# IAR generated artifacts
+# --- IAR �{ԇ��ӳ���c��䛙n ---
+*.pbw
 *.map
 *.sim
 *.xcl
@@ -37,6 +34,6 @@ build.ninja
 *.hex
 *.out
 
-# VS Code local settings
-.vscode/
+# --- VSCode �����O�� ---
 iar-vsc.json
+.vscode/
