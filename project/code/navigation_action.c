@@ -6,6 +6,7 @@
 #include "imu.h"
 #include "small_driver_uart_control.h"
 #include "vehicle_supervisor.h"
+#include "navigation_touch_logic.h"
 
 // ==================== 动作状态机实例 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -38,8 +39,7 @@ static float jump_course_back_yaw = 0.0f;
 static float jump_sequence_hold_yaw = 0.0f;
 static float jump_motion_count = 0.0f;
 static float jump_motion_last_x = 0.0f;
-static uint8_t jump_touch_sample_count = 0;
-static uint8_t jump_touch_hit_count = 0;
+static NaviJumpTouchLogic_t jump_touch_logic = {0};
 static uint8_t jump_touch_inhibit_after_landing = 0;
 static uint8_t remote_jump_active = 0;
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
@@ -51,6 +51,7 @@ uint8_t navigation_jump_is_active(void)
     return (action_fsm.state == FSM_JUMP_EXPLORE ||
             action_fsm.state == FSM_JUMP_EDGE_TOUCH ||
             action_fsm.state == FSM_JUMP_BACKOFF ||
+            action_fsm.state == FSM_JUMP_RUNUP ||
             action_fsm.state == FSM_JUMP_PREPARE ||
             action_fsm.state == FSM_JUMP_TAKEOFF ||
             action_fsm.state == FSM_JUMP_AIRBORNE ||
@@ -75,8 +76,9 @@ uint8_t Navi_Action_Servo_Takeover_Active(void)
 #define NAVI_JUMP_EXPLORE_SPEED       (120.0f)
 #define NAVI_JUMP_BACKOFF_SPEED       (-120.0f)
 #define NAVI_JUMP_TOUCH_LOW_SPEED     (10)
-#define NAVI_JUMP_TOUCH_SAMPLE_COUNT  (10U)
-#define NAVI_JUMP_TOUCH_HIT_THRESHOLD (2U)
+#define NAVI_JUMP_TOUCH_HIGH_SPEED    (50)
+#define NAVI_JUMP_TOUCH_HIGH_SAMPLES  (2U)
+#define NAVI_JUMP_TOUCH_LOW_CONFIRM   (2U)
 #define NAVI_JUMP_TOUCH_INHIBIT_AFTER_LANDING_MS (1000U)
 #define NAVI_JUMP_BACKOFF_X_TARGET    (0.35f)
 #define NAVI_JUMP_RUNUP_X_TARGET      (0.20f)
@@ -118,8 +120,7 @@ static void navi_jump_motion_update(void)
 
 static void navi_jump_touch_window_reset(void)
 {
-    jump_touch_sample_count = 0;
-    jump_touch_hit_count = 0;
+    Navi_JumpTouchLogic_Reset(&jump_touch_logic);
 }
 
 static void navi_jump_touch_inhibit_reset(void)
@@ -133,20 +134,12 @@ static uint8_t navi_jump_touch_update(void)
     float avg_speed_abs = (fabsf((float)motor_value.receive_left_speed_data) +
                            fabsf((float)motor_value.receive_right_speed_data)) * 0.5f;
 
-    jump_touch_sample_count++;
-    if (avg_speed_abs <= (float)NAVI_JUMP_TOUCH_LOW_SPEED)
-    {
-        jump_touch_hit_count++;
-    }
-
-    if (jump_touch_sample_count >= NAVI_JUMP_TOUCH_SAMPLE_COUNT)
-    {
-        uint8_t touched = (jump_touch_hit_count >= NAVI_JUMP_TOUCH_HIT_THRESHOLD) ? 1U : 0U;
-        navi_jump_touch_window_reset();
-        return touched;
-    }
-
-    return 0U;
+    return Navi_JumpTouchLogic_Update(&jump_touch_logic,
+                                      avg_speed_abs,
+                                      (float)NAVI_JUMP_TOUCH_HIGH_SPEED,
+                                      (float)NAVI_JUMP_TOUCH_LOW_SPEED,
+                                      NAVI_JUMP_TOUCH_HIGH_SAMPLES,
+                                      NAVI_JUMP_TOUCH_LOW_CONFIRM);
 }
 
 static void navi_jump_pose_update_begin(void)

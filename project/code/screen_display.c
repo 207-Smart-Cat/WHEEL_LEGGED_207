@@ -236,6 +236,7 @@ static const uint16_t UI_TEXT_T_TITLE_CONFIRM[] = {0x786E, 0x8BA4, 0x64CD, 0x4F5
 static const uint16_t UI_TEXT_T_HOME_MODE[] = {0x6A21, 0x5F0F, 0x9009, 0x62E9, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_MONITOR[] = {0x5B9E, 0x65F6, 0x76D1, 0x63A7, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_PARAM[] = {0x53C2, 0x6570, 0x8C03, 0x8282, 0x0000};
+static const uint16_t UI_TEXT_T_HOME_JUMP[] = {0x004A, 0x0075, 0x006D, 0x0070, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_WIFI[] = {0x0057, 0x0069, 0x0046, 0x0069, 0x6A21, 0x5F0F, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_MODULE[] = {0x6A21, 0x5757, 0x5F00, 0x5173, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_SYSTEM[] = {0x7CFB, 0x7EDF, 0x64CD, 0x4F5C, 0x0000};
@@ -754,6 +755,7 @@ static const char *const k_home_items[] = {
     "Mode Select",
     "Realtime Monitor",
     "Param Adjust",
+    "Jump",
     "WiFi Mode",
     "Module Switch",
     "System Ops"
@@ -796,6 +798,7 @@ static const uint16_t *const k_home_texts[] = {
     UI_TEXT_T_HOME_MODE,
     UI_TEXT_T_HOME_MONITOR,
     UI_TEXT_T_HOME_PARAM,
+    UI_TEXT_T_HOME_JUMP,
     UI_TEXT_T_HOME_WIFI,
     UI_TEXT_T_HOME_MODULE,
     UI_TEXT_T_HOME_SYSTEM
@@ -1734,10 +1737,15 @@ static void ui_handle_home(ui_key_event_t events[UI_KEY_COUNT])
         else if (ui_home_index == 2) ui_set_screen(UI_SCREEN_PARAM_PAGE);
         else if (ui_home_index == 3)
         {
+            IPC_Request_Nav_Jump();
+            ui_set_screen(UI_SCREEN_HOME);
+        }
+        else if (ui_home_index == 4)
+        {
             ui_wifi_index = ((uint8_t)current_wifi_mode < ARRAY_SIZE(k_wifi_names)) ? (uint8_t)current_wifi_mode : 0;
             ui_set_screen(UI_SCREEN_WIFI);
         }
-        else if (ui_home_index == 4) ui_set_screen(UI_SCREEN_MODULES);
+        else if (ui_home_index == 5) ui_set_screen(UI_SCREEN_MODULES);
         else ui_set_screen(UI_SCREEN_SYSTEM);
     }
 }

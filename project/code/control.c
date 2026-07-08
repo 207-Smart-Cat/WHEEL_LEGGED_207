@@ -574,7 +574,7 @@ void balance_control()
     Runtime_Set_Balance_Reason(RUNTIME_REASON_NORMAL);
     if (First_angle && IMU_ready)
     {
-        target_angle = 180.0f;
+        target_angle = IMU_data.filter_result.yaw;
         First_angle = false;
     }
 

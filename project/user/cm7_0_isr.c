@@ -68,6 +68,13 @@ void pit0_ch11_isr() // 双核参数同步，10ms
 void pit0_ch12_isr() // 遥控器控制，重要（10ms）
 {
     Remote_control_callback();
+    if (IPC_Consume_Nav_Jump_Request_Core0())
+    {
+        /* ==================== SCREEN JUMP NAV ODOM ENABLE ==================== */
+        Runtime_Set_Module_Enabled(RUNTIME_MODULE_NAVIGATION, 1);
+        /* ================== END SCREEN JUMP NAV ODOM ENABLE ================== */
+        (void)Navi_Action_Start_Remote_Jump();
+    }
     /* ==================== NEW CH6 NAVI JUMP TICK ==================== */
     Navi_Action_Remote_Jump_Tick();
     /* ==================== END NEW CH6 NAVI JUMP TICK ==================== */
