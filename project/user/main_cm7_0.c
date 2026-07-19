@@ -1,4 +1,5 @@
 #include "app_headfile.h"
+#include "bumpy_control.h"
 
 volatile bool system_fully_ready = false;
 

@@ -259,7 +259,8 @@ static WayPoint_Type Remote_GetRecordPointType(void)
 
         if (ch4 > REMOTE_CH4_HIGH_THRESHOLD)
         {
-            return WP_TYPE_JUMP;
+            return WP_TYPE_JUMP;           //ÌøÔ¾
+//            return WP_TYPE_BUMP;             //µßô¤Â·¶Î
         }
         if (ch4 > REMOTE_CH4_MID_THRESHOLD)
         {

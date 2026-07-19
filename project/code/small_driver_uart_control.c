@@ -481,7 +481,6 @@ void small_driver_uart_init_encoder(void)
     small_driver_set_duty(0, 0);                                                                // 设置0占空比防暴走
     small_driver_request_encoder();                                                             // 发送请求编码器指令
 }
-//********************************************************************
 
 
 

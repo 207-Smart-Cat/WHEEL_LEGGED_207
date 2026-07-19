@@ -71,6 +71,8 @@ typedef enum {
     WP_TYPE_BRIDGE = 3,     // µ¥±ßÇÅ 
         
     WP_TYPE_JUMP = 4,           // ÌøÔ¾Ì¨½× 
+    
+    WP_TYPE_BUMP = 5,           // µßô¤Â·¶Î
 
     WP_TYPE_STOP= 6,           // ÖÕµã·µº½
     

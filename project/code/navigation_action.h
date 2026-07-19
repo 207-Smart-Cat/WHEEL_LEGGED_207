@@ -68,6 +68,10 @@ typedef enum {
     FSM_JUMP_RAMP_UP,
     FSM_JUMP_STAIR_DOWN,
     
+    // --- 颠簸路段动作状态 ---
+    FSM_BUMP,               // 前进检测真实颠簸段、穿越并由传感确认结束
+    
+    
     // --- 桥梁动作状态 ---
     FSM_BRIDGE_APPROACH,      // 接近桥梁
     FSM_BRIDGE_ON_BOARD,      // 桥面自适应

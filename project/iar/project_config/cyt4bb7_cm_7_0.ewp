@@ -1116,31 +1116,25 @@
     <group>
         <name>code</name>
         <file>
+            <name>$PROJ_DIR$\..\..\code\app_headfile.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\battery_monitor.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\battery_monitor.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\app_headfile.h</name>
+            <name>$PROJ_DIR$\..\..\code\bumpy_control.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\bumpy_control.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\control.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\control.h</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\jump_control.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\jump_control.h</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\vehicle_supervisor.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\vehicle_supervisor.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\engine.c</name>
@@ -1173,10 +1167,10 @@
             <name>$PROJ_DIR$\..\..\code\ipc_shared_data.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\process_rx.c</name>
+            <name>$PROJ_DIR$\..\..\code\jump_control.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\process_rx.h</name>
+            <name>$PROJ_DIR$\..\..\code\jump_control.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\matrix.c</name>
@@ -1218,6 +1212,12 @@
             <name>$PROJ_DIR$\..\..\code\pid.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\process_rx.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\process_rx.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\remote.c</name>
         </file>
         <file>
@@ -1240,6 +1240,12 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\small_driver_uart_control.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\vehicle_supervisor.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\vehicle_supervisor.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\vofa_protocol.c</name>
