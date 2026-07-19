@@ -480,7 +480,6 @@ void small_driver_uart_init_encoder(void)
     small_driver_set_duty(0, 0);                                                                // ����0ռ�ձȷ�����
     small_driver_request_encoder();                                                             // �������������ָ��
 }
-//********************************************************************
 
 
 

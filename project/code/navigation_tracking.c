@@ -175,6 +175,7 @@ static float navi_get_reach_threshold(uint16_t target_idx)
         case WP_TYPE_CONE_CONE:
         case WP_TYPE_BRIDGE:
         case WP_TYPE_JUMP:
+        case WP_TYPE_BUMP:
         case WP_TYPE_NORMAL:
         case WP_TYPE_STOP:
         case WP_TYPE_HOME:
@@ -509,6 +510,20 @@ void navi_load_comprehensive_test_map(void) {
     static_point_map[i++] = (Navi_WayPoint_t){2.0f, 0.0f, 0.0f, WP_TYPE_NORMAL, 0, 1};
     static_point_map[i++] = (Navi_WayPoint_t){2.3f, 0.0f, 0.0f, WP_TYPE_STOP, 0, 1};
     */
+    
+        
+    /* ========================================================================= */
+    /* 方案 8：颠簸路段 Action 测试地图（默认注释，不启用）                      */
+    /* 路线：起点 -> 0.6m 普通点 -> 1.2m 颠簸动作点 -> 障碍后普通点 -> 停车点。 */
+    /* WP_TYPE_BUMP 的 action_cmd=0 表示使用第 0 套颠簸参数。                   */
+    /* ========================================================================= */
+    /*
+    static_point_map[i++] = (Navi_WayPoint_t){0.0f, 0.0f, 0.0f, WP_TYPE_HOME,   0, 1};
+    static_point_map[i++] = (Navi_WayPoint_t){0.6f, 0.0f, 0.0f, WP_TYPE_NORMAL, 0, 1};
+    static_point_map[i++] = (Navi_WayPoint_t){1.2f, 0.0f, 0.0f, WP_TYPE_BUMP,   0, 1};
+    static_point_map[i++] = (Navi_WayPoint_t){2.0f, 0.0f, 0.0f, WP_TYPE_NORMAL, 0, 1};
+    static_point_map[i++] = (Navi_WayPoint_t){2.4f, 0.0f, 0.0f, WP_TYPE_STOP,   0, 1};
+    */
     static_point_count = i;  
 }
 
@@ -745,7 +760,8 @@ void task_navigation_control(void) {
                     action_seq.list[action_seq.current_ptr].wp_index == curr_idx &&
                     (is_action_busy || action_fsm.state != FSM_IDLE ||
                      point_map[curr_idx].type == WP_TYPE_MINE_SWEEP ||
-                     point_map[curr_idx].type == WP_TYPE_JUMP)) {
+                     point_map[curr_idx].type == WP_TYPE_JUMP||
+                     point_map[curr_idx].type == WP_TYPE_BUMP)) {
                     break;
                 }
                 
@@ -1023,6 +1039,7 @@ const char* get_enum_name(WayPoint_Type type) {
         case WP_TYPE_NORMAL:      return "普通循迹";
         case WP_TYPE_MINE_SWEEP:  return "定点排雷";
         case WP_TYPE_JUMP:        return "跳跃台阶";
+        case WP_TYPE_BUMP:        return "颠簸路段";
         case WP_TYPE_STOP:        return "终点返航";
         case WP_TYPE_HOME:        return "原点";
         case WP_TYPE_BRIDGE:      return "单边桥";

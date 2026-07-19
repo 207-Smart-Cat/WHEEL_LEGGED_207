@@ -1,4 +1,4 @@
-﻿#include "navigation_action.h"
+#include "navigation_action.h"
 #include "navigation_data_handling.h"
 #include "ipc_shared_data.h"
 #include "param.h"
@@ -7,6 +7,7 @@
 #include "small_driver_uart_control.h"
 #include "vehicle_supervisor.h"
 #include "navigation_touch_logic.h"
+#include "bumpy_control.h"
 
 // ==================== 动作状态机实例 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -260,10 +261,11 @@ void navi_parse_global_path(void) {
     navi_jump_motion_reset();
     navi_jump_touch_inhibit_reset();
     navi_jump_pose_update_end();
+    Bumpy_Action_Reset();
     jump_engine_suspend = 0;
 
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
-        if (point_map[i].type == WP_TYPE_MINE_SWEEP ||  point_map[i].type == WP_TYPE_JUMP)  {
+        if (point_map[i].type == WP_TYPE_MINE_SWEEP ||  point_map[i].type == WP_TYPE_JUMP || point_map[i].type == WP_TYPE_BUMP)  {
             if (point_map[i].type == WP_TYPE_JUMP) {
                 point_map[i].action_cmd = NAVI_JUMP_ACTION_MODE;
             }
@@ -331,6 +333,25 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 #else
 #error "Invalid NAVI_JUMP_ACTION_MODE"
 #endif
+            }
+            else if (upcoming_type == WP_TYPE_BUMP && navi_isreach_target_point(target_idx))                               //颠簸路段
+            {
+                if (Bumpy_Action_Start(point_map[target_idx].action_cmd))                                 //转入颠簸路段。 0：默认颠簸参数； 1：长颠簸参数；   2：反向通过参数。
+                {                                                                                         //检查参数合法，并初始化本次运行数据。
+                    action_fsm.state = FSM_BUMP;
+                    action_fsm.state_timer_ms = 0U;
+                    action_fsm.is_airborne_expect = 0U;
+                    is_action_busy = 1U;
+                }
+                else                                                                                                   //颠簸动作启动失败：立即停止车辆并退出导航模式
+                {
+                    target_velocity = 0.0f;
+                    navi_ctrl.navi_mode_driver = 0U;
+                    IPC_LOG_Printf(
+                        "颠簸动作启动失败,退出导航。wp=%u,profile=%u\r\n",
+                        (unsigned int)target_idx,
+                        (unsigned int)point_map[target_idx].action_cmd);
+                }
             }
             else if (upcoming_type == WP_TYPE_BRIDGE && distance < (DISTANCE_THRESHOLD * 8.0f)) {
                 action_fsm.state = FSM_BRIDGE_APPROACH;
@@ -689,6 +710,50 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             }
             break;
 
+          // ------------------ 颠簸路段动作 ------------------
+          case FSM_BUMP:
+          {
+              BumpyActionResult_t bump_result;                         // 本周期动作结果
+
+              is_action_busy = 1U;
+              action_fsm.is_airborne_expect = 0U;
+              bump_result = Bumpy_Action_Process_10ms();                // 前进、穿越、传感确认均在颠簸模块内推进
+
+              if (bump_result == BUMP_ACTION_RESULT_DONE)              // 颠簸动作全部完成
+              {
+                  action_done_pending = 1U;                            // 设置动作完成标志
+                  action_done_idx = target_idx;                        // 记录完成航点
+
+                  if (action_seq.current_ptr < action_seq.total_count &&
+                      action_seq.list[action_seq.current_ptr].wp_index == target_idx)
+                  {
+                      action_seq.current_ptr++;                        // 切换下一特殊动作
+                  }
+
+                  action_fsm.state = FSM_IDLE;                         
+                  action_fsm.state_timer_ms = 0U;                   
+                  is_action_busy = 0U;                               
+              }
+              else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
+                       bump_result == BUMP_ACTION_RESULT_IDLE)          // 动作故障或内外状态异常，统一安全退出
+              {
+                  if (action_seq.current_ptr < action_seq.total_count &&
+                      action_seq.list[action_seq.current_ptr].wp_index == target_idx)
+                  {
+                      action_seq.current_ptr++;                        // 跳过当前异常动作
+                  }
+                  
+                  target_velocity = 0.0f;                     
+                  target_angle = (float)IMU_data.filter_result.yaw;  
+                  vofa_mode_driver = 0.0f;                        
+                  navi_ctrl.navi_mode_driver = 0U;                 
+                  action_fsm.state = FSM_IDLE;                      
+                  action_fsm.state_timer_ms = 0U;                   
+                  is_action_busy = 0U;                                 // 释放动作接管
+              }
+              break;
+          }
+
         // ------------------ 桥梁动作 ------------------
         case FSM_BRIDGE_APPROACH:
             // 预留：接近桥梁时的减速、姿态准备等动作。
@@ -808,3 +873,4 @@ void Navi_Action_Manager(uint16_t  curr_idx) {
 //===========================================================================================================
 //================================================动作封装函数=======================================================
 //========================================================================================================
+
