@@ -21,6 +21,8 @@
 #include "ipc_shared_data.h"
 
 #include "wifi.h"
+#include "runtime_status.h"
+#include "navigation_smooth_logic.h"
 
 //====================================================全局变量定义=======================================================
 Navi_Controller_t navi_ctrl;
@@ -64,6 +66,7 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
 static float navi_calc_turn_speed_limit(float turn_error_deg);
 static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid);
 static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd);
+static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points);
 
 static void navi_record_update_status(void)
 {
@@ -253,6 +256,27 @@ static float navi_update_tracking_velocity(float distance, float stop_threshold,
     navi_speed_last_output = constrain_float(navi_speed_last_output + delta, 0.0f, max_velocity);
 
     return navi_speed_last_output;
+}
+
+static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points)
+{
+    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_1)
+    {
+        return 0U;
+    }
+
+    if (target_idx >= total_points || target_idx >= NAVI_POINT_MAX || !point_map[target_idx].valid)
+    {
+        return 0U;
+    }
+
+    if (target_idx >= (total_points - 1U) || point_map[target_idx].type == WP_TYPE_STOP)
+    {
+        return 0U;
+    }
+
+    return (point_map[target_idx].type == WP_TYPE_HOME ||
+            point_map[target_idx].type == WP_TYPE_NORMAL) ? 1U : 0U;
 }
 
 //==================================================== function implementation =============================================
@@ -565,7 +589,8 @@ void task_navigation_control(void) {
         
         case 1: {  // --- 循迹模式 ---自主追踪导航                
             uint16_t total_points = navi_ctrl.point_total_count;
-            uint16_t curr_idx = navi_ctrl.point_current_idx;    
+            uint16_t curr_idx = navi_ctrl.point_current_idx;
+            static uint8_t smooth_speed_hold_ticks = 0U;
             if (total_points == 0)     break; 
             
             //            //动态前瞻搜索 ---计算当前速度自适应的前瞻距离  0.2f 是速度增益系数
@@ -594,9 +619,44 @@ void task_navigation_control(void) {
             float print_turn_angle = 0.0f; 
             uint8_t nav_info_valid = navi_calcnavinfo(lookahead_idx, &azimuth, &distance);
             uint8_t reached_current = navi_isreach_target_point(curr_idx);
+            uint8_t smooth_zone_active = 0U;
+            uint8_t smooth_switch_triggered = 0U;
+            uint16_t smooth_prev_idx = curr_idx;
             
             if (nav_info_valid) {
                 print_turn_angle = navi_limit_angle180((float)azimuth - robot_pose.yaw);
+            }
+
+            if (smooth_speed_hold_ticks > 0U)
+            {
+                smooth_speed_hold_ticks--;
+                smooth_zone_active = 1U;
+            }
+
+            if (!is_action_busy &&
+                nav_info_valid &&
+                navi_is_course1_smooth_point(curr_idx, total_points) &&
+                Navi_Smooth_Should_Advance(distance, NAVI_SMOOTH_REACH_RADIUS_M, 0U))
+            {
+                smooth_zone_active = 1U;
+                if (navi_switch_nexttargetpoint())
+                {
+                    curr_idx = navi_ctrl.point_current_idx;
+                    lookahead_idx = curr_idx;
+                    nav_info_valid = navi_calcnavinfo(lookahead_idx, &azimuth, &distance);
+                    reached_current = navi_isreach_target_point(curr_idx);
+                    print_turn_angle = 0.0f;
+                    if (nav_info_valid)
+                    {
+                        print_turn_angle = navi_limit_angle180((float)azimuth - robot_pose.yaw);
+                    }
+                    smooth_speed_hold_ticks = NAVI_SMOOTH_POST_ADVANCE_TICKS;
+                    smooth_switch_triggered = 1U;
+                    IPC_LOG_Printf("\r\n[NAVI_SMOOTH] point %d -> %d inside radius %.2f m\r\n",
+                                   (unsigned int)smooth_prev_idx,
+                                   (unsigned int)curr_idx,
+                                   (double)NAVI_SMOOTH_REACH_RADIUS_M);
+                }
             }
             Navi_Action_Manager(navi_ctrl.point_current_idx);  // 动作接管识别 
             
@@ -639,8 +699,14 @@ void task_navigation_control(void) {
                     nav_info_valid
                 );
                 float turn_speed_limit = navi_calc_turn_speed_limit(print_turn_angle);
+                uint8_t apply_smooth_speed_limit =
+                    (smooth_zone_active || smooth_switch_triggered) ? 1U : 0U;
 
-                target_velocity = (speed_cmd < turn_speed_limit) ? speed_cmd : turn_speed_limit;
+                target_velocity = Navi_Smooth_Resolve_Target_Velocity(
+                    speed_cmd,
+                    turn_speed_limit,
+                    NAVI_SMOOTH_ZONE_SPEED_LIMIT,
+                    apply_smooth_speed_limit);
 #endif
             }   else {
                 navi_speed_profile_reset();
