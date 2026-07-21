@@ -18,8 +18,8 @@ uint8 force_ui_refresh = 1;
 static uint8_t ui_battery_low_active = 0;
 
 // Four-key setup UI. Active low with internal pull-up.
-#define UI_KEY_UP_PIN       P20_3
-#define UI_KEY_DOWN_PIN     P20_0
+#define UI_KEY_UP_PIN       P20_0
+#define UI_KEY_DOWN_PIN     P20_3
 #define UI_KEY_OK_PIN       P20_1
 #define UI_KEY_BACK_PIN     P20_2
 #define UI_KEY_COUNT        (4)

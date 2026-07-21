@@ -398,13 +398,15 @@ float Velocity(velocity_loop_state_t *state, float measured_velocity, float targ
 float Balance(float Angle, float Gyro, float target)
 {
     static float angle_integral = 0.0f;                                    // �ǶȻ����������������̬��̬ƫ��
-    float Angle_bias = target_motor_Stand + target - Angle;                // ����Ƕ�ƫ��?    float Gyro_bias = 0 - Gyro;                                            // ΢�ֿ��������ƽ������
+    float Angle_bias = target_motor_Stand + target - Angle;
+    float Gyro_bias = 0 - Gyro;                                            // ΢�ֿ��������ƽ������
     angle_integral += Angle_bias;
     angle_integral = constrain_float(angle_integral, -1000.0f, 1000.0f);
 
     float balance = -motor_Stand.kp * Angle_bias - motor_Stand.ki * angle_integral + Gyro_bias * motor_Stand.kd;
 
-    balance_last_error = Angle_bias; // �������?    if (balance > 5000)
+    balance_last_error = Angle_bias;
+    if (balance > 5000)
         balance = 5000; //=========�޷�5000
     if (balance < -5000)
         balance = -5000;
@@ -415,7 +417,8 @@ float Balance(float Angle, float Gyro, float target)
 // 陀螺仪控制计算（PID计算朝向角度�?
 float GyroControl(float target_gyro, float current_gyro) // ���ٶȻ�
 {
-    float gyro_error = target_gyro - current_gyro;                         // �������������?    static float gyro_Integral;                                            // ������
+    float gyro_error = target_gyro - current_gyro;
+    static float gyro_Integral;                                            // ������
     gyro_Integral += gyro_error;
     if (gyro_Integral > 1500)
         gyro_Integral = 1500;
@@ -424,7 +427,8 @@ float GyroControl(float target_gyro, float current_gyro) // ���ٶȻ�
 
     float gyro_delta = gyro_error - gyro_last_error;
     float gyro_control = +motor_gyro.kp * gyro_error + motor_gyro.ki * gyro_Integral + motor_gyro.kd * gyro_delta;
-    gyro_last_error = gyro_error; // �������?    return gyro_control; // gyro loop output sign fixed
+    gyro_last_error = gyro_error;
+    return gyro_control; // gyro loop output sign fixed
 }
 
 // 限制PWM输出范围
@@ -528,7 +532,27 @@ float Turn(float current_yaw, float target_yaw)
         yaw_error = 0.0f;
     }
 
-    control_output = Direction_p * yaw_error - Direction_d * yaw_rate;
+    {
+        static float yaw_integral = 0.0f;
+        const float turn_i_output_limit = 450.0f;
+        const float turn_i_state_limit = 15000.0f;
+        float integral_output;
+
+        if (yaw_error == 0.0f)
+        {
+            yaw_integral *= 0.995f;
+        }
+        else
+        {
+            yaw_integral += yaw_error;
+            yaw_integral = constrain_float(yaw_integral, -turn_i_state_limit, turn_i_state_limit);
+        }
+
+        integral_output = constrain_float(Direction_i * yaw_integral,
+                                          -turn_i_output_limit,
+                                          turn_i_output_limit);
+        control_output = Direction_p * yaw_error + integral_output - Direction_d * yaw_rate;
+    }
     control_output = constrain_float(control_output, -2200.0f, 2200.0f);
 
     return control_output;

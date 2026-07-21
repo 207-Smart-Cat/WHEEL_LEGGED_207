@@ -4,7 +4,7 @@
 #include "imu.h"
 
 // ========================================================
-// 1. ����ʱ�������� (������ᱻ IPC ���̸���)
+// 1. ����ʱ�������� (�������?IPC ���̸���)
 //��Ҫ������ĳ�ʼֵ���������2��
 // ========================================================
 float target_velocity = 0;
@@ -30,8 +30,7 @@ float navi_speed_max = 0, navi_speed_max_step = 0;
 
 // ========================================================
 // 2. ��������ϵͳȫ��Ĭ�ϳ�ʼֵ�ֵ� (���� _init ��׺)
-//������ĳ�ʼֵ
-// ========================================================
+//������ĳ�ʼ�?// ========================================================
 const float Q_yaw_init = 0.001f, Q_pr_init = 0.003f, Q_bias_init = 0.001f;
 const float R_yaw_init = 0.05f, R_pr_init = 0.05f;
 
@@ -47,7 +46,7 @@ const float Leg_X_Gain_init = 5.0f, Leg_X_Limit_init = 0.020f, Leg_X_Min_Step_in
 const float Jump_Burst_Pwm_init = 1200.0f, Jump_Burst_Ms_init = 130.0f, Jump_Air_Retract_Y_init = 0.03f, Jump_Buffer_Y_init = 0.05f, Jump_Landing_Max_Ms_init = 600.0f;
 
 const float Air_roll_p_init = 3.0f, Air_roll_i_init = 0.03f, Air_roll_d_init = 0.0015f;
-const float Direction_p_init = 14.93f, Direction_i_init = 0.012f, Direction_d_init = 0.875f;
+const float Direction_p_init = 14.93f, Direction_i_init = 0.03f, Direction_d_init = 0.875f;
 
 // ����������ʼֵ
 const float Nav_q_v_init = 2.0f, Nav_q_w_init = 0.0099f;
