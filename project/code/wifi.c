@@ -96,7 +96,8 @@ static const char *const k_wifi_wave_var_names[WIFI_WAVE_VAR_COUNT] = {
     "NavX", "NavY", "NavV", "NavW", "NavYaw", "NavOK",
     "LegXGain", "LegXLim", "LegXStep", "LegXHit",
     "ZeroSt", "ZeroMs", "ZeroRx", "ZeroSpd", "ZeroStart", "ZeroTx", "ZeroTask", "ZeroRxCnt",
-    "TargetVel", "TargetAng", "TargetStand", "XCurrent", "YCurrent"
+    "TargetVel", "TargetAng", "TargetStand", "XCurrent", "YCurrent",
+    "AstEn", "AstInt", "Assist", "AstClr"
 };
 
 const char *wifi_wave_var_name(wifi_wave_var_t id)
@@ -137,6 +138,10 @@ float wifi_wave_get_value(wifi_wave_var_t id)
         case WIFI_WAVE_VAR_TARGET_STAND:    return core_a_status.target_motor_stand_status;
         case WIFI_WAVE_VAR_X_CURRENT:       return core_a_status.x_current_status;
         case WIFI_WAVE_VAR_Y_CURRENT:       return core_a_status.y_current_status;
+        case WIFI_WAVE_VAR_ASSIST_ENABLED:  return core_a_status.anti_stall_enabled;
+        case WIFI_WAVE_VAR_ASSIST_INTEGRAL: return core_a_status.anti_stall_integral;
+        case WIFI_WAVE_VAR_ASSIST_PWM:      return core_a_status.anti_stall_pwm;
+        case WIFI_WAVE_VAR_ASSIST_CLEAR:    return core_a_status.anti_stall_clear_reason;
         case WIFI_WAVE_VAR_NAV_X:          return core_a_status.nav_x;
         case WIFI_WAVE_VAR_NAV_Y:          return core_a_status.nav_y;
         case WIFI_WAVE_VAR_NAV_V:          return core_a_status.nav_v;

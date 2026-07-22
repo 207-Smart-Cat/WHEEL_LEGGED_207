@@ -225,6 +225,7 @@ static const char *VOFA_Runtime_Module_Name(runtime_module_t module)
         case RUNTIME_MODULE_SERVO:        return "Servo";
         case RUNTIME_MODULE_REMOTE:       return "Remote";
         case RUNTIME_MODULE_NAVIGATION:   return "Navigation";
+        case RUNTIME_MODULE_ANTI_STALL:   return "AntiStall";
         case RUNTIME_MODULE_DEBUG_OUTPUT: return "DebugOutput";
         default:                          return "Unknown";
     }

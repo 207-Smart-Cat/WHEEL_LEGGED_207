@@ -15,7 +15,7 @@
 #ifndef PI
 #define PI 3.141592653589793
 #endif
-#define MAX_DUTY (65)       // motor PWM max = 6500
+#define MAX_DUTY (45) // motor PWM max = 4500
 #define MIN_LEG_LENGTH 0.04 // ��С�Ȳ�����
 #define MAX_LEG_LENGTH 0.1  // ����Ȳ�����?
 

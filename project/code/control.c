@@ -71,6 +71,23 @@ typedef struct
 
 static velocity_loop_state_t g_velocity_forward = {0};
 static float g_leg_speed_tilt_deg = 0.0f;
+typedef struct
+{
+    float integral;
+    float assist_pwm;
+    uint8 clear_reason;
+} anti_stall_assist_state_t;
+
+enum
+{
+    ANTI_STALL_CLEAR_NONE = 0,
+    ANTI_STALL_CLEAR_DISABLED = 1,
+    ANTI_STALL_CLEAR_NO_TARGET = 2,
+    ANTI_STALL_CLEAR_RECOVERED = 3,
+    ANTI_STALL_CLEAR_SAFETY = 4
+};
+
+static anti_stall_assist_state_t g_anti_stall_assist = {0};
 float leg_dbg_speed_tilt = 0.0f;
 float leg_dbg_x_offset = 0.0f;
 float leg_dbg_x_target = 0.0f;
@@ -80,6 +97,10 @@ float leg_dbg_x_gain_used = 0.0f;
 float leg_dbg_x_limit_used = 0.0f;
 float leg_dbg_x_step_used = 0.0f;
 float leg_dbg_x_limit_hit = 0.0f;
+float anti_stall_dbg_enabled = 0.0f;
+float anti_stall_dbg_integral = 0.0f;
+float anti_stall_dbg_pwm = 0.0f;
+float anti_stall_dbg_clear_reason = 0.0f;
 
 static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
 {
@@ -109,6 +130,74 @@ static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
 
     return x_limited;
 }
+
+static void anti_stall_reset(uint8 reason)
+{
+    g_anti_stall_assist.integral = 0.0f;
+    g_anti_stall_assist.assist_pwm = 0.0f;
+    g_anti_stall_assist.clear_reason = reason;
+    anti_stall_dbg_integral = 0.0f;
+    anti_stall_dbg_pwm = 0.0f;
+    anti_stall_dbg_clear_reason = (float)reason;
+}
+
+static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float measured_velocity)
+{
+    const float ANTI_STALL_TARGET_MIN = 40.0f;
+    const float ANTI_STALL_ERROR_START = 60.0f;
+    const float ANTI_STALL_RECOVER_ERROR = 20.0f;
+    const float ANTI_STALL_RECOVER_RATIO = 0.85f;
+    const float ANTI_STALL_INTEGRAL_LIMIT = 50000.0f;
+    const float ANTI_STALL_PWM_GAIN = 0.04f;
+    const float ANTI_STALL_PWM_LIMIT = 2000.0f;
+    float speed_error = target_velocity_cmd - measured_velocity;
+
+    anti_stall_dbg_enabled = enabled ? 1.0f : 0.0f;
+
+    if (!enabled)
+    {
+        anti_stall_reset(ANTI_STALL_CLEAR_DISABLED);
+        return 0.0f;
+    }
+
+    if (target_velocity_cmd <= ANTI_STALL_TARGET_MIN)
+    {
+        anti_stall_reset(ANTI_STALL_CLEAR_NO_TARGET);
+        anti_stall_dbg_enabled = 1.0f;
+        return 0.0f;
+    }
+
+    if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_MOTOR) || jump_is_active() || Navi_Action_Servo_Takeover_Active())
+    {
+        anti_stall_reset(ANTI_STALL_CLEAR_SAFETY);
+        anti_stall_dbg_enabled = 1.0f;
+        return 0.0f;
+    }
+
+    if (measured_velocity >= (target_velocity_cmd * ANTI_STALL_RECOVER_RATIO) || speed_error <= ANTI_STALL_RECOVER_ERROR)
+    {
+        anti_stall_reset(ANTI_STALL_CLEAR_RECOVERED);
+        anti_stall_dbg_enabled = 1.0f;
+        return 0.0f;
+    }
+
+    if (speed_error < ANTI_STALL_ERROR_START)
+    {
+        anti_stall_reset(ANTI_STALL_CLEAR_RECOVERED);
+        anti_stall_dbg_enabled = 1.0f;
+        return 0.0f;
+    }
+
+    g_anti_stall_assist.integral += speed_error;
+    g_anti_stall_assist.integral = constrain_float(g_anti_stall_assist.integral, 0.0f, ANTI_STALL_INTEGRAL_LIMIT);
+    g_anti_stall_assist.assist_pwm = constrain_float(ANTI_STALL_PWM_GAIN * g_anti_stall_assist.integral, 0.0f, ANTI_STALL_PWM_LIMIT);
+    g_anti_stall_assist.clear_reason = ANTI_STALL_CLEAR_NONE;
+    anti_stall_dbg_integral = g_anti_stall_assist.integral;
+    anti_stall_dbg_pwm = g_anti_stall_assist.assist_pwm;
+    anti_stall_dbg_clear_reason = (float)g_anti_stall_assist.clear_reason;
+    return g_anti_stall_assist.assist_pwm;
+}
+
 
 // 模糊规则参数
 typedef struct
@@ -458,11 +547,13 @@ static void Motor_Output_Stop(void)
 {
     Motor_Left = 0;
     Motor_Right = 0;
+    anti_stall_dbg_enabled = 0.0f;
+    anti_stall_reset(ANTI_STALL_CLEAR_SAFETY);
     Motor_Output_Clear_Debug();
     small_driver_set_duty(0, 0);
 }
 
-static void Motor_Output_Apply(float gyro_pwm, float turn_pwm, uint8 turn_enabled)
+static void Motor_Output_Apply(float gyro_pwm, float assist_pwm, float turn_pwm, uint8 turn_enabled)
 {
     int logical_left;
     int logical_right;
@@ -473,13 +564,13 @@ static void Motor_Output_Apply(float gyro_pwm, float turn_pwm, uint8 turn_enable
 
     if (turn_enabled)
     {
-        logical_left = (int)(gyro_pwm + turn_pwm);
-        logical_right = (int)(gyro_pwm - turn_pwm);
+        logical_left = (int)(gyro_pwm + assist_pwm + turn_pwm);
+        logical_right = (int)(gyro_pwm + assist_pwm - turn_pwm);
     }
     else
     {
-        logical_left = (int)gyro_pwm;
-        logical_right = (int)gyro_pwm;
+        logical_left = (int)(gyro_pwm + assist_pwm);
+        logical_right = (int)(gyro_pwm + assist_pwm);
     }
 
     limited_left = MOTOR_LEFT_LIMIT_SIGN * cuu(logical_left);
@@ -568,6 +659,7 @@ void balance_control()
     static uint8_t leg_loop_div = 0;
 #endif
     float Gyro_Pwm;
+    float assist_pwm = 0.0f;
     float raw_gyro_x = process_rx_gyro_x_dps((float)imu660rc_gyro_x);
 
     if (Vehicle_Is_Emergency_Stop())
@@ -645,6 +737,7 @@ void balance_control()
 
     Gyro_Pwm = GyroControl(Balance_Pwm, raw_gyro_x);
     Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
+    assist_pwm = anti_stall_update(Runtime_Is_Module_Enabled(RUNTIME_MODULE_ANTI_STALL), target_velocity, now_velocity);
 
     out_speed_l = Velocity_Angle_left;
     out_speed_r = Velocity_Angle_left;
@@ -653,7 +746,7 @@ void balance_control()
     out_gyro_l = Gyro_Pwm;
     out_gyro_r = Gyro_Pwm;
 
-    Motor_Output_Apply(Gyro_Pwm, Turn_Pwm, (jump_position == 0) ? 1 : 0);
+    Motor_Output_Apply(Gyro_Pwm, assist_pwm, Turn_Pwm, (jump_position == 0) ? 1 : 0);
 
 #if BALANCE_CONTROL_RUN_LEG_CONTROL
     leg_loop_div++;

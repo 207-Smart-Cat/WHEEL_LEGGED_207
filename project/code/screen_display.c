@@ -263,6 +263,7 @@ static const uint16_t UI_TEXT_T_MODULE_SERVO[] = {0x8235, 0x673A, 0x63A7, 0x5236
 static const uint16_t UI_TEXT_T_MODULE_REMOTE[] = {0x9065, 0x63A7, 0x63A5, 0x7BA1, 0x0000};
 static const uint16_t UI_TEXT_T_MODULE_NAV[] = {0x5BFC, 0x822A, 0x63A7, 0x5236, 0x0000};
 static const uint16_t UI_TEXT_T_MODULE_DEBUG[] = {0x8C03, 0x8BD5, 0x8F93, 0x51FA, 0x0000};
+static const uint16_t UI_TEXT_T_MODULE_ASSIST[] = {0x0041, 0x0073, 0x0073, 0x0069, 0x0073, 0x0074, 0x0000};
 static const uint16_t UI_TEXT_T_SOFT_ONLY[] = {0x4EC5, 0x9884, 0x7559, 0x8F6F, 0x5F00, 0x5173, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_SAVE[] = {0x4FDD, 0x5B58, 0x0046, 0x006C, 0x0061, 0x0073, 0x0068, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_LOAD[] = {0x8BFB, 0x53D6, 0x0046, 0x006C, 0x0061, 0x0073, 0x0068, 0x0000};
@@ -781,6 +782,7 @@ static const char *const k_module_names[] = {
     "Servo Enable",
     "Remote Enable",
     "Navigation Enable",
+    "Anti Stall Assist",
     "Debug Output"
 };
 
@@ -837,6 +839,7 @@ static const uint16_t *const k_module_texts[] = {
     UI_TEXT_T_MODULE_SERVO,
     UI_TEXT_T_MODULE_REMOTE,
     UI_TEXT_T_MODULE_NAV,
+    UI_TEXT_T_MODULE_ASSIST,
     UI_TEXT_T_MODULE_DEBUG
 };
 
@@ -846,6 +849,7 @@ static const runtime_module_t k_module_runtime_ids[] = {
     RUNTIME_MODULE_SERVO,
     RUNTIME_MODULE_REMOTE,
     RUNTIME_MODULE_NAVIGATION,
+    RUNTIME_MODULE_ANTI_STALL,
     RUNTIME_MODULE_DEBUG_OUTPUT
 };
 static const uint16_t *const k_system_texts[] = {
@@ -902,7 +906,7 @@ static const wifi_wave_var_t k_wave_group_attitude[] = {
 static const wifi_wave_var_t k_wave_group_motor[] = {
     WIFI_WAVE_VAR_LEFT_SPEED, WIFI_WAVE_VAR_RIGHT_SPEED,
     WIFI_WAVE_VAR_LEFT_PWM, WIFI_WAVE_VAR_RIGHT_PWM,
-    WIFI_WAVE_VAR_BATTERY
+    WIFI_WAVE_VAR_ASSIST_PWM, WIFI_WAVE_VAR_BATTERY
 };
 
 static const wifi_wave_var_t k_wave_group_target[] = {
@@ -915,7 +919,8 @@ static const wifi_wave_var_t k_wave_group_pid[] = {
     WIFI_WAVE_VAR_SPD_OUT_L, WIFI_WAVE_VAR_SPD_OUT_R,
     WIFI_WAVE_VAR_ANG_OUT_L, WIFI_WAVE_VAR_ANG_OUT_R,
     WIFI_WAVE_VAR_GYR_OUT_L, WIFI_WAVE_VAR_GYR_OUT_R,
-    WIFI_WAVE_VAR_TURN_OUT
+    WIFI_WAVE_VAR_TURN_OUT,
+    WIFI_WAVE_VAR_ASSIST_PWM, WIFI_WAVE_VAR_ASSIST_INTEGRAL
 };
 
 static const wifi_wave_var_t k_wave_group_leg[] = {
@@ -1685,8 +1690,8 @@ static void ui_draw_modules(void)
     ui_draw_title_text(UI_TEXT_T_TITLE_MODULE);
     for (uint8_t i = 0; i < ARRAY_SIZE(k_module_texts); i++)
     {
-        ui_show_text_selected(4, 42 + i * 32, i == ui_module_index, k_module_texts[i]);
-        ips200_show_string(170, 42 + i * 32, Runtime_Is_Module_Enabled(k_module_runtime_ids[i]) ? "ON" : "OFF");
+        ui_show_text_selected(4, 42 + i * 28, i == ui_module_index, k_module_texts[i]);
+        ips200_show_string(170, 42 + i * 28, Runtime_Is_Module_Enabled(k_module_runtime_ids[i]) ? "ON" : "OFF");
     }
     ui_show_text(8, 222, UI_TEXT_T_SOFT_ONLY);
     ui_draw_footer_text(UI_TEXT_T_HINT_TOGGLE);
