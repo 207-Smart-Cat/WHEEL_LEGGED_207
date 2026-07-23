@@ -122,37 +122,78 @@ static uint32_t g_bumpy_log_event_id = 0U;
 /* 单个颠簸航点的穿越参数，速度量纲与项目 target_velocity 保持一致。 */
 typedef struct
 {
+    BumpyMode_t mode;
+    uint8_t feature_mask;
+    float detect_speed;
+    uint16_t detect_timeout_ms;
+    float detect_max_distance_m;
     float crossing_speed;
+    float crossing_speed_medium;
+    float crossing_speed_heavy;
+    float speed_step_per_tick;
     uint16_t min_crossing_ms;
     uint16_t crossing_timeout_ms;
+    float expected_bump_length_m;
+    float exit_distance_margin_m;
     float recover_speed;
     uint16_t recover_ms;
+    float static_leg_y_offset_m;
+    float leg_ramp_step_m;
     float fixed_forward_m;
     float fixed_right_m;
     uint8_t allow_timeout_finish;
 } BumpyActionProfile_t;
 
+#define BUMP_FEATURE_DISTANCE_FALLBACK   (1U << 0)
+#define BUMP_FEATURE_ADAPTIVE_SPEED      (1U << 1)
+#define BUMP_FEATURE_STATIC_LEG          (1U << 2)
+
 typedef enum
 {
     BUMP_ACTION_PHASE_IDLE = 0,
+    BUMP_ACTION_PHASE_DETECT,
     BUMP_ACTION_PHASE_CROSSING,
     BUMP_ACTION_PHASE_RECOVER
 } BumpyActionPhase_t;
+
+typedef enum
+{
+    BUMP_SPEED_LEVEL_NORMAL = 0,
+    BUMP_SPEED_LEVEL_MEDIUM,
+    BUMP_SPEED_LEVEL_HEAVY
+} BumpySpeedLevel_t;
 
 typedef struct
 {
     BumpyActionPhase_t phase;
     uint16_t profile_id;
+    uint32_t detect_elapsed_ms;
     uint32_t crossing_elapsed_ms;
     uint32_t recover_elapsed_ms;
+    float detect_distance_m;
+    float crossing_distance_m;
+    float detect_start_x_m;
+    float detect_start_y_m;
+    float entry_x_m;
+    float entry_y_m;
+    float entry_yaw_deg;
     float hold_yaw_deg;
+    float active_speed_cmd;
+    float leg_base_x_m;
+    float leg_base_y_m;
+    float leg_y_cmd_m;
+    uint8_t speed_level;
+    uint8_t speed_level_pending;
+    uint8_t speed_level_pending_ticks;
+    uint16_t speed_level_hold_ms;
+    uint8_t leg_override_active;
     uint8_t started;
     uint8_t enter_detected;
     uint8_t exit_detected;
     uint8_t finish_allowed;
     uint8_t pose_update_active;
     uint8_t report_captured;
-    uint8_t log_pending_mask;
+    uint32_t log_pending_mask;
     BumpyExitReason_t exit_reason;
     BumpyReport_t report;
 } BumpyActionContext_t;
@@ -160,14 +201,73 @@ typedef struct
 static const BumpyActionProfile_t g_bumpy_action_profiles[] =
 {
     {
-        320.0f,    /* crossing_speed */
-        800U,      /* min_crossing_ms */
-        5000U,     /* crossing_timeout_ms */
-        220.0f,    /* recover_speed */
-        350U,      /* recover_ms */
-        1.20f,     /* fixed_forward_m */
-        0.00f,     /* fixed_right_m */
-        1U         /* allow_timeout_finish */
+        .mode = BUMP_MODE_SPEED_YAW,
+        .feature_mask = 0U,
+        .detect_speed = 220.0f,
+        .detect_timeout_ms = 2500U,
+        .detect_max_distance_m = 0.80f,
+        .crossing_speed = 320.0f,
+        .crossing_speed_medium = 280.0f,
+        .crossing_speed_heavy = 240.0f,
+        .speed_step_per_tick = 10.0f,
+        .min_crossing_ms = 800U,
+        .crossing_timeout_ms = 5000U,
+        .expected_bump_length_m = 1.20f,
+        .exit_distance_margin_m = 0.25f,
+        .recover_speed = 220.0f,
+        .recover_ms = 350U,
+        .static_leg_y_offset_m = 0.0f,
+        .leg_ramp_step_m = 0.0f,
+        .fixed_forward_m = 1.20f,
+        .fixed_right_m = 0.0f,
+        .allow_timeout_finish = 1U
+    },
+    {
+        .mode = BUMP_MODE_SPEED_YAW,
+        .feature_mask = BUMP_FEATURE_DISTANCE_FALLBACK |
+                        BUMP_FEATURE_ADAPTIVE_SPEED,
+        .detect_speed = 220.0f,
+        .detect_timeout_ms = 2500U,
+        .detect_max_distance_m = 0.80f,
+        .crossing_speed = 320.0f,
+        .crossing_speed_medium = 280.0f,
+        .crossing_speed_heavy = 240.0f,
+        .speed_step_per_tick = 10.0f,
+        .min_crossing_ms = 800U,
+        .crossing_timeout_ms = 5000U,
+        .expected_bump_length_m = 1.20f,
+        .exit_distance_margin_m = 0.25f,
+        .recover_speed = 220.0f,
+        .recover_ms = 350U,
+        .static_leg_y_offset_m = 0.0f,
+        .leg_ramp_step_m = 0.0f,
+        .fixed_forward_m = 1.20f,
+        .fixed_right_m = 0.0f,
+        .allow_timeout_finish = 1U
+    },
+    {
+        .mode = BUMP_MODE_STATIC_LEG,
+        .feature_mask = BUMP_FEATURE_DISTANCE_FALLBACK |
+                        BUMP_FEATURE_ADAPTIVE_SPEED |
+                        BUMP_FEATURE_STATIC_LEG,
+        .detect_speed = 220.0f,
+        .detect_timeout_ms = 2500U,
+        .detect_max_distance_m = 0.80f,
+        .crossing_speed = 320.0f,
+        .crossing_speed_medium = 280.0f,
+        .crossing_speed_heavy = 240.0f,
+        .speed_step_per_tick = 10.0f,
+        .min_crossing_ms = 800U,
+        .crossing_timeout_ms = 5000U,
+        .expected_bump_length_m = 1.20f,
+        .exit_distance_margin_m = 0.25f,
+        .recover_speed = 220.0f,
+        .recover_ms = 350U,
+        .static_leg_y_offset_m = 0.005f,
+        .leg_ramp_step_m = 0.0002f,
+        .fixed_forward_m = 1.20f,
+        .fixed_right_m = 0.0f,
+        .allow_timeout_finish = 1U
     }
 };
 
@@ -184,12 +284,18 @@ static const BumpyActionProfile_t g_bumpy_action_profiles[] =
 #error "BUMPY_ACTION_POSE_UPDATE_MODE must be 1 or 2"
 #endif
 
-#define BUMPY_ACTION_LOG_TRIGGER            (1U << 0)
-#define BUMPY_ACTION_LOG_ENTER              (1U << 1)
-#define BUMPY_ACTION_LOG_EXIT               (1U << 2)
-#define BUMPY_ACTION_LOG_TIMEOUT            (1U << 3)
-#define BUMPY_ACTION_LOG_DONE               (1U << 4)
-#define BUMPY_ACTION_LOG_FAULT              (1U << 5)
+#define BUMPY_ACTION_LOG_TRIGGER               (1UL << 0)
+#define BUMPY_ACTION_LOG_ENTER                 (1UL << 1)
+#define BUMPY_ACTION_LOG_ENTER_CROSSING        (1UL << 2)
+#define BUMPY_ACTION_LOG_EXIT                  (1UL << 3)
+#define BUMPY_ACTION_LOG_DETECT_TIMEOUT         (1UL << 4)
+#define BUMPY_ACTION_LOG_DETECT_DISTANCE_LIMIT  (1UL << 5)
+#define BUMPY_ACTION_LOG_ACTION_TIMEOUT         (1UL << 6)
+#define BUMPY_ACTION_LOG_DISTANCE_FALLBACK      (1UL << 7)
+#define BUMPY_ACTION_LOG_SPEED_LEVEL            (1UL << 8)
+#define BUMPY_ACTION_LOG_DONE                   (1UL << 9)
+#define BUMPY_ACTION_LOG_FAULT                  (1UL << 10)
+#define BUMPY_ACTION_LOG_PROFILE_FALLBACK       (1UL << 11)
 
 static BumpyActionContext_t g_bumpy_action;
 
@@ -1619,6 +1725,23 @@ static const BumpyActionProfile_t *bumpy_action_get_profile(
     return &g_bumpy_action_profiles[profile_id];
 }
 
+static float bumpy_action_slew(float current, float target, float step)
+{
+    if (step <= 0.0f)
+    {
+        return target;
+    }
+    if (target > current + step)
+    {
+        return current + step;
+    }
+    if (target < current - step)
+    {
+        return current - step;
+    }
+    return target;
+}
+
 static void bumpy_action_pose_begin(void)
 {
 #if (BUMPY_ACTION_POSE_UPDATE_MODE == 2U)
@@ -1636,9 +1759,13 @@ static void bumpy_action_pose_add_fixed(
 #if (BUMPY_ACTION_POSE_UPDATE_MODE == 2U)
     if (g_bumpy_action.pose_update_active && profile != NULL)
     {
-        Navi_Manual_Add_Pose(profile->fixed_forward_m,
-                             profile->fixed_right_m,
-                             1U);
+        const float deg_to_rad = 0.017453292519943295f;
+        float yaw_rad = g_bumpy_action.entry_yaw_deg * deg_to_rad;
+        float dx = profile->fixed_forward_m * cosf(yaw_rad) -
+                   profile->fixed_right_m * sinf(yaw_rad);
+        float dy = profile->fixed_forward_m * sinf(yaw_rad) +
+                   profile->fixed_right_m * cosf(yaw_rad);
+        Navi_Manual_Add_Pose(dx, dy, 0U);
     }
 #else
     (void)profile;
@@ -1658,20 +1785,15 @@ static void bumpy_action_pose_end(void)
 #endif
 }
 
-/* 从导航、IMU、轮速和公共目标中组装本周期 Action 检测输入。 */
 static void bumpy_action_fill_input(
-    const BumpyActionProfile_t *profile)
+    const BumpyActionProfile_t *profile,
+    float speed_cmd)
 {
     uint32_t runtime_mask = g_runtime_status.module_enable_mask;
 
     memset(&g_bumpy_project_input, 0, sizeof(g_bumpy_project_input));
     g_bumpy_project_input.dt_s = 0.010f;
     g_bumpy_project_input.enable = 1U;
-
-    /*
-     * 本入口由导航航点触发，不再依赖物理遥控开关或遥控链路。
-     * 急停、导航传感器有效性仍然保留。
-     */
     g_bumpy_project_input.remote_mode_active = 1U;
     g_bumpy_project_input.remote_link_valid = 1U;
     g_bumpy_project_input.emergency_stop = Vehicle_Is_Emergency_Stop();
@@ -1679,17 +1801,14 @@ static void bumpy_action_fill_input(
     g_bumpy_project_input.sensor_valid =
         ((runtime_mask & RUNTIME_MODULE_BIT(RUNTIME_MODULE_NAVIGATION)) &&
          robot_pose.is_valid) ? 1U : 0U;
-
-    g_bumpy_project_input.user_speed_cmd = profile->crossing_speed;
+    g_bumpy_project_input.user_speed_cmd = speed_cmd;
     g_bumpy_project_input.user_yaw_cmd_deg = g_bumpy_action.hold_yaw_deg;
     g_bumpy_project_input.control_yaw_deg = IMU_data.filter_result.yaw;
-
     g_bumpy_project_input.pose_x_m = (float)robot_pose.x;
     g_bumpy_project_input.pose_y_m = (float)robot_pose.y;
     g_bumpy_project_input.pose_yaw_deg = robot_pose.yaw;
     g_bumpy_project_input.fused_forward_mps = robot_pose.v;
     g_bumpy_project_input.slip_level = robot_pose.slip_level;
-
     g_bumpy_project_input.vertical_accel_mps2 = filter_data.accel[2];
     g_bumpy_project_input.pitch_deg = filter_data.pitch;
     g_bumpy_project_input.roll_deg = filter_data.roll;
@@ -1700,12 +1819,21 @@ static void bumpy_action_fill_input(
     g_bumpy_project_input.right_forward_mps = -filter_data.right_mps;
     g_bumpy_project_input.base_leg_x_m = x_current;
     g_bumpy_project_input.base_leg_y_m = y_current;
+    (void)profile;
+}
+
+static float bumpy_action_forward_distance_10ms(void)
+{
+    float forward_mps = 0.5f *
+        (g_bumpy_project_input.left_forward_mps +
+         g_bumpy_project_input.right_forward_mps);
+    return (forward_mps > 0.0f) ?
+           forward_mps * g_bumpy_project_input.dt_s : 0.0f;
 }
 
 static void bumpy_action_update_debug(BumpyState_t previous_state)
 {
     bumpy_project_update_debug(previous_state);
-
     if (previous_state != g_bumpy_project_runtime.state)
     {
         g_bumpy_log_previous_state = previous_state;
@@ -1726,27 +1854,145 @@ static void bumpy_action_capture_report(void)
     }
 }
 
-/* 统一进入恢复阶段，并根据 finish_allowed 决定继续低速前进或立即停车。 */
+static void bumpy_action_clear_leg_override(void)
+{
+    g_bumpy_action.leg_override_active = 0U;
+    g_bumpy_project_output.leg_override_valid = 0U;
+}
+
+static BumpyActionResult_t bumpy_action_fail_now(
+    BumpyExitReason_t reason,
+    uint32_t extra_log_mask)
+{
+    if (g_bumpy_project_runtime.segment_started ||
+        g_bumpy_project_runtime.segment_confirmed)
+    {
+        Bumpy_Abort(&g_bumpy_project_runtime, reason);
+        bumpy_action_capture_report();
+    }
+    g_bumpy_action.exit_reason = reason;
+    g_bumpy_action.finish_allowed = 0U;
+    target_velocity = 0.0f;
+    target_angle = (float)IMU_data.filter_result.yaw;
+    bumpy_action_clear_leg_override();
+    bumpy_action_pose_end();
+    g_bumpy_action.phase = BUMP_ACTION_PHASE_IDLE;
+    g_bumpy_action.started = 0U;
+    g_bumpy_action.log_pending_mask |=
+        BUMPY_ACTION_LOG_FAULT | extra_log_mask;
+    return BUMP_ACTION_RESULT_FAULT;
+}
+
 static void bumpy_action_enter_recover(BumpyExitReason_t reason,
                                         uint8_t finish_allowed)
 {
     const BumpyActionProfile_t *profile =
         bumpy_action_get_profile(g_bumpy_action.profile_id);
-
     g_bumpy_action.exit_reason = reason;
     g_bumpy_action.finish_allowed = finish_allowed ? 1U : 0U;
     g_bumpy_action.recover_elapsed_ms = 0U;
     g_bumpy_action.phase = BUMP_ACTION_PHASE_RECOVER;
-
+    if (!g_bumpy_action.finish_allowed)
+    {
+        bumpy_action_clear_leg_override();
+    }
     target_velocity =
         (g_bumpy_action.finish_allowed && profile != NULL) ?
         profile->recover_speed : 0.0f;
     target_angle = g_bumpy_action.hold_yaw_deg;
 }
 
-/**
- * @brief  取消当前导航颠簸动作并恢复自动位姿更新。
- */
+static uint8_t bumpy_action_speed_candidate(void)
+{
+    const BumpyFeature_t *feature = &g_bumpy_project_runtime.feature;
+    if (g_bumpy_project_input.slip_level != 0U ||
+        feature->roughness_mps2 >= g_bumpy_project_config.impact_threshold_mps2 ||
+        feature->pitch_rate_rms_rps >=
+            (0.75f * g_bumpy_project_config.danger_rate_rps) ||
+        feature->roll_rate_rms_rps >=
+            (0.75f * g_bumpy_project_config.danger_rate_rps) ||
+        feature->speed_std_mps >=
+            (2.0f * g_bumpy_project_config.speed_std_enter_mps))
+    {
+        return BUMP_SPEED_LEVEL_HEAVY;
+    }
+    if (feature->roughness_mps2 >=
+            (0.75f * g_bumpy_project_config.rough_enter_mps2) ||
+        feature->pitch_rate_rms_rps >=
+            (0.75f * g_bumpy_project_config.pitch_rate_rms_enter_rps) ||
+        feature->roll_rate_rms_rps >=
+            (0.75f * g_bumpy_project_config.pitch_rate_rms_enter_rps) ||
+        feature->speed_std_mps >=
+            (0.75f * g_bumpy_project_config.speed_std_enter_mps))
+    {
+        return BUMP_SPEED_LEVEL_MEDIUM;
+    }
+    return BUMP_SPEED_LEVEL_NORMAL;
+}
+
+static float bumpy_action_update_speed(const BumpyActionProfile_t *profile)
+{
+    uint8_t candidate;
+    uint8_t required_ticks;
+    float target_speed;
+    if (!(profile->feature_mask & BUMP_FEATURE_ADAPTIVE_SPEED))
+    {
+        g_bumpy_action.speed_level = BUMP_SPEED_LEVEL_NORMAL;
+        g_bumpy_action.active_speed_cmd = profile->crossing_speed;
+        return g_bumpy_action.active_speed_cmd;
+    }
+
+    candidate = bumpy_action_speed_candidate();
+    g_bumpy_action.speed_level_hold_ms = (uint16_t)bumpy_timer_add(
+        g_bumpy_action.speed_level_hold_ms,
+        g_bumpy_project_config.nominal_dt_ms);
+    if (candidate < g_bumpy_action.speed_level &&
+        g_bumpy_action.speed_level_hold_ms < 200U)
+    {
+        candidate = g_bumpy_action.speed_level;
+    }
+    if (candidate == g_bumpy_action.speed_level)
+    {
+        g_bumpy_action.speed_level_pending = candidate;
+        g_bumpy_action.speed_level_pending_ticks = 0U;
+    }
+    else
+    {
+        if (candidate != g_bumpy_action.speed_level_pending)
+        {
+            g_bumpy_action.speed_level_pending = candidate;
+            g_bumpy_action.speed_level_pending_ticks = 1U;
+        }
+        else if (g_bumpy_action.speed_level_pending_ticks < 255U)
+        {
+            g_bumpy_action.speed_level_pending_ticks++;
+        }
+        required_ticks = (candidate > g_bumpy_action.speed_level) ? 3U : 20U;
+        if (g_bumpy_action.speed_level_pending_ticks >= required_ticks)
+        {
+            g_bumpy_action.speed_level = candidate;
+            g_bumpy_action.speed_level_pending_ticks = 0U;
+            g_bumpy_action.speed_level_hold_ms = 0U;
+            g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_SPEED_LEVEL;
+        }
+    }
+
+    target_speed = profile->crossing_speed;
+    if (g_bumpy_action.speed_level == BUMP_SPEED_LEVEL_MEDIUM)
+    {
+        target_speed = profile->crossing_speed_medium;
+    }
+    else if (g_bumpy_action.speed_level == BUMP_SPEED_LEVEL_HEAVY)
+    {
+        target_speed = profile->crossing_speed_heavy;
+    }
+    g_bumpy_action.active_speed_cmd = bumpy_action_slew(
+        g_bumpy_action.active_speed_cmd,
+        target_speed,
+        profile->speed_step_per_tick);
+    return g_bumpy_action.active_speed_cmd;
+}
+
 void Bumpy_Action_Reset(void)
 {
     if (g_bumpy_action.started &&
@@ -1755,27 +2001,23 @@ void Bumpy_Action_Reset(void)
     {
         Bumpy_Abort(&g_bumpy_project_runtime, BUMP_EXIT_DISABLED);
     }
-
+    bumpy_action_clear_leg_override();
     bumpy_action_pose_end();
     memset(&g_bumpy_action, 0, sizeof(g_bumpy_action));
     g_bumpy_action.phase = BUMP_ACTION_PHASE_IDLE;
     g_bumpy_action.exit_reason = BUMP_EXIT_NONE;
 }
 
-/**
- * @brief  按配置编号启动一次导航颠簸穿越动作。
- * @param  profile_id 配置表索引；越界时自动回退到 0 号配置。
- * @return 1：启动成功；0：没有可用配置。
- */
 uint8_t Bumpy_Action_Start(uint16_t profile_id)
 {
     const BumpyActionProfile_t *profile;
-
+    uint8_t profile_fallback = 0U;
     profile = bumpy_action_get_profile(profile_id);
     if (profile == NULL)
     {
         profile_id = 0U;
         profile = bumpy_action_get_profile(profile_id);
+        profile_fallback = 1U;
     }
     if (profile == NULL)
     {
@@ -1783,12 +2025,17 @@ uint8_t Bumpy_Action_Start(uint16_t profile_id)
     }
 
     Bumpy_Action_Reset();
-
     g_bumpy_project_config = *Bumpy_Get_Default_Config();
-    g_bumpy_project_config.mode = BUMP_MODE_SPEED_YAW;
+    g_bumpy_project_config.mode = profile->mode;
     g_bumpy_project_config.min_active_ms = profile->min_crossing_ms;
     g_bumpy_project_config.max_active_ms = profile->crossing_timeout_ms;
     g_bumpy_project_config.recover_ms = profile->recover_ms;
+    g_bumpy_project_config.static_leg_y_offset_m =
+        (profile->feature_mask & BUMP_FEATURE_STATIC_LEG) ?
+        profile->static_leg_y_offset_m : 0.0f;
+    g_bumpy_project_config.leg_slew_mps =
+        (profile->leg_ramp_step_m > 0.0f) ?
+        profile->leg_ramp_step_m / 0.010f : 0.0f;
     Bumpy_Init(&g_bumpy_project_runtime, &g_bumpy_project_config);
 
     memset(&g_bumpy_project_input, 0, sizeof(g_bumpy_project_input));
@@ -1802,66 +2049,153 @@ uint8_t Bumpy_Action_Start(uint16_t profile_id)
     g_bumpy_log_report_pending = 0U;
 
     g_bumpy_action.profile_id = profile_id;
-    g_bumpy_action.phase = BUMP_ACTION_PHASE_CROSSING;
+    g_bumpy_action.phase = BUMP_ACTION_PHASE_DETECT;
     g_bumpy_action.started = 1U;
+    g_bumpy_action.detect_elapsed_ms = 0U;
+    g_bumpy_action.crossing_elapsed_ms = 0U;
+    g_bumpy_action.recover_elapsed_ms = 0U;
+    g_bumpy_action.detect_distance_m = 0.0f;
+    g_bumpy_action.crossing_distance_m = 0.0f;
+    g_bumpy_action.detect_start_x_m = (float)robot_pose.x;
+    g_bumpy_action.detect_start_y_m = (float)robot_pose.y;
     g_bumpy_action.hold_yaw_deg = (float)IMU_data.filter_result.yaw;
+    g_bumpy_action.active_speed_cmd = profile->detect_speed;
+    g_bumpy_action.speed_level = BUMP_SPEED_LEVEL_NORMAL;
+    g_bumpy_action.speed_level_pending = BUMP_SPEED_LEVEL_NORMAL;
     g_bumpy_action.exit_reason = BUMP_EXIT_NONE;
     g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_TRIGGER;
-
-    target_velocity = profile->crossing_speed;
+    if (profile_fallback)
+    {
+        g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_PROFILE_FALLBACK;
+    }
+    target_velocity = profile->detect_speed;
     target_angle = g_bumpy_action.hold_yaw_deg;
-    bumpy_action_pose_begin();
     return 1U;
 }
 
-/* 穿越阶段：持续写入公共目标速度/航向，并等待检测退出或超时。 */
-static BumpyActionResult_t bumpy_action_update_crossing_10ms(void)
+static BumpyActionResult_t bumpy_action_update_detect_10ms(void)
 {
     const BumpyActionProfile_t *profile;
     BumpyState_t previous_state;
-    BumpyExitReason_t reason;
-    uint8_t finish_allowed;
-
-    if (!g_bumpy_action.started ||
-        g_bumpy_action.phase == BUMP_ACTION_PHASE_IDLE)
-    {
-        return BUMP_ACTION_RESULT_IDLE;
-    }
-    if (g_bumpy_action.phase == BUMP_ACTION_PHASE_RECOVER)
-    {
-        return BUMP_ACTION_RESULT_ENTER_RECOVER;
-    }
-
     profile = bumpy_action_get_profile(g_bumpy_action.profile_id);
     if (profile == NULL)
     {
-        g_bumpy_action.exit_reason = BUMP_EXIT_SENSOR_INVALID;
-        target_velocity = 0.0f;
-        bumpy_action_pose_end();
-        g_bumpy_action.phase = BUMP_ACTION_PHASE_IDLE;
-        g_bumpy_action.started = 0U;
-        g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_FAULT;
-        return BUMP_ACTION_RESULT_FAULT;
+        return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
     }
 
-    target_velocity = profile->crossing_speed;
+    target_velocity = profile->detect_speed;
     target_angle = g_bumpy_action.hold_yaw_deg;
-    g_bumpy_action.crossing_elapsed_ms = bumpy_timer_add(
-        g_bumpy_action.crossing_elapsed_ms,
-        g_bumpy_project_config.nominal_dt_ms);
+    bumpy_action_fill_input(profile, profile->detect_speed);
+    if (g_bumpy_project_input.emergency_stop)
+    {
+        return bumpy_action_fail_now(BUMP_EXIT_EMERGENCY, 0U);
+    }
+    if (!g_bumpy_project_input.sensor_valid)
+    {
+        return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
+    }
 
-    bumpy_action_fill_input(profile);
     previous_state = g_bumpy_project_runtime.state;
     Bumpy_Update(&g_bumpy_project_runtime,
                  &g_bumpy_project_config,
                  &g_bumpy_project_input,
                  &g_bumpy_project_output);
     bumpy_action_update_debug(previous_state);
+    g_bumpy_action.detect_elapsed_ms = bumpy_timer_add(
+        g_bumpy_action.detect_elapsed_ms,
+        g_bumpy_project_config.nominal_dt_ms);
+    g_bumpy_action.detect_distance_m +=
+        bumpy_action_forward_distance_10ms();
 
     if (g_bumpy_project_output.enter_event)
     {
         g_bumpy_action.enter_detected = 1U;
-        g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_ENTER;
+        g_bumpy_action.crossing_elapsed_ms = 0U;
+        g_bumpy_action.crossing_distance_m = 0.0f;
+        g_bumpy_action.entry_x_m = (float)robot_pose.x;
+        g_bumpy_action.entry_y_m = (float)robot_pose.y;
+        g_bumpy_action.entry_yaw_deg =
+            (float)IMU_data.filter_result.yaw;
+        g_bumpy_action.hold_yaw_deg = g_bumpy_action.entry_yaw_deg;
+        g_bumpy_action.active_speed_cmd = profile->crossing_speed;
+        g_bumpy_action.phase = BUMP_ACTION_PHASE_CROSSING;
+        g_bumpy_action.leg_base_x_m = x_current;
+        g_bumpy_action.leg_base_y_m = y_current;
+        g_bumpy_action.leg_y_cmd_m = y_current;
+        if ((profile->feature_mask & BUMP_FEATURE_STATIC_LEG) &&
+            g_bumpy_project_output.leg_override_valid)
+        {
+            g_bumpy_action.leg_override_active = 1U;
+            g_bumpy_action.leg_y_cmd_m =
+                g_bumpy_project_output.leg_y_cmd_m;
+        }
+        bumpy_action_pose_begin();
+        g_bumpy_action.log_pending_mask |=
+            BUMPY_ACTION_LOG_ENTER |
+            BUMPY_ACTION_LOG_ENTER_CROSSING;
+        return BUMP_ACTION_RESULT_ENTER_CROSSING;
+    }
+
+    if (g_bumpy_action.detect_elapsed_ms >= profile->detect_timeout_ms)
+    {
+        return bumpy_action_fail_now(
+            BUMP_EXIT_TIMEOUT,
+            BUMPY_ACTION_LOG_DETECT_TIMEOUT);
+    }
+    if (g_bumpy_action.detect_distance_m >= profile->detect_max_distance_m)
+    {
+        return bumpy_action_fail_now(
+            BUMP_EXIT_TIMEOUT,
+            BUMPY_ACTION_LOG_DETECT_DISTANCE_LIMIT);
+    }
+    return BUMP_ACTION_RESULT_RUNNING;
+}
+
+static BumpyActionResult_t bumpy_action_update_crossing_10ms(void)
+{
+    const BumpyActionProfile_t *profile;
+    BumpyState_t previous_state;
+    BumpyExitReason_t reason;
+    uint8_t finish_allowed;
+    float speed_cmd;
+    profile = bumpy_action_get_profile(g_bumpy_action.profile_id);
+    if (profile == NULL)
+    {
+        return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
+    }
+
+    speed_cmd = bumpy_action_update_speed(profile);
+    target_velocity = speed_cmd;
+    target_angle = g_bumpy_action.hold_yaw_deg;
+    bumpy_action_fill_input(profile, speed_cmd);
+    if (g_bumpy_project_input.emergency_stop)
+    {
+        return bumpy_action_fail_now(BUMP_EXIT_EMERGENCY, 0U);
+    }
+    if (!g_bumpy_project_input.sensor_valid)
+    {
+        return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
+    }
+
+    g_bumpy_action.crossing_elapsed_ms = bumpy_timer_add(
+        g_bumpy_action.crossing_elapsed_ms,
+        g_bumpy_project_config.nominal_dt_ms);
+    g_bumpy_action.crossing_distance_m +=
+        bumpy_action_forward_distance_10ms();
+    previous_state = g_bumpy_project_runtime.state;
+    Bumpy_Update(&g_bumpy_project_runtime,
+                 &g_bumpy_project_config,
+                 &g_bumpy_project_input,
+                 &g_bumpy_project_output);
+    bumpy_action_update_debug(previous_state);
+    if ((profile->feature_mask & BUMP_FEATURE_STATIC_LEG) &&
+        g_bumpy_project_output.leg_override_valid)
+    {
+        g_bumpy_action.leg_override_active = 1U;
+        g_bumpy_action.leg_base_x_m =
+            g_bumpy_project_output.leg_x_cmd_m;
+        g_bumpy_action.leg_y_cmd_m =
+            g_bumpy_project_output.leg_y_cmd_m;
     }
 
     if (g_bumpy_project_output.exit_event)
@@ -1875,36 +2209,40 @@ static BumpyActionResult_t bumpy_action_update_crossing_10ms(void)
              (reason == BUMP_EXIT_TIMEOUT &&
               profile->allow_timeout_finish &&
               g_bumpy_action.enter_detected)) ? 1U : 0U;
-
         bumpy_action_capture_report();
         bumpy_action_enter_recover(reason, finish_allowed);
         g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_EXIT;
         if (reason == BUMP_EXIT_TIMEOUT)
         {
-            g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_TIMEOUT;
+            g_bumpy_action.log_pending_mask |=
+                BUMPY_ACTION_LOG_ACTION_TIMEOUT;
         }
         return BUMP_ACTION_RESULT_ENTER_RECOVER;
     }
 
-    if (g_bumpy_project_input.emergency_stop ||
-        !g_bumpy_project_input.sensor_valid ||
-        g_bumpy_project_output.abnormal)
+    if ((profile->feature_mask & BUMP_FEATURE_DISTANCE_FALLBACK) &&
+        g_bumpy_action.enter_detected &&
+        g_bumpy_action.crossing_elapsed_ms >= profile->min_crossing_ms &&
+        g_bumpy_action.crossing_distance_m >=
+            (profile->expected_bump_length_m +
+             profile->exit_distance_margin_m))
     {
-        if (g_bumpy_project_input.emergency_stop)
-        {
-            reason = BUMP_EXIT_EMERGENCY;
-        }
-        else if (!g_bumpy_project_input.sensor_valid)
-        {
-            reason = BUMP_EXIT_SENSOR_INVALID;
-        }
-        else
-        {
-            reason = (g_bumpy_project_output.exit_reason != BUMP_EXIT_NONE) ?
-                     g_bumpy_project_output.exit_reason :
-                     BUMP_EXIT_SENSOR_INVALID;
-        }
+        Bumpy_Abort(&g_bumpy_project_runtime,
+                    BUMP_EXIT_DISTANCE_FALLBACK);
+        bumpy_action_capture_report();
+        g_bumpy_action.exit_detected = 1U;
+        bumpy_action_enter_recover(BUMP_EXIT_DISTANCE_FALLBACK, 1U);
+        g_bumpy_action.log_pending_mask |=
+            BUMPY_ACTION_LOG_DISTANCE_FALLBACK |
+            BUMPY_ACTION_LOG_EXIT;
+        return BUMP_ACTION_RESULT_ENTER_RECOVER;
+    }
 
+    if (g_bumpy_project_output.abnormal)
+    {
+        reason = (g_bumpy_project_output.exit_reason != BUMP_EXIT_NONE) ?
+                 g_bumpy_project_output.exit_reason :
+                 BUMP_EXIT_SENSOR_INVALID;
         Bumpy_Abort(&g_bumpy_project_runtime, reason);
         bumpy_action_capture_report();
         bumpy_action_enter_recover(reason, 0U);
@@ -1922,38 +2260,30 @@ static BumpyActionResult_t bumpy_action_update_crossing_10ms(void)
         bumpy_action_capture_report();
         bumpy_action_enter_recover(BUMP_EXIT_TIMEOUT, finish_allowed);
         g_bumpy_action.log_pending_mask |=
-            BUMPY_ACTION_LOG_TIMEOUT | BUMPY_ACTION_LOG_EXIT;
+            BUMPY_ACTION_LOG_ACTION_TIMEOUT |
+            BUMPY_ACTION_LOG_EXIT;
         return BUMP_ACTION_RESULT_ENTER_RECOVER;
     }
-
     return BUMP_ACTION_RESULT_RUNNING;
 }
 
-/* 恢复阶段：按配置低速稳定一段时间，随后完成或返回故障。 */
 static BumpyActionResult_t bumpy_action_update_recover_10ms(void)
 {
     const BumpyActionProfile_t *profile;
-
-    if (!g_bumpy_action.started ||
-        g_bumpy_action.phase == BUMP_ACTION_PHASE_IDLE)
-    {
-        return BUMP_ACTION_RESULT_IDLE;
-    }
-    if (g_bumpy_action.phase != BUMP_ACTION_PHASE_RECOVER)
-    {
-        return BUMP_ACTION_RESULT_RUNNING;
-    }
-
     profile = bumpy_action_get_profile(g_bumpy_action.profile_id);
     if (profile == NULL)
     {
-        g_bumpy_action.exit_reason = BUMP_EXIT_SENSOR_INVALID;
-        target_velocity = 0.0f;
-        bumpy_action_pose_end();
-        g_bumpy_action.phase = BUMP_ACTION_PHASE_IDLE;
-        g_bumpy_action.started = 0U;
-        g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_FAULT;
-        return BUMP_ACTION_RESULT_FAULT;
+        return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
+    }
+    if (Vehicle_Is_Emergency_Stop())
+    {
+        return bumpy_action_fail_now(BUMP_EXIT_EMERGENCY, 0U);
+    }
+    if (!(g_runtime_status.module_enable_mask &
+          RUNTIME_MODULE_BIT(RUNTIME_MODULE_NAVIGATION)) ||
+        !robot_pose.is_valid)
+    {
+        return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
     }
 
     target_velocity = g_bumpy_action.finish_allowed ?
@@ -1962,14 +2292,26 @@ static BumpyActionResult_t bumpy_action_update_recover_10ms(void)
     g_bumpy_action.recover_elapsed_ms = bumpy_timer_add(
         g_bumpy_action.recover_elapsed_ms,
         g_bumpy_project_config.nominal_dt_ms);
+    if (g_bumpy_action.leg_override_active)
+    {
+        g_bumpy_action.leg_y_cmd_m = bumpy_action_slew(
+            g_bumpy_action.leg_y_cmd_m,
+            g_bumpy_action.leg_base_y_m,
+            profile->leg_ramp_step_m);
+        if (bumpy_absf(g_bumpy_action.leg_y_cmd_m -
+                       g_bumpy_action.leg_base_y_m) < 0.00001f)
+        {
+            bumpy_action_clear_leg_override();
+        }
+    }
     bumpy_action_capture_report();
-
     if (g_bumpy_action.recover_elapsed_ms < profile->recover_ms)
     {
         return BUMP_ACTION_RESULT_RUNNING;
     }
 
     target_velocity = 0.0f;
+    bumpy_action_clear_leg_override();
     if (g_bumpy_action.finish_allowed)
     {
         bumpy_action_pose_add_fixed(profile);
@@ -1990,47 +2332,75 @@ static BumpyActionResult_t bumpy_action_update_recover_10ms(void)
 
 void Bumpy_Action_Log_Task(void)
 {
-    uint8_t log_mask;
+    uint32_t log_mask;
     const BumpyActionProfile_t *profile =
         bumpy_action_get_profile(g_bumpy_action.profile_id);
-
-    /*
-     * 复用原模块的状态、样本和 BUMP_SUMMARY 报告打印。
-     * 该函数无 pending 数据时会立即返回。
-     */
     Bumpy_Project_Log_Task();
-
     __disable_irq();
     log_mask = g_bumpy_action.log_pending_mask;
     g_bumpy_action.log_pending_mask = 0U;
     __enable_irq();
 
+    if (log_mask & BUMPY_ACTION_LOG_PROFILE_FALLBACK)
+    {
+        IPC_LOG_Printf("BUMP_ACTION,PROFILE_FALLBACK,profile=0\r\n");
+    }
     if (log_mask & BUMPY_ACTION_LOG_TRIGGER)
     {
         IPC_LOG_Printf(
-            "BUMP_ACTION,TRIGGER,profile=%u,speed=%s%d.%02d,pose_mode=%u\r\n",
+            "BUMP_ACTION,TRIGGER,profile=%u,detect_speed=%s%d.%02d,features=%u,pose_mode=%u\r\n",
             (unsigned int)g_bumpy_action.profile_id,
-            BUMPY_F_ARG((profile != NULL) ? profile->crossing_speed : 0.0f),
+            BUMPY_F_ARG((profile != NULL) ? profile->detect_speed : 0.0f),
+            (unsigned int)((profile != NULL) ? profile->feature_mask : 0U),
             (unsigned int)BUMPY_ACTION_POSE_UPDATE_MODE);
     }
     if (log_mask & BUMPY_ACTION_LOG_ENTER)
     {
         IPC_LOG_Printf(
-            "BUMP_ACTION,ENTER,rough=%s%d.%02d,pitch_rms=%s%d.%02d,"
-            "speed_std=%s%d.%02d\r\n",
+            "BUMP_ACTION,ENTER,detect_ms=%lu,detect_m=%s%d.%02d,rough=%s%d.%02d,pitch_rms=%s%d.%02d,speed_std=%s%d.%02d\r\n",
+            (unsigned long)g_bumpy_action.detect_elapsed_ms,
+            BUMPY_F_ARG(g_bumpy_action.detect_distance_m),
             BUMPY_F_ARG(g_bumpy_project_runtime.feature.roughness_mps2),
             BUMPY_F_ARG(g_bumpy_project_runtime.feature.pitch_rate_rms_rps),
             BUMPY_F_ARG(g_bumpy_project_runtime.feature.speed_std_mps));
     }
+    if (log_mask & BUMPY_ACTION_LOG_ENTER_CROSSING)
+    {
+        IPC_LOG_Printf("BUMP_ACTION,ENTER_CROSSING,yaw=%s%d.%02d\r\n",
+                       BUMPY_F_ARG(g_bumpy_action.entry_yaw_deg));
+    }
+    if (log_mask & BUMPY_ACTION_LOG_DETECT_TIMEOUT)
+    {
+        IPC_LOG_Printf("BUMP_ACTION,DETECT_TIMEOUT,elapsed_ms=%lu\r\n",
+                       (unsigned long)g_bumpy_action.detect_elapsed_ms);
+    }
+    if (log_mask & BUMPY_ACTION_LOG_DETECT_DISTANCE_LIMIT)
+    {
+        IPC_LOG_Printf("BUMP_ACTION,DETECT_DISTANCE_LIMIT,distance_m=%s%d.%02d\r\n",
+                       BUMPY_F_ARG(g_bumpy_action.detect_distance_m));
+    }
+    if (log_mask & BUMPY_ACTION_LOG_SPEED_LEVEL)
+    {
+        IPC_LOG_Printf("BUMP_ACTION,SPEED_LEVEL,level=%u,speed=%s%d.%02d\r\n",
+                       (unsigned int)g_bumpy_action.speed_level,
+                       BUMPY_F_ARG(g_bumpy_action.active_speed_cmd));
+    }
+    if (log_mask & BUMPY_ACTION_LOG_DISTANCE_FALLBACK)
+    {
+        IPC_LOG_Printf("BUMP_ACTION,DISTANCE_FALLBACK,distance_m=%s%d.%02d\r\n",
+                       BUMPY_F_ARG(g_bumpy_action.crossing_distance_m));
+    }
     if (log_mask & BUMPY_ACTION_LOG_EXIT)
     {
         IPC_LOG_Printf(
-            "BUMP_ACTION,EXIT,reason=%u,allowed=%u,entered=%u\r\n",
+            "BUMP_ACTION,EXIT,reason=%u,allowed=%u,entered=%u,cross_ms=%lu,cross_m=%s%d.%02d\r\n",
             (unsigned int)g_bumpy_action.exit_reason,
             (unsigned int)g_bumpy_action.finish_allowed,
-            (unsigned int)g_bumpy_action.enter_detected);
+            (unsigned int)g_bumpy_action.enter_detected,
+            (unsigned long)g_bumpy_action.crossing_elapsed_ms,
+            BUMPY_F_ARG(g_bumpy_action.crossing_distance_m));
     }
-    if (log_mask & BUMPY_ACTION_LOG_TIMEOUT)
+    if (log_mask & BUMPY_ACTION_LOG_ACTION_TIMEOUT)
     {
         IPC_LOG_Printf(
             "BUMP_ACTION,ACTION_TIMEOUT,allowed=%u,entered=%u\r\n",
@@ -2040,8 +2410,7 @@ void Bumpy_Action_Log_Task(void)
     if (log_mask & BUMPY_ACTION_LOG_DONE)
     {
         IPC_LOG_Printf(
-            "BUMP_ACTION,DONE,reason=%u,fixed_f=%s%d.%02d,"
-            "fixed_r=%s%d.%02d,pose_mode=%u\r\n",
+            "BUMP_ACTION,DONE,reason=%u,fixed_f=%s%d.%02d,fixed_r=%s%d.%02d,pose_mode=%u\r\n",
             (unsigned int)g_bumpy_action.exit_reason,
             BUMPY_F_ARG((profile != NULL) ? profile->fixed_forward_m : 0.0f),
             BUMPY_F_ARG((profile != NULL) ? profile->fixed_right_m : 0.0f),
@@ -2057,48 +2426,53 @@ void Bumpy_Action_Log_Task(void)
     }
 }
 
-/**
- * @brief  以 10 ms 周期推进导航颠簸动作。
- * @return 当前动作结果，导航状态机据此切换穿越、恢复或故障状态。
- */
 BumpyActionResult_t Bumpy_Action_Process_10ms(void)
 {
-    BumpyActionResult_t result;
-
     if (!g_bumpy_action.started ||
         g_bumpy_action.phase == BUMP_ACTION_PHASE_IDLE)
     {
-        result = BUMP_ACTION_RESULT_IDLE;
+        return BUMP_ACTION_RESULT_IDLE;
     }
-    else if (g_bumpy_action.phase == BUMP_ACTION_PHASE_CROSSING)
+    if (g_bumpy_action.phase == BUMP_ACTION_PHASE_DETECT)
     {
-        result = bumpy_action_update_crossing_10ms();
+        return bumpy_action_update_detect_10ms();
     }
-    else if (g_bumpy_action.phase == BUMP_ACTION_PHASE_RECOVER)
+    if (g_bumpy_action.phase == BUMP_ACTION_PHASE_CROSSING)
     {
-        result = bumpy_action_update_recover_10ms();
+        return bumpy_action_update_crossing_10ms();
     }
-    else
+    if (g_bumpy_action.phase == BUMP_ACTION_PHASE_RECOVER)
     {
-        g_bumpy_action.exit_reason = BUMP_EXIT_SENSOR_INVALID;
-        target_velocity = 0.0f;
-        bumpy_action_pose_end();
-        g_bumpy_action.phase = BUMP_ACTION_PHASE_IDLE;
-        g_bumpy_action.started = 0U;
-        g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_FAULT;
-        result = BUMP_ACTION_RESULT_FAULT;
+        return bumpy_action_update_recover_10ms();
     }
-
-    return result;
+    return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
 }
 
 uint8_t Bumpy_Action_Is_Active(void)
 {
     return (g_bumpy_action.started &&
-            g_bumpy_action.phase != BUMP_ACTION_PHASE_IDLE) ? 1U : 0U;
+            (g_bumpy_action.phase == BUMP_ACTION_PHASE_DETECT ||
+             g_bumpy_action.phase == BUMP_ACTION_PHASE_CROSSING ||
+             g_bumpy_action.phase == BUMP_ACTION_PHASE_RECOVER)) ? 1U : 0U;
 }
 
 BumpyExitReason_t Bumpy_Action_Get_Exit_Reason(void)
 {
     return g_bumpy_action.exit_reason;
+}
+
+uint8_t Bumpy_Action_Get_Leg_Override(float *leg_x_cmd_m,
+                                      float *leg_y_cmd_m)
+{
+    if (leg_x_cmd_m == NULL || leg_y_cmd_m == NULL ||
+        !g_bumpy_action.leg_override_active ||
+        Vehicle_Is_Emergency_Stop() || jump_is_active() ||
+        navigation_jump_is_active() ||
+        Navi_Action_Servo_Takeover_Active())
+    {
+        return 0U;
+    }
+    *leg_x_cmd_m = g_bumpy_action.leg_base_x_m;
+    *leg_y_cmd_m = g_bumpy_action.leg_y_cmd_m;
+    return 1U;
 }

@@ -60,7 +60,8 @@ typedef enum
     BUMP_EXIT_STUCK,
     BUMP_EXIT_TIMEOUT,
     BUMP_EXIT_SENSOR_INVALID,
-    BUMP_EXIT_DISABLED
+    BUMP_EXIT_DISABLED,
+    BUMP_EXIT_DISTANCE_FALLBACK
 } BumpyExitReason_t;
 
 /*
@@ -409,6 +410,7 @@ typedef enum
 {
     BUMP_ACTION_RESULT_IDLE = 0,       /* µ±Ç°Ã»ÓÐ»î¶¯¶¯×÷¡£ */
     BUMP_ACTION_RESULT_RUNNING,        /* µ±Ç°½×¶ÎÈÔÔÚÖ´ÐÐ¡£ */
+    BUMP_ACTION_RESULT_ENTER_CROSSING, /* confirmed entry; switch outer FSM */
     BUMP_ACTION_RESULT_ENTER_RECOVER,  /* ´©Ô½½áÊø£¬µ¼º½×´Ì¬»úÓ¦ÇÐÈë»Ö¸´Ì¬¡£ */
     BUMP_ACTION_RESULT_DONE,           /* Õý³£Íê³É²¢ÔÊÐí¼ÌÐøµ¼º½¡£ */
     BUMP_ACTION_RESULT_FAULT           /* Òì³£½áÊø£¬³µÁ¾Ä¿±êÒÑ»ØÍËµ½°²È«×´Ì¬¡£ */
@@ -420,6 +422,8 @@ BumpyActionResult_t Bumpy_Action_Process_10ms(void); /* µ¼º½¶¯×÷ 10 ms µ÷¶ÈÈë¿Ú¡
 void Bumpy_Action_Log_Task(void);             /* Ö÷Ñ­»·´òÓ¡ Action ÈÕÖ¾¡£ */
 uint8_t Bumpy_Action_Is_Active(void);
 BumpyExitReason_t Bumpy_Action_Get_Exit_Reason(void);
+uint8_t Bumpy_Action_Get_Leg_Override(float *leg_x_cmd_m,
+                                      float *leg_y_cmd_m);
 
 #ifdef __cplusplus
 }
