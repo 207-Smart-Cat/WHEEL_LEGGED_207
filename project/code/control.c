@@ -7,6 +7,7 @@
 #include "runtime_status.h"
 #include "process_rx.h"
 #include "jump_control.h"
+#include "bumpy_control.h"
 #include "vehicle_supervisor.h"
 
 #define BALANCE_CONTROL_RUN_LEG_CONTROL 1
@@ -786,6 +787,9 @@ void leg_control(float *x, float *y)
     float abs_pitch_error;
     float leg_gain_p;
     float leg_target;
+    float bump_leg_x_cmd;
+    float bump_leg_y_cmd;
+    uint8_t bump_leg_override;
     float projected_x;
     float projected_leg_error;
     float left_y_target;
@@ -799,6 +803,9 @@ void leg_control(float *x, float *y)
     int leg4;
     (void)leg_Ki;
     (void)leg_Kd;
+    bump_leg_override = Bumpy_Action_Get_Leg_Override(
+        &bump_leg_x_cmd, &bump_leg_y_cmd);
+    (void)bump_leg_x_cmd;
 
     leg_dbg_tick += 1.0f;
 
@@ -967,7 +974,10 @@ void leg_control(float *x, float *y)
             }
         }
 
-        leg_target = constrain_float(*y, MIN_Y, MAX_Y);
+        leg_target = constrain_float(
+            bump_leg_override ? bump_leg_y_cmd : *y,
+            MIN_Y,
+            MAX_Y);
         leg_gain_p = fabsf(leg_Kp) * LEG_GAIN_SCALE;
         pitch_error = -angle * LEG_DEG_TO_RAD;
         abs_pitch_error = fabsf(pitch_error);
