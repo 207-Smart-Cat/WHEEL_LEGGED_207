@@ -66,6 +66,7 @@ typedef struct {
     uint8 vehicle_mode;
     uint8 runtime_status_valid;
     uint8 motor_zero_request;
+    uint8 nav_jump_request;
     uint16 nav_record_preview_start;
     uint32 runtime_module_enable_mask;
 } CoreB_Command_t;
@@ -101,8 +102,10 @@ uint64_t IPC_Get_All_Param_Mask(void);
 void IPC_Request_Param_Update(ParamID_e id, float value);
 void IPC_Request_All_Params_Update(void);
 void IPC_Request_Motor_Zero_Calibration(void);
+void IPC_Request_Nav_Jump(void);
 void IPC_Set_Nav_Record_Preview_Start(uint16 start);
 uint8 IPC_Consume_Motor_Zero_Request_Core0(void);
+uint8 IPC_Consume_Nav_Jump_Request_Core0(void);
 void IPC_Update_Motor_Zero_State_From_Core0(uint8 state);
 void IPC_LOG_Printf(const char *format, ...);
 void IPC_Flush_Log_To_CoreB(void);

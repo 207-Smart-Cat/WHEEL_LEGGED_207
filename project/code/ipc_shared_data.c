@@ -84,6 +84,14 @@ void IPC_Request_Motor_Zero_Calibration(void)
     __enable_irq();
 }
 
+void IPC_Request_Nav_Jump(void)
+{
+    __disable_irq();
+    core_b_cmd.nav_jump_request = 1;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    __enable_irq();
+}
+
 uint8 IPC_Consume_Motor_Zero_Request_Core0(void)
 {
     uint8 request = 0;
@@ -93,6 +101,21 @@ uint8 IPC_Consume_Motor_Zero_Request_Core0(void)
     {
         request = 1;
         core_b_cmd.motor_zero_request = 0;
+        SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    }
+
+    return request;
+}
+
+uint8 IPC_Consume_Nav_Jump_Request_Core0(void)
+{
+    uint8 request = 0;
+
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (core_b_cmd.nav_jump_request)
+    {
+        request = 1;
+        core_b_cmd.nav_jump_request = 0;
         SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     }
 

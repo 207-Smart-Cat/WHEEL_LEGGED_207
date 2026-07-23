@@ -11,6 +11,10 @@
 #include "runtime_status.h"
 #include "vehicle_supervisor.h"
 #include "battery_monitor.h"
+#if defined(CY_CORE_CM7_1)
+#include "camera_assist.h"
+#include "camera_test_display.h"
+#endif
 // ** 全局变量区域 **
 uint8 IPS200_flag = 0;      // 屏幕显示flag（PIT中断置位）
 uint8 current_page = 0;     // Monitor 子页面索引 (0/1/2)
@@ -18,8 +22,8 @@ uint8 force_ui_refresh = 1;
 static uint8_t ui_battery_low_active = 0;
 
 // Four-key setup UI. Active low with internal pull-up.
-#define UI_KEY_UP_PIN       P20_3
-#define UI_KEY_DOWN_PIN     P20_0
+#define UI_KEY_UP_PIN       P20_0
+#define UI_KEY_DOWN_PIN     P20_3
 #define UI_KEY_OK_PIN       P20_1
 #define UI_KEY_BACK_PIN     P20_2
 #define UI_KEY_COUNT        (4)
@@ -59,6 +63,9 @@ typedef enum {
     UI_SCREEN_WIFI_WAVE_SELECT,
     UI_SCREEN_MODULES,
     UI_SCREEN_SYSTEM,
+#if defined(CY_CORE_CM7_1)
+    UI_SCREEN_VISION,
+#endif
     UI_SCREEN_CONFIRM
 } ui_screen_t;
 
@@ -235,7 +242,11 @@ static const uint16_t UI_TEXT_T_TITLE_SYSTEM[] = {0x7CFB, 0x7EDF, 0x64CD, 0x4F5C
 static const uint16_t UI_TEXT_T_TITLE_CONFIRM[] = {0x786E, 0x8BA4, 0x64CD, 0x4F5C, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_MODE[] = {0x6A21, 0x5F0F, 0x9009, 0x62E9, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_MONITOR[] = {0x5B9E, 0x65F6, 0x76D1, 0x63A7, 0x0000};
+#if defined(CY_CORE_CM7_1)
+static const uint16_t UI_TEXT_T_HOME_VISION[] = {0x0056, 0x0069, 0x0073, 0x0069, 0x006F, 0x006E, 0x0000};
+#endif
 static const uint16_t UI_TEXT_T_HOME_PARAM[] = {0x53C2, 0x6570, 0x8C03, 0x8282, 0x0000};
+static const uint16_t UI_TEXT_T_HOME_JUMP[] = {0x004A, 0x0075, 0x006D, 0x0070, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_WIFI[] = {0x0057, 0x0069, 0x0046, 0x0069, 0x6A21, 0x5F0F, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_MODULE[] = {0x6A21, 0x5757, 0x5F00, 0x5173, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_SYSTEM[] = {0x7CFB, 0x7EDF, 0x64CD, 0x4F5C, 0x0000};
@@ -262,6 +273,7 @@ static const uint16_t UI_TEXT_T_MODULE_SERVO[] = {0x8235, 0x673A, 0x63A7, 0x5236
 static const uint16_t UI_TEXT_T_MODULE_REMOTE[] = {0x9065, 0x63A7, 0x63A5, 0x7BA1, 0x0000};
 static const uint16_t UI_TEXT_T_MODULE_NAV[] = {0x5BFC, 0x822A, 0x63A7, 0x5236, 0x0000};
 static const uint16_t UI_TEXT_T_MODULE_DEBUG[] = {0x8C03, 0x8BD5, 0x8F93, 0x51FA, 0x0000};
+static const uint16_t UI_TEXT_T_MODULE_ASSIST[] = {0x0041, 0x0073, 0x0073, 0x0069, 0x0073, 0x0074, 0x0000};
 static const uint16_t UI_TEXT_T_SOFT_ONLY[] = {0x4EC5, 0x9884, 0x7559, 0x8F6F, 0x5F00, 0x5173, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_SAVE[] = {0x4FDD, 0x5B58, 0x0046, 0x006C, 0x0061, 0x0073, 0x0068, 0x0000};
 static const uint16_t UI_TEXT_T_SYS_LOAD[] = {0x8BFB, 0x53D6, 0x0046, 0x006C, 0x0061, 0x0073, 0x0068, 0x0000};
@@ -753,7 +765,11 @@ static ui_key_state_t ui_keys[UI_KEY_COUNT] = {
 static const char *const k_home_items[] = {
     "Mode Select",
     "Realtime Monitor",
+#if defined(CY_CORE_CM7_1)
+    "Vision",
+#endif
     "Param Adjust",
+    "Jump",
     "WiFi Mode",
     "Module Switch",
     "System Ops"
@@ -779,6 +795,7 @@ static const char *const k_module_names[] = {
     "Servo Enable",
     "Remote Enable",
     "Navigation Enable",
+    "Anti Stall Assist",
     "Debug Output"
 };
 
@@ -795,7 +812,11 @@ static const char *const k_system_items[] = {
 static const uint16_t *const k_home_texts[] = {
     UI_TEXT_T_HOME_MODE,
     UI_TEXT_T_HOME_MONITOR,
+#if defined(CY_CORE_CM7_1)
+    UI_TEXT_T_HOME_VISION,
+#endif
     UI_TEXT_T_HOME_PARAM,
+    UI_TEXT_T_HOME_JUMP,
     UI_TEXT_T_HOME_WIFI,
     UI_TEXT_T_HOME_MODULE,
     UI_TEXT_T_HOME_SYSTEM
@@ -834,6 +855,7 @@ static const uint16_t *const k_module_texts[] = {
     UI_TEXT_T_MODULE_SERVO,
     UI_TEXT_T_MODULE_REMOTE,
     UI_TEXT_T_MODULE_NAV,
+    UI_TEXT_T_MODULE_ASSIST,
     UI_TEXT_T_MODULE_DEBUG
 };
 
@@ -843,6 +865,7 @@ static const runtime_module_t k_module_runtime_ids[] = {
     RUNTIME_MODULE_SERVO,
     RUNTIME_MODULE_REMOTE,
     RUNTIME_MODULE_NAVIGATION,
+    RUNTIME_MODULE_ANTI_STALL,
     RUNTIME_MODULE_DEBUG_OUTPUT
 };
 static const uint16_t *const k_system_texts[] = {
@@ -899,7 +922,7 @@ static const wifi_wave_var_t k_wave_group_attitude[] = {
 static const wifi_wave_var_t k_wave_group_motor[] = {
     WIFI_WAVE_VAR_LEFT_SPEED, WIFI_WAVE_VAR_RIGHT_SPEED,
     WIFI_WAVE_VAR_LEFT_PWM, WIFI_WAVE_VAR_RIGHT_PWM,
-    WIFI_WAVE_VAR_BATTERY
+    WIFI_WAVE_VAR_ASSIST_PWM, WIFI_WAVE_VAR_BATTERY
 };
 
 static const wifi_wave_var_t k_wave_group_target[] = {
@@ -912,7 +935,8 @@ static const wifi_wave_var_t k_wave_group_pid[] = {
     WIFI_WAVE_VAR_SPD_OUT_L, WIFI_WAVE_VAR_SPD_OUT_R,
     WIFI_WAVE_VAR_ANG_OUT_L, WIFI_WAVE_VAR_ANG_OUT_R,
     WIFI_WAVE_VAR_GYR_OUT_L, WIFI_WAVE_VAR_GYR_OUT_R,
-    WIFI_WAVE_VAR_TURN_OUT
+    WIFI_WAVE_VAR_TURN_OUT,
+    WIFI_WAVE_VAR_ASSIST_PWM, WIFI_WAVE_VAR_ASSIST_INTEGRAL
 };
 
 static const wifi_wave_var_t k_wave_group_leg[] = {
@@ -1275,10 +1299,24 @@ static void ui_draw_home(void)
 
     for (uint8_t i = 0; i < ARRAY_SIZE(k_home_texts); i++)
     {
-        ui_show_text_selected(8, 116 + i * 26, i == ui_home_index, k_home_texts[i]);
+        ui_show_text_selected(8, 110 + i * 23, i == ui_home_index, k_home_texts[i]);
     }
     ui_draw_footer_text(UI_TEXT_T_HINT_HOME);
 }
+
+#if defined(CY_CORE_CM7_1)
+static void ui_draw_vision(void)
+{
+    if (force_ui_refresh)
+    {
+        CameraTestDisplay_ResetRenderState();
+    }
+
+    CameraAssist_ProcessFrame();
+    CameraTestDisplay_Render();
+}
+
+#endif
 
 static void ui_draw_mode(void)
 {
@@ -1682,8 +1720,8 @@ static void ui_draw_modules(void)
     ui_draw_title_text(UI_TEXT_T_TITLE_MODULE);
     for (uint8_t i = 0; i < ARRAY_SIZE(k_module_texts); i++)
     {
-        ui_show_text_selected(4, 42 + i * 32, i == ui_module_index, k_module_texts[i]);
-        ips200_show_string(170, 42 + i * 32, Runtime_Is_Module_Enabled(k_module_runtime_ids[i]) ? "ON" : "OFF");
+        ui_show_text_selected(4, 42 + i * 28, i == ui_module_index, k_module_texts[i]);
+        ips200_show_string(170, 42 + i * 28, Runtime_Is_Module_Enabled(k_module_runtime_ids[i]) ? "ON" : "OFF");
     }
     ui_show_text(8, 222, UI_TEXT_T_SOFT_ONLY);
     ui_draw_footer_text(UI_TEXT_T_HINT_TOGGLE);
@@ -1731,13 +1769,32 @@ static void ui_handle_home(ui_key_event_t events[UI_KEY_COUNT])
     {
         if (ui_home_index == 0) ui_set_screen(UI_SCREEN_MODE_SELECT);
         else if (ui_home_index == 1) ui_set_screen(UI_SCREEN_MONITOR);
+#if defined(CY_CORE_CM7_1)
+        else if (ui_home_index == 2) ui_set_screen(UI_SCREEN_VISION);
+        else if (ui_home_index == 3) ui_set_screen(UI_SCREEN_PARAM_PAGE);
+        else if (ui_home_index == 4)
+#else
         else if (ui_home_index == 2) ui_set_screen(UI_SCREEN_PARAM_PAGE);
         else if (ui_home_index == 3)
+#endif
+        {
+            IPC_Request_Nav_Jump();
+            ui_set_screen(UI_SCREEN_HOME);
+        }
+#if defined(CY_CORE_CM7_1)
+        else if (ui_home_index == 5)
+#else
+        else if (ui_home_index == 4)
+#endif
         {
             ui_wifi_index = ((uint8_t)current_wifi_mode < ARRAY_SIZE(k_wifi_names)) ? (uint8_t)current_wifi_mode : 0;
             ui_set_screen(UI_SCREEN_WIFI);
         }
-        else if (ui_home_index == 4) ui_set_screen(UI_SCREEN_MODULES);
+#if defined(CY_CORE_CM7_1)
+        else if (ui_home_index == 6) ui_set_screen(UI_SCREEN_MODULES);
+#else
+        else if (ui_home_index == 5) ui_set_screen(UI_SCREEN_MODULES);
+#endif
         else ui_set_screen(UI_SCREEN_SYSTEM);
     }
 }
@@ -2022,6 +2079,25 @@ static void ui_handle_param_direct(ui_key_event_t events[UI_KEY_COUNT])
         ui_set_screen(UI_SCREEN_PARAM_EDIT);
     }
 }
+#if defined(CY_CORE_CM7_1)
+static void ui_handle_vision(ui_key_event_t events[UI_KEY_COUNT])
+{
+    if (events[UI_KEY_UP])
+    {
+        CameraTestDisplay_AdjustExposure(-1);
+        ui_set_screen(UI_SCREEN_VISION);
+    }
+    else if (events[UI_KEY_DOWN])
+    {
+        CameraTestDisplay_AdjustExposure(1);
+        ui_set_screen(UI_SCREEN_VISION);
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        ui_set_screen(UI_SCREEN_HOME);
+    }
+}
+#endif
 static void ui_handle_wifi(ui_key_event_t events[UI_KEY_COUNT])
 {
     uint8_t step = (events[UI_KEY_UP] == UI_EVENT_LONG || events[UI_KEY_DOWN] == UI_EVENT_LONG) ? UI_PARAM_ROWS : 1;
@@ -2227,6 +2303,9 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         case UI_SCREEN_WIFI_WAVE_SELECT: ui_handle_wifi_wave_select(events); break;
         case UI_SCREEN_MODULES:     ui_handle_modules(events); break;
         case UI_SCREEN_SYSTEM:      ui_handle_system(events); break;
+#if defined(CY_CORE_CM7_1)
+        case UI_SCREEN_VISION:      ui_handle_vision(events); break;
+#endif
         case UI_SCREEN_CONFIRM:     ui_handle_confirm(events); break;
         default:                    ui_set_screen(UI_SCREEN_HOME); break;
     }
@@ -2286,6 +2365,11 @@ static void ui_render(void)
         case UI_SCREEN_SYSTEM:
             ui_draw_system();
             break;
+#if defined(CY_CORE_CM7_1)
+        case UI_SCREEN_VISION:
+            ui_draw_vision();
+            break;
+#endif
         case UI_SCREEN_CONFIRM:
             ui_draw_confirm();
             break;

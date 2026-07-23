@@ -5,6 +5,7 @@
 #include "jump_control.h"
 #include "vehicle_supervisor.h"
 #include "navigation_tracking.h"
+#include "navigation_action.h"
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
@@ -334,7 +335,7 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
         return;
     }
 
-    if (jump_is_active())
+    if (jump_is_active() || Navi_Action_Remote_Jump_Active())
     {
         remote_ch6_last_high = ch6_high;
         jump_set_trigger_block_reason(JUMP_BLOCK_BUSY);
@@ -356,7 +357,15 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
     {
         if (remote_drive_enabled && remote_jump_armed)
         {
-            (void)jump_start();
+            /* ==================== LEGACY CH6 JUMP PATH - DISABLED ====================
+             * Original logic: CH6 triggered the jump_control.c manual jump FSM.
+             * Kept for rollback; do not delete.
+             */
+            // (void)jump_start();
+
+            /* ==================== NEW CH6 NAVIGATION JUMP PATH ==================== */
+            (void)Navi_Action_Start_Remote_Jump();
+            /* ==================== END NEW CH6 NAVIGATION JUMP PATH ==================== */
             remote_jump_armed = 0;
         }
         else if (!remote_drive_enabled)

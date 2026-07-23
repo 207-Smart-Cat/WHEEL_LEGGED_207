@@ -1,25 +1,24 @@
 #include "app_headfile.h"
-#include "bumpy_control.h"
 
 volatile bool system_fully_ready = false;
 
-// **************************** ºË¼äÍ¨ÐÅÇøÓò ****************************
-// ÔÚ CM7_0 ºÍ CM7_1 ÖÐ¶¼ÐèÒª¼ÓÈëÕâ¶Î´úÂë
+// **************************** ï¿½Ë¼ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ****************************
+// ï¿½ï¿½ CM7_0 ï¿½ï¿½ CM7_1 ï¿½Ð¶ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î´ï¿½ï¿½ï¿½
 
-// ½« Core A µÄ×´Ì¬Êý¾Ý·ÅÔÚ 0x28001000
+// ï¿½ï¿½ Core A ï¿½ï¿½×´Ì¬ï¿½ï¿½ï¿½Ý·ï¿½ï¿½ï¿½ 0x28001000
 #pragma location = IPC_CORE_A_SHARED_ADDR
 __no_init CoreA_Status_t core_a_status;
 
-// ½« Core A µÄÈÕÖ¾ÓÊÏä·ÅÔÚ 0x28001400
+// ï¿½ï¿½ Core A ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 0x28001400
 #pragma location = IPC_LOG_SHARED_ADDR
 __no_init IpcLogBox_t ipc_log_box;
 
-// ½« Core B µÄÖ¸ÁîÊý¾Ý·ÅÔÚ 0x28001800 (À©´óÈÕÖ¾Çø£¬±ÜÃâÈÕÖ¾Óë²ÎÊýÇøÖØµþ)
+// ï¿½ï¿½ Core B ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½Ý·ï¿½ï¿½ï¿½ 0x28001800 (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½)
 #pragma location = IPC_CORE_B_SHARED_ADDR
 __no_init CoreB_Command_t core_b_cmd;
 
-// **************************** ºê¶¨ÒåÇøÓò ****************************
-// ÖÐ¶Ï
+// **************************** ï¿½ê¶¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ****************************
+// ï¿½Ð¶ï¿½
 #define PIT_IMU (PIT_CH0)
 #define PIT_Balance (PIT_CH10)
 #define PIT_Remote (PIT_CH12)
@@ -29,31 +28,31 @@ __no_init CoreB_Command_t core_b_cmd;
 #define PIT_Navigation (PIT_CH15)
 #define LED1 (P19_0)
 #define IMU_ACC_RAW_VOFA_TEST_MODE (0)
-// **************************** È«¾Ö±äÁ¿ÇøÓò ****************************
+// **************************** È«ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ****************************
 
-// µç»ú+¶æ»ú£¨ÔËÐÐ£©
+// ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð£ï¿½
 int duty = 1;
 int stop = 0;
 extern float pitch1, roll1, yaw1;
 float v_buchang;
-/*ÍÈ²¿×ËÌ¬ÉèÖÃ*/
+/*ï¿½È²ï¿½ï¿½ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½*/
 extern float x_current, y_current;
-// ÓÃÓÚ¶æ»ú£¨x£¬y£©Î»ÖÃµÄµ÷Õû,Îñ±Ø¼Ç×¡Ó¦¸Ã¸øÒ»¸ö·ûºÏÇø¼äµÄ³õÊ¼Öµ£¬·ñÔò¶æ»ú½«²»ÔÚ×ª¶¯
-int stop_flash = 0; // ÍêÈü±êÖ¾Î»
+// ï¿½ï¿½ï¿½Ú¶ï¿½ï¿½ï¿½ï¿½xï¿½ï¿½yï¿½ï¿½Î»ï¿½ÃµÄµï¿½ï¿½ï¿½,ï¿½ï¿½Ø¼ï¿½×¡Ó¦ï¿½Ã¸ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä³ï¿½Ê¼Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½
+int stop_flash = 0; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾Î»
 
-int Bridge_position = 1;     // ¿ÉÄÜÊÇ¹ýµ¥±ßÇÅÊ±ºòÐèÒªµÄ£¨ÍÈ²¿×ÔÊÊÓ¦£©
-int yanshi_biaozhiwei = 100; // ¿ÉÄÜÊÇ¹ýµ¥±ßÇÅÊ±ºòÐèÒªµÄ£¨ÍÈ²¿×ÔÊÊÓ¦Ä£Ê½£©
+int Bridge_position = 1;     // ï¿½ï¿½ï¿½ï¿½ï¿½Ç¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Òªï¿½Ä£ï¿½ï¿½È²ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½
+int yanshi_biaozhiwei = 100; // ï¿½ï¿½ï¿½ï¿½ï¿½Ç¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Òªï¿½Ä£ï¿½ï¿½È²ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦Ä£Ê½ï¿½ï¿½
 int change_speed = 0;
 extern float temp_a, temp_b;
 
-// Íâ²¿±äÁ¿ÒýÈë
+// ï¿½â²¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 extern RobotState_t robot_pose;
 extern bool IMU_ready;
 extern volatile int jump_stop;
 
 extern uint32_t test_pit10_cnt;
 
-// **************************** ·â×°µ÷ÊÔ²¿·Öº¯ÊýÇøÓò ****************************
+// **************************** ï¿½ï¿½×°ï¿½ï¿½ï¿½Ô²ï¿½ï¿½Öºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ****************************
 #if IMU_ACC_RAW_VOFA_TEST_MODE
 static void imu_acc_raw_vofa_test_loop(void)
 {
@@ -103,21 +102,21 @@ static void imu_acc_raw_vofa_test_loop(void)
   printf("%.0f,%.0f,%.0f,%.3f,%.3f,%.3f\n", ax, ay, az, avg_x, avg_y, avg_z);
 }
 #endif
-// ================= Ö÷º¯Êý =================
+// ================= ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ =================
 int main(void)
 {
-  clock_init(SYSTEM_CLOCK_250M); // Ê±ÖÓÅäÖÃ¼°ÏµÍ³³õÊ¼»¯<Îñ±Ø±£Áô>
-  debug_init();                  // µ÷ÊÔ´®¿ÚÐÅÏ¢³õÊ¼»¯
-  // ´Ë´¦±àÐ´ÓÃ»§´úÂë ÀýÈçÍâÉè³õÊ¼»¯´úÂëµÈ
+  clock_init(SYSTEM_CLOCK_250M); // Ê±ï¿½ï¿½ï¿½ï¿½ï¿½Ã¼ï¿½ÏµÍ³ï¿½ï¿½Ê¼ï¿½ï¿½<ï¿½ï¿½Ø±ï¿½ï¿½ï¿½>
+  debug_init();                  // ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½Ê¼ï¿½ï¿½
+  // ï¿½Ë´ï¿½ï¿½ï¿½Ð´ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
-  interrupt_global_disable(); // ³õÊ¼»¯ÍâÉèÖ®Ç°ÏÈ¹Ø±ÕÖÐ¶Ï
+  interrupt_global_disable(); // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö®Ç°ï¿½È¹Ø±ï¿½ï¿½Ð¶ï¿½
 
-    //=================================Ë«ºËÍ¨ÐÅ³õÊ¼»¯======================
+    //=================================Ë«ï¿½ï¿½Í¨ï¿½Å³ï¿½Ê¼ï¿½ï¿½======================
   IPC_Init_Shared_Memory();
   IPC_Check_And_Apply_Params_To_Core0();
-  //=================================GPIO³õÊ¼»¯=======================
-  gpio_init(LED1, GPO, GPIO_HIGH, GPO_PUSH_PULL); // ³õÊ¼»¯ LED1 Êä³ö Ä¬ÈÏ¸ßµçÆ½ ÍÆÍìÊä³öÄ£Ê½
-  //=================================IMU³õÊ¼»¯=======================
+  //=================================GPIOï¿½ï¿½Ê¼ï¿½ï¿½=======================
+  gpio_init(LED1, GPO, GPIO_HIGH, GPO_PUSH_PULL); // ï¿½ï¿½Ê¼ï¿½ï¿½ LED1 ï¿½ï¿½ï¿½ Ä¬ï¿½Ï¸ßµï¿½Æ½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+  //=================================IMUï¿½ï¿½Ê¼ï¿½ï¿½=======================
   imu_init(LED1);
 #if IMU_ACC_RAW_VOFA_TEST_MODE
   interrupt_global_enable(0);
@@ -131,57 +130,58 @@ int main(void)
 #else
   pit_ms_init(PIT_IMU, 1);
 #endif
-  //=================================Æ½ºâ¶¯×÷³õÊ¼»¯========================
+  //=================================Æ½ï¿½â¶¯ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½========================
 #if !NAV_HAND_PUSH_TEST_MODE
-  Balance_init(); // ³õÊ¼»¯Æ½ºâ¿ØÖÆ£¨ÉèÖÃKalmanÂË²¨µÄ¸÷¸ö²ÎÊý£©
+  Balance_init(); // ï¿½ï¿½Ê¼ï¿½ï¿½Æ½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½ï¿½ï¿½ï¿½ï¿½Kalmanï¿½Ë²ï¿½ï¿½Ä¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 #endif
-  small_driver_uart_init(); // Çý¶¯°åÍ¨ÐÅ³õÊ¼»¯
+  small_driver_uart_init(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½Å³ï¿½Ê¼ï¿½ï¿½
   navi_data_init(); // Navigation positioning init. Update is gated by runtime navigation switch.
   Navi_Tracking_Init(); // Navigation route/control state init. Driver mode defaults to 0.
-  //========================Ò£¿ØÆ÷¿ØÖÆ³õÊ¼»¯==========================
+  //========================Ò£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ³ï¿½Ê¼ï¿½ï¿½==========================
   // SBUS uses UART4. Initialize it after other UART users to keep UART4 config intact.
 #if !NAV_HAND_PUSH_TEST_MODE
   Remote_Init();
   pit_ms_init(PIT_Remote, 10);//10ms????????
 #endif
-  battery_monitor_init(); // µç³ØµçÑ¹ ADC ³õÊ¼»¯
-  //=================================¶æ»ú³õÊ¼»¯======================
+  battery_monitor_init(); // ï¿½ï¿½Øµï¿½Ñ¹ ADC ï¿½ï¿½Ê¼ï¿½ï¿½
+  //=================================ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½======================
   // pit_ms_init(PIT_Engine, 20); // leg_control now runs from balance_control 20ms divider
-  pit_ms_init(PIT_IPC, 10); // Ë«ºË²ÎÊýÍ¬²½ 10ms ÖÜÆÚ¼ì²é
+  pit_ms_init(PIT_IPC, 10); // Ë«ï¿½Ë²ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ 10ms ï¿½ï¿½ï¿½Ú¼ï¿½ï¿½
 #if !NAV_HAND_PUSH_TEST_MODE
-  pit_ms_init(PIT_Jump, 1); // ÌøÔ¾¶¯×÷×´Ì¬»ú 1ms ÖÜÆÚ
+  pit_ms_init(PIT_Jump, 1); // ï¿½ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½×´Ì¬ï¿½ï¿½ 1ms ï¿½ï¿½ï¿½ï¿½
 #endif
   pit_ms_init(PIT_Navigation, 10); // Navigation period matches ENCODER_DT=0.010f in navigation_data_handling.h.
 
-//  // === 1. µ¼º½ÏµÍ³³õÊ¼»¯ ===
+//  // === 1. ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½Ê¼ï¿½ï¿½ ===
 //    navi_data_init();
 //    Navi_Tracking_Init();
 //
-//    // ÐÞ¸Ä£º½« PIT_Balance ´Ó 3ms ¸ÄÎª 10ms ÒÔÆ¥Åä ENCODER_DT (0.01f)
-//    // ×¢Òâ£ºÈç¹ûÊÇÆ½ºâ¿ØÖÆÇ¿ÖÆÒªÇó 3ms£¬ÔòÐèÐÞ¸Äµ¼º½µÄ ENCODER_DT Îª 0.03f ²¢ÔÚ 3ms ÖÐ¶Ï·ÖÆµµ÷ÓÃ
+//    // ï¿½Þ¸Ä£ï¿½ï¿½ï¿½ PIT_Balance ï¿½ï¿½ 3ms ï¿½ï¿½Îª 10ms ï¿½ï¿½Æ¥ï¿½ï¿½ ENCODER_DT (0.01f)
+//    // ×¢ï¿½â£ºï¿½ï¿½ï¿½ï¿½ï¿½Æ½ï¿½ï¿½ï¿½ï¿½ï¿½Ç¿ï¿½ï¿½Òªï¿½ï¿½ 3msï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Þ¸Äµï¿½ï¿½ï¿½ï¿½ï¿½ ENCODER_DT Îª 0.03f ï¿½ï¿½ï¿½ï¿½ 3ms ï¿½Ð¶Ï·ï¿½Æµï¿½ï¿½ï¿½ï¿½
 #if !NAV_HAND_PUSH_TEST_MODE
     pit_ms_init(PIT_Balance, 1);
 #endif
-////    jump_stop = 1; // ÔÚ control.c ÖÐ£¬jump_stop=1 »áÈÃ PID ²ÎÊýÈ«ÖÃ 0
+////    jump_stop = 1; // ï¿½ï¿½ control.c ï¿½Ð£ï¿½jump_stop=1 ï¿½ï¿½ï¿½ï¿½ PID ï¿½ï¿½ï¿½ï¿½È«ï¿½ï¿½ 0
     interrupt_global_enable(0);
 //
-    system_delay_ms(1000); // ¶îÍâµÈ´ý1Ãë£¬È·±£¿¨¶ûÂüÍêÈ«¾²Ö¹ÊÕÁ²
+    system_delay_ms(1000); // ï¿½ï¿½ï¿½ï¿½È´ï¿½1ï¿½ë£¬È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È«ï¿½ï¿½Ö¹ï¿½ï¿½ï¿½ï¿½
 
-  interrupt_global_enable(0); // ÔÚ³õÊ¼»¯ºóÊ¹ÄÜÖÐ¶Ï
+  interrupt_global_enable(0); // ï¿½Ú³ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½Ð¶ï¿½
 
   system_delay_ms(1000);
   
-  system_fully_ready = true; // 1ÃëµÈÍêºó£¬ÔÙ·ÅÐÐµ¼º½£¡
+  system_fully_ready = true; // 1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù·ï¿½ï¿½Ðµï¿½ï¿½ï¿½ï¿½ï¿½
 
 
   while (true)
   {
     static uint8_t battery_update_div = 0;
     static uint8_t ipc_status_push_div = 0;
+    static uint8_t wheel_speed_print_div = 0;
 #if !NAV_HAND_PUSH_TEST_MODE
     static uint8_t navigation_task_div = 0;
 #endif
-    // ´Ë´¦±àÐ´ÐèÒªÑ­»·Ö´ÐÐµÄ´úÂë
+    // ï¿½Ë´ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ÒªÑ­ï¿½ï¿½Ö´ï¿½ÐµÄ´ï¿½ï¿½ï¿½
 #if !NAV_HAND_PUSH_TEST_MODE
     if (IPC_Consume_Motor_Zero_Request_Core0())
     {
@@ -213,6 +213,14 @@ int main(void)
     {
         ipc_status_push_div = 0;
         IPC_Push_Status_From_CoreA();
+    }
+    wheel_speed_print_div++;
+    if (wheel_speed_print_div >= 100)
+    {
+        wheel_speed_print_div = 0;
+        printf("wheel_speed,L:%d,R:%d\r\n",
+               motor_value.receive_left_speed_data,
+               motor_value.receive_right_speed_data);
     }
 
     // Core0 main-loop debug output disabled for balance timing test.

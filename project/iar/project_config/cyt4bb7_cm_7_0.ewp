@@ -1143,6 +1143,12 @@
             <name>$PROJ_DIR$\..\..\code\engine.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\jump_control.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\jump_control.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\filter_function.c</name>
         </file>
         <file>
@@ -1192,6 +1198,12 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\navigation_tracking.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_smooth_logic.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_smooth_logic.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\navigation_tracking.h</name>

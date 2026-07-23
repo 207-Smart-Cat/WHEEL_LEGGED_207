@@ -1,37 +1,37 @@
 #ifndef __WIFI_H__
 #define __WIFI_H__
 
-#include "zf_common_headfile.h" // È·±£°üº¬Öð·É¿âµÄ»ù´¡Í·ÎÄ¼þ
+#include "zf_common_headfile.h" // È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É¿ï¿½Ä»ï¿½ï¿½ï¿½Í·ï¿½Ä¼ï¿½
 
 // ==========================================
-// ?? Í¨ÐÅÐ­ÒéÄ£Ê½Ò»¼üÇÐ»»¿ª¹Ø
-// 0: Ê¹ÓÃ TCP Ä£Ê½ (1¶Ô1¿É¿¿´«Êä£¬ÊÊºÏ·¢Ò£¿ØÖ¸Áî)
-// 1: Ê¹ÓÃ UDP Ä£Ê½ (È«¾Ö¹ã²¥Ä£Ê½£¬ÊÊºÏ¶àÌ¨ÊÖ»úÍ¬Ê±¿´²¨ÐÎ)
+// ?? Í¨ï¿½ï¿½Ð­ï¿½ï¿½Ä£Ê½Ò»ï¿½ï¿½ï¿½Ð»ï¿½ï¿½ï¿½ï¿½ï¿½
+// 0: Ê¹ï¿½ï¿½ TCP Ä£Ê½ (1ï¿½ï¿½1ï¿½É¿ï¿½ï¿½ï¿½ï¿½ä£¬ï¿½ÊºÏ·ï¿½Ò£ï¿½ï¿½Ö¸ï¿½ï¿½)
+// 1: Ê¹ï¿½ï¿½ UDP Ä£Ê½ (È«ï¿½Ö¹ã²¥Ä£Ê½ï¿½ï¿½ï¿½ÊºÏ¶ï¿½Ì¨ï¿½Ö»ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
 // ==========================================
-#define WIFI_PROTOCOL_MODE  1   // <---- ÒÔºóÄãÖ»ÐèÒªÐÞ¸ÄÕâ¸öÊý×Ö£¡
+#define WIFI_PROTOCOL_MODE  1   // <---- ï¿½Ôºï¿½ï¿½ï¿½Ö»ï¿½ï¿½Òªï¿½Þ¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö£ï¿½
 
-// ------ ÏÂÃæµÄ´úÂë»á×Ô¶¯¸ù¾ÝÉÏÃæµÄ¿ª¹Ø½øÐÐÅäÖÃ£¬ÎÞÐèÊÖ¶¯ÐÞ¸Ä ------
+// ------ ï¿½ï¿½ï¿½ï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Ø½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¶ï¿½ï¿½Þ¸ï¿½ ------
 #if (WIFI_PROTOCOL_MODE == 0)
     #define WIFI_PROTOCOL_STR   "TCP"
-    #define WIFI_TARGET_IP      "192.168.230.136" // ¡¾ÌîÈëÄãÊµÑéÊÒµçÄÔ/ÌØ¶¨ÊÖ»úµÄÕæÊµIP¡¿
+    #define WIFI_TARGET_IP      "192.168.230.136" // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½ï¿½Òµï¿½ï¿½ï¿½/ï¿½Ø¶ï¿½ï¿½Ö»ï¿½ï¿½ï¿½ï¿½ï¿½ÊµIPï¿½ï¿½
 #elif (WIFI_PROTOCOL_MODE == 1)
     #define WIFI_PROTOCOL_STR   "UDP"
-    #define WIFI_TARGET_IP      "255.255.255.255" // È«¾Ö¹ã²¥IP£¬ÎÞÐèÐÞ¸Ä
+    #define WIFI_TARGET_IP      "255.255.255.255" // È«ï¿½Ö¹ã²¥IPï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½
 #endif
 
-// Í¨ÓÃ¶Ë¿ÚÓëWIFIÉèÖÃ
+// Í¨ï¿½Ã¶Ë¿ï¿½ï¿½ï¿½WIFIï¿½ï¿½ï¿½ï¿½
 #define WIFI_TARGET_PORT        "8086"///
 #define WIFI_LOCAL_PORT         "6666"
-//#define WIFI_SSID_TEST          "test207"
-#define WIFI_SSID_TEST          "zhangtao"
+#define WIFI_SSID_TEST          "test207"
+// #define WIFI_SSID_TEST          "zhangtao"
 #define WIFI_PASSWORD_TEST      "12345678"
 
-// --- WIFI ¹¤×÷Ä£Ê½Ã¶¾Ù¶¨Òå ---
+// --- WIFI ï¿½ï¿½ï¿½ï¿½Ä£Ê½Ã¶ï¿½Ù¶ï¿½ï¿½ï¿½ ---
 typedef enum {
-    WIFI_MODE_SILENT = 0,   // Ä£Ê½0£º¾²Ä¬´ý»ú£¨²»·¢Êý¾Ý£¬Ê¡ËãÁ¦£©
-    WIFI_MODE_WAVE   = 1,   // Ä£Ê½1£º²¨ÐÎ»Ø´«£¨·¢¸øÐéÄâÊ¾²¨Æ÷£©
-    WIFI_MODE_IMAGE  = 2,   // Ä£Ê½2£ºÍ¼Ïñ»Ø´«£¨·¢¸øÍ¼´«ÉÏÎ»»ú£©
-    WIFI_MODE_LOG    = 3    // Ä£Ê½3£ºÈÕÖ¾Ä£Ê½£¨·¢ÎÄ±¾µ÷ÊÔÐÅÏ¢£©
+    WIFI_MODE_SILENT = 0,   // Ä£Ê½0ï¿½ï¿½ï¿½ï¿½Ä¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½Ê¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    WIFI_MODE_WAVE   = 1,   // Ä£Ê½1ï¿½ï¿½ï¿½ï¿½ï¿½Î»Ø´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    WIFI_MODE_IMAGE  = 2,   // Ä£Ê½2ï¿½ï¿½Í¼ï¿½ï¿½Ø´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½
+    WIFI_MODE_LOG    = 3    // Ä£Ê½3ï¿½ï¿½ï¿½ï¿½Ö¾Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½Ä±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½
 } wifi_mode_t;
 #define WIFI_WAVE_MAX_SELECTED 6
 #define WIFI_WAVE_EMPTY_SLOT   0xFF
@@ -80,6 +80,10 @@ typedef enum {
     WIFI_WAVE_VAR_TARGET_STAND,
     WIFI_WAVE_VAR_X_CURRENT,
     WIFI_WAVE_VAR_Y_CURRENT,
+    WIFI_WAVE_VAR_ASSIST_ENABLED,
+    WIFI_WAVE_VAR_ASSIST_INTEGRAL,
+    WIFI_WAVE_VAR_ASSIST_PWM,
+    WIFI_WAVE_VAR_ASSIST_CLEAR,
     WIFI_WAVE_VAR_COUNT
 } wifi_wave_var_t;
 
@@ -90,14 +94,14 @@ typedef enum {
     WIFI_BOOT_STATE_SKIPPED,
     WIFI_BOOT_STATE_FAILED
 } wifi_boot_state_t;
-// --- Íâ²¿±äÁ¿ÉùÃ÷ ---
+// --- ï¿½â²¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ---
 extern wifi_mode_t current_wifi_mode;
 extern volatile uint8 WIFI_Send_flag;
-extern uint8 wifi_is_connected; // ¹©Íâ²¿²éÑ¯ WiFi ÊÇ·ñÔÚÏß
+extern uint8 wifi_is_connected; // ï¿½ï¿½ï¿½â²¿ï¿½ï¿½Ñ¯ WiFi ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½
 extern uint8 wifi_wave_selected_count;
 extern uint8 wifi_wave_selected[WIFI_WAVE_MAX_SELECTED];
 
-// --- API º¯ÊýÉùÃ÷ ---
+// --- API ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ---
 const char *wifi_wave_var_name(wifi_wave_var_t id);
 float wifi_wave_get_value(wifi_wave_var_t id);
 uint8 wifi_wave_is_selected(uint8 id);
@@ -107,10 +111,10 @@ void wifi_wave_send_var_map(void);
 uint8 wifi_wave_set_selected_ids(const uint8 *ids, uint8 count);
 void wifi_init(void);
 uint8 wifi_init_with_skip(uint8 allow_skip);
-void wifi_process_loop(void);   // ¸ºÔð½ÓÊÕÖ¸Áî£¨°üº¬ÇÐ»»Ä£Ê½µÄÖ¸Áî£©
-void wifi_report_task(void);    // ¸ºÔð¸ù¾Ýµ±Ç°Ä£Ê½ÏòÍâ·¢ËÍÊý¾Ý
-void wifi_health_check_task(void); // ¾²Ä¬Ä£Ê½ÏÂµÄµÍÆµÔÚÏß¼ì²â
-void wifi_auto_reconnect_task(void); // ¡¾ÐÂÔö¡¿¶ÏÏß×Ô¶¯ÖØÁ¬×´Ì¬»ú
+void wifi_process_loop(void);   // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½î£¨ï¿½ï¿½ï¿½ï¿½ï¿½Ð»ï¿½Ä£Ê½ï¿½ï¿½Ö¸ï¿½î£©
+void wifi_report_task(void);    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ýµï¿½Ç°Ä£Ê½ï¿½ï¿½ï¿½â·¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+void wifi_health_check_task(void); // ï¿½ï¿½Ä¬Ä£Ê½ï¿½ÂµÄµï¿½Æµï¿½ï¿½ï¿½ß¼ï¿½ï¿½
+void wifi_auto_reconnect_task(void); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬ï¿½ï¿½
 void wifi_request_reconnect(void);
 uint8 wifi_control_is_ready(void);
 wifi_boot_state_t wifi_get_boot_state(void);

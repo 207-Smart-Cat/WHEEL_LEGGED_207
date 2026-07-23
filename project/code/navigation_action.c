@@ -1,9 +1,12 @@
-﻿#include "navigation_action.h"
+#include "navigation_action.h"
 #include "navigation_data_handling.h"
 #include "ipc_shared_data.h"
 #include "param.h"
 #include "jump_control.h"
 #include "imu.h"
+#include "small_driver_uart_control.h"
+#include "vehicle_supervisor.h"
+#include "navigation_touch_logic.h"
 #include "bumpy_control.h"
 
 // ==================== 动作状态机实例 ====================
@@ -34,22 +37,26 @@ static uint16_t action_done_idx = 0;
 static uint8_t jump_sequence_done_count = 0;
 static float jump_course_back_yaw = 0.0f;
 #endif
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 2U)
-static float jump_interval_start_x = 0.0f;
-static float jump_interval_start_y = 0.0f;
-#endif
 static float jump_sequence_hold_yaw = 0.0f;
+static float jump_motion_count = 0.0f;
+static float jump_motion_last_x = 0.0f;
+static NaviJumpTouchLogic_t jump_touch_logic = {0};
+static uint8_t jump_touch_inhibit_after_landing = 0;
+static uint8_t remote_jump_active = 0;
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif
 
 uint8_t navigation_jump_is_active(void)
 {
-    return (action_fsm.state == FSM_JUMP_PREPARE ||
+    return (action_fsm.state == FSM_JUMP_EXPLORE ||
+            action_fsm.state == FSM_JUMP_EDGE_TOUCH ||
+            action_fsm.state == FSM_JUMP_BACKOFF ||
+            action_fsm.state == FSM_JUMP_RUNUP ||
+            action_fsm.state == FSM_JUMP_PREPARE ||
             action_fsm.state == FSM_JUMP_TAKEOFF ||
             action_fsm.state == FSM_JUMP_AIRBORNE ||
             action_fsm.state == FSM_JUMP_LANDING ||
-            action_fsm.state == FSM_JUMP_TRIPLE_INTERVAL ||
             action_fsm.state == FSM_JUMP_RAMP_DOWN ||
             action_fsm.state == FSM_JUMP_TURN_BACK ||
             action_fsm.state == FSM_JUMP_RAMP_UP ||
@@ -67,13 +74,22 @@ uint8_t Navi_Action_Servo_Takeover_Active(void)
 #define NAVI_JUMP_FORWARD_SPEED       NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_AIRBORNE_SPEED      NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_LANDING_SPEED       NAVI_JUMP_RUNUP_SPEED
+#define NAVI_JUMP_EXPLORE_SPEED       (120.0f)
+#define NAVI_JUMP_BACKOFF_SPEED       (-120.0f)
+#define NAVI_JUMP_TOUCH_LOW_SPEED     (10)
+#define NAVI_JUMP_TOUCH_HIGH_SPEED    (50)
+#define NAVI_JUMP_TOUCH_HIGH_SAMPLES  (2U)
+#define NAVI_JUMP_TOUCH_LOW_CONFIRM   (2U)
+#define NAVI_JUMP_TOUCH_INHIBIT_AFTER_LANDING_MS (1000U)
+#define NAVI_JUMP_BACKOFF_X_TARGET    (0.35f)
+#define NAVI_JUMP_RUNUP_X_TARGET      (0.20f)
 #define NAVI_JUMP_BURST_PWM           (1300)
 #define NAVI_JUMP_AIR_RETRACT_X       (-0.00f)
 #define NAVI_JUMP_AIR_RETRACT_Y       (0.015f)
 #define NAVI_JUMP_EXE_BUFFER_X        (+0.00f)
 #define NAVI_JUMP_EXE_BUFFER_Y        (0.035f)
 #define NAVI_JUMP_RECOVER_PWM         (420)
-#define NAVI_JUMP_PREPARE_MS          (260U)
+#define NAVI_JUMP_PREPARE_MS          (100U)
 #define NAVI_JUMP_BURST_MS            (180U)
 #define NAVI_JUMP_AIR_RETRACT_MS      (40U)
 #define NAVI_JUMP_RECOVER_MS          (50U)
@@ -81,22 +97,61 @@ uint8_t Navi_Action_Servo_Takeover_Active(void)
 #define NAVI_JUMP_LAND_ACCEL_G        (1.0f)
 
 #define NAVI_TRIPLE_JUMP_TOTAL_COUNT      (3U)
-#define NAVI_TRIPLE_JUMP_INTERVAL_SPEED   NAVI_JUMP_RUNUP_SPEED
-#define NAVI_TRIPLE_JUMP_INTERVAL_MS      (100U)
-#define NAVI_TRIPLE_JUMP_INTERVAL_DX_M    (0.10f)
 
 #if (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY) && \
     (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE)
 #error "Invalid NAVI_TRIPLE_JUMP_AFTER_MODE"
 #endif
 
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE != 1U) && (NAVI_TRIPLE_JUMP_INTERVAL_MODE != 2U)
-#error "Invalid NAVI_TRIPLE_JUMP_INTERVAL_MODE"
-#endif
-
 #if (NAVI_JUMP_POSE_UPDATE_MODE != 1U) && (NAVI_JUMP_POSE_UPDATE_MODE != 2U)
 #error "Invalid NAVI_JUMP_POSE_UPDATE_MODE"
 #endif
+
+static void navi_jump_motion_reset(void)
+{
+    jump_motion_count = 0.0f;
+    jump_motion_last_x = robot_pose.x;
+}
+
+static void navi_jump_motion_update(void)
+{
+    jump_motion_count += fabsf(robot_pose.x - jump_motion_last_x);
+    jump_motion_last_x = robot_pose.x;
+}
+
+static void navi_jump_motion_update_forward_x(void)
+{
+    float dx = robot_pose.x - jump_motion_last_x;
+
+    if (dx > 0.0f) {
+        jump_motion_count += dx;
+    }
+    jump_motion_last_x = robot_pose.x;
+}
+
+static void navi_jump_touch_window_reset(void)
+{
+    Navi_JumpTouchLogic_Reset(&jump_touch_logic);
+}
+
+static void navi_jump_touch_inhibit_reset(void)
+{
+    jump_touch_inhibit_after_landing = 0;
+    navi_jump_touch_window_reset();
+}
+
+static uint8_t navi_jump_touch_update(void)
+{
+    float avg_speed_abs = (fabsf((float)motor_value.receive_left_speed_data) +
+                           fabsf((float)motor_value.receive_right_speed_data)) * 0.5f;
+
+    return Navi_JumpTouchLogic_Update(&jump_touch_logic,
+                                      avg_speed_abs,
+                                      (float)NAVI_JUMP_TOUCH_HIGH_SPEED,
+                                      (float)NAVI_JUMP_TOUCH_LOW_SPEED,
+                                      NAVI_JUMP_TOUCH_HIGH_SAMPLES,
+                                      NAVI_JUMP_TOUCH_LOW_CONFIRM);
+}
 
 static void navi_jump_pose_update_begin(void)
 {
@@ -127,6 +182,65 @@ static void navi_jump_pose_update_end(void)
 #endif
 }
 
+// ============================================================================
+// ==================== REMOTE CH6 NAVIGATION JUMP BRIDGE =====================
+// ============================================================================
+// CH6 trigger entry: reuse navigation_action.c FSM_JUMP_* jump flow.
+// The waypoint navigation flow is kept intact; Remote uses this start/tick bridge.
+// ============================================================================
+uint8_t Navi_Action_Remote_Jump_Active(void)
+{
+    return remote_jump_active;
+}
+
+uint8_t Navi_Action_Start_Remote_Jump(void)
+{
+    if (remote_jump_active || is_action_busy || navigation_jump_is_active() || jump_is_active())
+    {
+        return 0;
+    }
+
+    remote_jump_active = 1;
+    is_action_busy = 1;
+    action_fsm.state = FSM_JUMP_EXPLORE;
+    action_fsm.state_timer_ms = 0;
+    action_fsm.is_airborne_expect = 0;
+
+#if (NAVI_JUMP_ACTION_MODE == 2U)
+    jump_sequence_done_count = 0;
+    jump_course_back_yaw = 0.0f;
+#endif
+    jump_sequence_hold_yaw = navi_limit_angle180(target_angle);
+    navi_jump_motion_reset();
+    navi_jump_touch_inhibit_reset();
+    navi_jump_pose_update_end();
+
+    jump_stop = 0;
+    jump_position = 0;
+    jump_engine_suspend = 0;
+    target_velocity = NAVI_JUMP_EXPLORE_SPEED;
+    target_angle = jump_sequence_hold_yaw;
+
+    return 1;
+}
+
+static void navi_action_remote_jump_clear(void)
+{
+    remote_jump_active = 0;
+    is_action_busy = 0;
+    action_fsm.state = FSM_IDLE;
+    action_fsm.state_timer_ms = 0;
+    action_fsm.is_airborne_expect = 0;
+    navi_jump_pose_update_end();
+    jump_engine_suspend = 0;
+    jump_stop = 0;
+    jump_position = 0;
+}
+
+// ============================================================================
+// ================== END REMOTE CH6 NAVIGATION JUMP BRIDGE ===================
+// ============================================================================
+
 // ==============================================================================
 // 全局路径预处理：提取需要动作接管的特殊航点
 // ==============================================================================
@@ -143,12 +257,10 @@ void navi_parse_global_path(void) {
     jump_sequence_done_count = 0;
     jump_course_back_yaw = 0.0f;
 #endif
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 2U)
-    jump_interval_start_x = 0.0f;
-    jump_interval_start_y = 0.0f;
-#endif
     jump_sequence_hold_yaw = 0.0f;
-    navi_jump_pose_update_end();  
+    navi_jump_motion_reset();
+    navi_jump_touch_inhibit_reset();
+    navi_jump_pose_update_end();
     Bumpy_Action_Reset();
     jump_engine_suspend = 0;
 
@@ -169,7 +281,10 @@ void navi_parse_global_path(void) {
 // 异步动作状态机
 // ==============================================================================
 static void navi_action_fsm_update(uint16_t target_idx, float distance) {
-    WayPoint_Type upcoming_type = point_map[target_idx].type;
+    WayPoint_Type upcoming_type = WP_TYPE_NORMAL;
+    if (!remote_jump_active) {
+        upcoming_type = point_map[target_idx].type;
+    }
     action_fsm.state_timer_ms += (uint32_t)(ENCODER_DT * 1000.0f);
     // 注意：状态切换时要清零 state_timer_ms。
 
@@ -196,20 +311,24 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
 #elif (NAVI_JUMP_ACTION_MODE == 1U)
-                jump_sequence_hold_yaw = (float)IMU_data.filter_result.yaw;
-                action_fsm.state = FSM_JUMP_RUNUP;
+                jump_sequence_hold_yaw = navi_limit_angle180(point_map[target_idx].yaw);
+                navi_jump_motion_reset();
+                navi_jump_touch_inhibit_reset();
+                action_fsm.state = FSM_JUMP_EXPLORE;
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
-                target_velocity = NAVI_JUMP_RUNUP_SPEED;
+                target_velocity = NAVI_JUMP_EXPLORE_SPEED;
                 target_angle = jump_sequence_hold_yaw;
 #elif (NAVI_JUMP_ACTION_MODE == 2U)
                 jump_sequence_done_count = 0;
                 jump_course_back_yaw = 0.0f;
-                jump_sequence_hold_yaw = (float)IMU_data.filter_result.yaw;
-                action_fsm.state = FSM_JUMP_RUNUP;
+                jump_sequence_hold_yaw = navi_limit_angle180(point_map[target_idx].yaw);
+                navi_jump_motion_reset();
+                navi_jump_touch_inhibit_reset();
+                action_fsm.state = FSM_JUMP_EXPLORE;
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
-                target_velocity = NAVI_JUMP_RUNUP_SPEED;
+                target_velocity = NAVI_JUMP_EXPLORE_SPEED;
                 target_angle = jump_sequence_hold_yaw;
 #else
 #error "Invalid NAVI_JUMP_ACTION_MODE"
@@ -325,6 +444,64 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             break;
         }
         // ------------------ 跳跃动作 ------------------
+        case FSM_JUMP_EXPLORE:
+            is_action_busy = 1;
+            action_fsm.is_airborne_expect = 0;
+            jump_stop = 0;
+            jump_position = 0;
+            jump_engine_suspend = 0;
+            target_velocity = NAVI_JUMP_EXPLORE_SPEED;
+            target_angle = jump_sequence_hold_yaw;
+
+            if (jump_touch_inhibit_after_landing)
+            {
+                navi_jump_touch_window_reset();
+                if (action_fsm.state_timer_ms >= NAVI_JUMP_TOUCH_INHIBIT_AFTER_LANDING_MS)
+                {
+                    jump_touch_inhibit_after_landing = 0;
+                }
+                break;
+            }
+
+            if (navi_jump_touch_update())
+            {
+                action_fsm.state = FSM_JUMP_EDGE_TOUCH;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;
+            }
+            break;
+
+        case FSM_JUMP_EDGE_TOUCH:
+            is_action_busy = 1;
+            action_fsm.is_airborne_expect = 0;
+            jump_stop = 0;
+            jump_position = 0;
+            jump_engine_suspend = 0;
+            target_velocity = 0.0f;
+            target_angle = jump_sequence_hold_yaw;
+            navi_jump_motion_reset();
+            action_fsm.state = FSM_JUMP_BACKOFF;
+            action_fsm.state_timer_ms = 0;
+            break;
+
+        case FSM_JUMP_BACKOFF:
+            is_action_busy = 1;
+            action_fsm.is_airborne_expect = 0;
+            jump_stop = 0;
+            jump_position = 0;
+            jump_engine_suspend = 0;
+            target_velocity = NAVI_JUMP_BACKOFF_SPEED;
+            target_angle = jump_sequence_hold_yaw;
+            navi_jump_motion_update();
+
+            if (jump_motion_count >= NAVI_JUMP_BACKOFF_X_TARGET) {
+                navi_jump_motion_reset();
+                action_fsm.state = FSM_JUMP_RUNUP;
+                action_fsm.state_timer_ms = 0;
+                is_action_busy = 1;
+            }
+            break;
+
         case FSM_JUMP_RUNUP:
             is_action_busy = 1;
             action_fsm.is_airborne_expect = 0;
@@ -333,8 +510,9 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_RUNUP_SPEED;
             target_angle = jump_sequence_hold_yaw;
+            navi_jump_motion_update_forward_x();
 
-            if (action_fsm.state_timer_ms >= NAVI_JUMP_RUNUP_MS) {
+            if (jump_motion_count >= NAVI_JUMP_RUNUP_X_TARGET) {
                 navi_jump_pose_update_begin();
                 action_fsm.state = FSM_JUMP_PREPARE;
                 action_fsm.state_timer_ms = 0;
@@ -349,9 +527,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             jump_position = 0;
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_FORWARD_SPEED;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
             target_angle = jump_sequence_hold_yaw;
-#endif
             jump_drive_symmetric_pwm(jump_calc_prepare_pwm((uint16)action_fsm.state_timer_ms));
 
             if (action_fsm.state_timer_ms >= NAVI_JUMP_PREPARE_MS) {
@@ -366,9 +542,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             action_fsm.is_airborne_expect = 0;
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_FORWARD_SPEED;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
             target_angle = jump_sequence_hold_yaw;
-#endif
             jump_drive_symmetric_pwm(NAVI_JUMP_BURST_PWM);
 
             if (action_fsm.state_timer_ms >= NAVI_JUMP_BURST_MS) {
@@ -387,9 +561,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             action_fsm.is_airborne_expect = 1;
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_AIRBORNE_SPEED;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
             target_angle = jump_sequence_hold_yaw;
-#endif
 
             if (action_fsm.state_timer_ms < NAVI_JUMP_AIR_RETRACT_MS) {
                 jump_drive_symmetric_xy(NAVI_JUMP_AIR_RETRACT_X, NAVI_JUMP_AIR_RETRACT_Y);
@@ -411,9 +583,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             action_fsm.is_airborne_expect = 0;
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_LANDING_SPEED;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
             target_angle = jump_sequence_hold_yaw;
-#endif
             jump_drive_symmetric_pwm(NAVI_JUMP_RECOVER_PWM);
 
             if (action_fsm.state_timer_ms >= NAVI_JUMP_RECOVER_MS) {
@@ -422,17 +592,18 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 #if (NAVI_JUMP_ACTION_MODE == 2U)
                 jump_sequence_done_count++;
                 if (jump_sequence_done_count < NAVI_TRIPLE_JUMP_TOTAL_COUNT) {
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 2U)
-                    jump_interval_start_x = robot_pose.x;
-                    jump_interval_start_y = robot_pose.y;
-#endif
-                    action_fsm.state = FSM_JUMP_TRIPLE_INTERVAL;
+                    navi_jump_motion_reset();
+                    navi_jump_touch_window_reset();
+                    jump_touch_inhibit_after_landing = 1;
+                    action_fsm.state = FSM_JUMP_EXPLORE;
                     action_fsm.state_timer_ms = 0;
                     is_action_busy = 1;
                     action_fsm.is_airborne_expect = 0;
                     jump_engine_suspend = 0;
                     jump_position = 0;
                     jump_stop = 0;
+                    target_velocity = NAVI_JUMP_EXPLORE_SPEED;
+                    target_angle = jump_sequence_hold_yaw;
                     break;
                 }
 #if (NAVI_TRIPLE_JUMP_AFTER_MODE == NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE)
@@ -448,11 +619,13 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 #endif
 #endif
 #if (NAVI_JUMP_ACTION_MODE != 2U) || (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE)
-                action_done_pending = 1;
-                action_done_idx = target_idx;
-                if (action_seq.current_ptr < action_seq.total_count &&
-                    action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
-                    action_seq.current_ptr++;
+                if (!remote_jump_active) {
+                    action_done_pending = 1;
+                    action_done_idx = target_idx;
+                    if (action_seq.current_ptr < action_seq.total_count &&
+                        action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
+                        action_seq.current_ptr++;
+                    }
                 }
                 action_fsm.state = FSM_IDLE;
                 action_fsm.state_timer_ms = 0;
@@ -465,38 +638,6 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             }
             break;
 
-        case FSM_JUMP_TRIPLE_INTERVAL:
-        {
-            is_action_busy = 1;
-            action_fsm.is_airborne_expect = 0;
-            jump_engine_suspend = 0;
-            jump_position = 0;
-            jump_stop = 0;
-            target_velocity = NAVI_TRIPLE_JUMP_INTERVAL_SPEED;
-            target_angle = jump_sequence_hold_yaw;
-
-#if (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 1U)
-            if (action_fsm.state_timer_ms >= NAVI_TRIPLE_JUMP_INTERVAL_MS) {
-                action_fsm.state = FSM_JUMP_RUNUP;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-            }
-#elif (NAVI_TRIPLE_JUMP_INTERVAL_MODE == 2U)
-            {
-                float dx = robot_pose.x - jump_interval_start_x;
-                float dy = robot_pose.y - jump_interval_start_y;
-                float interval_dist_sq = dx * dx + dy * dy;
-                float target_dist_sq = NAVI_TRIPLE_JUMP_INTERVAL_DX_M * NAVI_TRIPLE_JUMP_INTERVAL_DX_M;
-
-                if (interval_dist_sq >= target_dist_sq) {
-                    action_fsm.state = FSM_JUMP_RUNUP;
-                    action_fsm.state_timer_ms = 0;
-                    is_action_busy = 1;
-                }
-            }
-#endif
-            break;
-        }
         case FSM_JUMP_RAMP_DOWN:
             is_action_busy = 1;
             action_fsm.is_airborne_expect = 0;
@@ -551,11 +692,13 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             target_velocity = NAVI_TRIPLE_JUMP_STAIR_SPEED;
             target_angle = jump_course_back_yaw;
             if (action_fsm.state_timer_ms >= NAVI_TRIPLE_JUMP_STAIR_DOWN_MS) {
-                action_done_pending = 1;
-                action_done_idx = target_idx;
-                if (action_seq.current_ptr < action_seq.total_count &&
-                    action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
-                    action_seq.current_ptr++;
+                if (!remote_jump_active) {
+                    action_done_pending = 1;
+                    action_done_idx = target_idx;
+                    if (action_seq.current_ptr < action_seq.total_count &&
+                        action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
+                        action_seq.current_ptr++;
+                    }
                 }
                 action_fsm.state = FSM_IDLE;
                 action_fsm.state_timer_ms = 0;
@@ -566,50 +709,50 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 jump_stop = 0;
             }
             break;
-            
-        // ------------------ 颠簸路段动作 ------------------
-        case FSM_BUMP:
-        {
-            BumpyActionResult_t bump_result;                         // 本周期动作结果
 
-            is_action_busy = 1U;
-            action_fsm.is_airborne_expect = 0U;
-            bump_result = Bumpy_Action_Process_10ms();                // 前进、穿越、传感确认均在颠簸模块内推进
+          // ------------------ 颠簸路段动作 ------------------
+          case FSM_BUMP:
+          {
+              BumpyActionResult_t bump_result;                         // 本周期动作结果
 
-            if (bump_result == BUMP_ACTION_RESULT_DONE)              // 颠簸动作全部完成
-            {
-                action_done_pending = 1U;                            // 设置动作完成标志
-                action_done_idx = target_idx;                        // 记录完成航点
+              is_action_busy = 1U;
+              action_fsm.is_airborne_expect = 0U;
+              bump_result = Bumpy_Action_Process_10ms();                // 前进、穿越、传感确认均在颠簸模块内推进
 
-                if (action_seq.current_ptr < action_seq.total_count &&
-                    action_seq.list[action_seq.current_ptr].wp_index == target_idx)
-                {
-                    action_seq.current_ptr++;                        // 切换下一特殊动作
-                }
+              if (bump_result == BUMP_ACTION_RESULT_DONE)              // 颠簸动作全部完成
+              {
+                  action_done_pending = 1U;                            // 设置动作完成标志
+                  action_done_idx = target_idx;                        // 记录完成航点
 
-                action_fsm.state = FSM_IDLE;                         
-                action_fsm.state_timer_ms = 0U;                   
-                is_action_busy = 0U;                               
-            }
-            else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
-                     bump_result == BUMP_ACTION_RESULT_IDLE)          // 动作故障或内外状态异常，统一安全退出
-            {
-                if (action_seq.current_ptr < action_seq.total_count &&
-                    action_seq.list[action_seq.current_ptr].wp_index == target_idx)
-                {
-                    action_seq.current_ptr++;                        // 跳过当前异常动作
-                }
-                
-                target_velocity = 0.0f;                     
-                target_angle = (float)IMU_data.filter_result.yaw;  
-                vofa_mode_driver = 0.0f;                        
-                navi_ctrl.navi_mode_driver = 0U;                 
-                action_fsm.state = FSM_IDLE;                      
-                action_fsm.state_timer_ms = 0U;                   
-                is_action_busy = 0U;                                 // 释放动作接管
-            }
-            break;
-        }
+                  if (action_seq.current_ptr < action_seq.total_count &&
+                      action_seq.list[action_seq.current_ptr].wp_index == target_idx)
+                  {
+                      action_seq.current_ptr++;                        // 切换下一特殊动作
+                  }
+
+                  action_fsm.state = FSM_IDLE;                         
+                  action_fsm.state_timer_ms = 0U;                   
+                  is_action_busy = 0U;                               
+              }
+              else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
+                       bump_result == BUMP_ACTION_RESULT_IDLE)          // 动作故障或内外状态异常，统一安全退出
+              {
+                  if (action_seq.current_ptr < action_seq.total_count &&
+                      action_seq.list[action_seq.current_ptr].wp_index == target_idx)
+                  {
+                      action_seq.current_ptr++;                        // 跳过当前异常动作
+                  }
+                  
+                  target_velocity = 0.0f;                     
+                  target_angle = (float)IMU_data.filter_result.yaw;  
+                  vofa_mode_driver = 0.0f;                        
+                  navi_ctrl.navi_mode_driver = 0U;                 
+                  action_fsm.state = FSM_IDLE;                      
+                  action_fsm.state_timer_ms = 0U;                   
+                  is_action_busy = 0U;                                 // 释放动作接管
+              }
+              break;
+          }
 
         // ------------------ 桥梁动作 ------------------
         case FSM_BRIDGE_APPROACH:
@@ -663,11 +806,41 @@ uint8_t Navi_Action_Consume_Done(uint16_t curr_idx)
     return 0;
 }
 
+// ============================================================================
+// ==================== REMOTE CH6 NAVIGATION JUMP BRIDGE =====================
+// ============================================================================
+void Navi_Action_Remote_Jump_Tick(void)
+{
+    if (!remote_jump_active)
+    {
+        return;
+    }
+
+    if (Vehicle_Is_Emergency_Stop())
+    {
+        navi_action_remote_jump_clear();
+        return;
+    }
+
+    navi_action_fsm_update(0, 0.0f);
+
+    if (action_fsm.state == FSM_IDLE)
+    {
+        navi_action_remote_jump_clear();
+    }
+}
+
+// ============================================================================
+// ================== END REMOTE CH6 NAVIGATION JUMP BRIDGE ===================
+// ============================================================================
+
 
 // ==============================================================================
 // 动作管理入口：由循迹层周期调用
 // ==============================================================================
 void Navi_Action_Manager(uint16_t  curr_idx) {
+    if (remote_jump_active) return;
+
     if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count) return; 
 
     uint16_t  target_wp_idx = action_seq.list[action_seq.current_ptr].wp_index;
@@ -700,6 +873,4 @@ void Navi_Action_Manager(uint16_t  curr_idx) {
 //===========================================================================================================
 //================================================动作封装函数=======================================================
 //========================================================================================================
-
-
 

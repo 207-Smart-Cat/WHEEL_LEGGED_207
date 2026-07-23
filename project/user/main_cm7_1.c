@@ -41,6 +41,8 @@ int main(void)
     screen_boot_show_status("Flash", "OK");
     screen_boot_show_status("Screen", "OK");
     screen_boot_show_status("Runtime", "OK");
+    CameraAssist_Init();
+    screen_boot_show_status("Camera", camera_assist_status.ready ? "OK" : "OFF");
     pit_ms_init(PIT_IPS, 50);
 
     // ============================= 串口调参与参数初始化 =============================

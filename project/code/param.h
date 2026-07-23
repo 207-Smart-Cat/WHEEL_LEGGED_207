@@ -15,20 +15,20 @@
 #ifndef PI
 #define PI 3.141592653589793
 #endif
-#define MAX_DUTY (35)       // motor PWM max = 3500
-#define MIN_LEG_LENGTH 0.04 // 最小腿部长度
-#define MAX_LEG_LENGTH 0.1  // 最大腿部长度
+#define MAX_DUTY (45) // motor PWM max = 4500
+#define MIN_LEG_LENGTH 0.04 // 锟斤拷小锟饺诧拷锟斤拷锟斤拷
+#define MAX_LEG_LENGTH 0.1  // 锟斤拷锟斤拷炔锟斤拷锟斤拷锟?
 
-#define RPITCH_ROLL 0.05f //测量噪声协方差 (增大这个值。这会让滤波器在更新角度时，更少地参考当前有毛刺的加速度计读数)0.05
-#define QPITCH_ROLL 0.05f //过程噪声协方差 (减小这个值。这会告诉滤波器更相信陀螺仪的历史惯性积分，使得输出轨迹变得非常平稳)0.05
+#define RPITCH_ROLL 0.05f //锟斤拷锟斤拷锟斤拷锟斤拷协锟斤拷锟斤拷 (锟斤拷锟斤拷锟斤拷锟街碉拷锟斤拷锟斤拷锟斤拷锟剿诧拷锟斤拷锟节革拷锟铰角讹拷时锟斤拷锟斤拷锟劫地参匡拷锟斤拷前锟斤拷毛锟教的硷拷锟劫度计讹拷锟斤拷)0.05
+#define QPITCH_ROLL 0.05f //锟斤拷锟斤拷锟斤拷锟斤拷协锟斤拷锟斤拷 (锟斤拷小锟斤拷锟街碉拷锟斤拷锟斤拷锟斤拷锟斤拷瞬锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷堑锟斤拷锟绞凤拷锟斤拷曰锟斤拷郑锟绞癸拷锟斤拷锟斤拷锟届迹锟斤拷梅浅锟狡斤拷锟?0.05
 extern const float servo_alpha;
 
 // ========================================================
-// 1. 运行时参数变量声明 (会被 IPC 覆盖实时更新)
+// 1. 锟斤拷锟斤拷时锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷 (锟结被 IPC 锟斤拷锟斤拷实时锟斤拷锟斤拷)
 // ========================================================
-extern float target_velocity;    // 目标速度
-extern float target_angle;       // 目标角度
-extern float target_motor_Stand; // 目标电机角度
+extern float target_velocity;    // 目锟斤拷锟劫讹拷
+extern float target_angle;       // 目锟斤拷嵌锟?
+extern float target_motor_Stand; // 目锟斤拷锟斤拷锟角讹拷
 extern float x_current, y_current;
 extern float leg_x_gain, leg_x_limit, leg_x_min_step, leg_x_step_limit;
 extern float jump_burst_pwm, jump_burst_ms, jump_air_retract_y, jump_buffer_y, jump_landing_max_ms;
@@ -47,7 +47,7 @@ extern float vofa_trigger_record, vofa_mode_driver, vofa_mode_map;
 extern float vofa_print_pose_en, vofa_print_pose_period;
 
 // ========================================================
-// 2. 【新增】系统默认初始值常量声明 (带有 _init 后缀)
+// 2. 锟斤拷锟斤拷锟斤拷锟斤拷系统默锟较筹拷始值锟斤拷锟斤拷锟斤拷锟斤拷 (锟斤拷锟斤拷 _init 锟斤拷缀)
 // ========================================================
 extern const float Q_yaw_init, Q_pr_init, Q_bias_init, R_yaw_init, R_pr_init;
 extern const float Speed_p_init, Speed_i_init, Speed_d_init;
@@ -61,7 +61,7 @@ extern const float Jump_Burst_Pwm_init, Jump_Burst_Ms_init, Jump_Air_Retract_Y_i
 extern const float Air_roll_p_init, Air_roll_i_init, Air_roll_d_init;
 extern const float Direction_p_init, Direction_i_init, Direction_d_init;
 
-// 导航与磁力计初始值
+// 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷瞥锟绞贾?
 extern const float Nav_q_v_init, Nav_q_w_init, Nav_q_bias_ax_init, Nav_q_bias_w_init;
 extern const float Nav_r_v_normal_init, Nav_r_v_slip_init, Nav_r_w_normal_init, Nav_r_w_slip_init, Nav_r_gyro_init;
 extern const float Navi_Mode_Driver_init, Navi_Mode_Map_init, Navi_Trigger_Record_init;

@@ -25,6 +25,8 @@
 #include "process_rx.h"
 #include "battery_monitor.h"
 #include "small_driver_uart_control.h"
+#include "camera_assist.h"
+#include "camera_test_display.h"
 #include "engine.h"
 #include "remote.h"
 
