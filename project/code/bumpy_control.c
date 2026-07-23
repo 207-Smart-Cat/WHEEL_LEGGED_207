@@ -350,6 +350,71 @@ static uint8_t bumpy_float_valid(float value)
     return (value == value && value <= FLT_MAX && value >= -FLT_MAX) ? 1U : 0U;
 }
 
+static uint8_t bumpy_action_profile_valid(
+    const BumpyActionProfile_t *profile)
+{
+    const uint8_t known_features =
+        BUMP_FEATURE_DISTANCE_FALLBACK |
+        BUMP_FEATURE_ADAPTIVE_SPEED |
+        BUMP_FEATURE_STATIC_LEG;
+    if (profile == NULL ||
+        (profile->feature_mask & (uint8_t)(~known_features)) != 0U ||
+        !bumpy_float_valid(profile->detect_speed) ||
+        !bumpy_float_valid(profile->detect_max_distance_m) ||
+        !bumpy_float_valid(profile->crossing_speed) ||
+        !bumpy_float_valid(profile->crossing_speed_medium) ||
+        !bumpy_float_valid(profile->crossing_speed_heavy) ||
+        !bumpy_float_valid(profile->speed_step_per_tick) ||
+        !bumpy_float_valid(profile->expected_bump_length_m) ||
+        !bumpy_float_valid(profile->exit_distance_margin_m) ||
+        !bumpy_float_valid(profile->recover_speed) ||
+        !bumpy_float_valid(profile->static_leg_y_offset_m) ||
+        !bumpy_float_valid(profile->leg_ramp_step_m) ||
+        !bumpy_float_valid(profile->fixed_forward_m) ||
+        !bumpy_float_valid(profile->fixed_right_m) ||
+        profile->detect_speed <= 0.0f ||
+        profile->detect_timeout_ms == 0U ||
+        profile->detect_max_distance_m <= 0.0f ||
+        profile->crossing_speed <= 0.0f ||
+        profile->crossing_speed_medium <= 0.0f ||
+        profile->crossing_speed_heavy <= 0.0f ||
+        profile->speed_step_per_tick <= 0.0f ||
+        profile->min_crossing_ms == 0U ||
+        profile->crossing_timeout_ms < profile->min_crossing_ms ||
+        profile->recover_speed < 0.0f ||
+        profile->recover_ms == 0U)
+    {
+        return 0U;
+    }
+    if ((profile->feature_mask & BUMP_FEATURE_DISTANCE_FALLBACK) &&
+        (profile->expected_bump_length_m <= 0.0f ||
+         profile->exit_distance_margin_m < 0.0f))
+    {
+        return 0U;
+    }
+    if ((profile->feature_mask & BUMP_FEATURE_ADAPTIVE_SPEED) &&
+        (profile->crossing_speed_medium > profile->crossing_speed ||
+         profile->crossing_speed_heavy > profile->crossing_speed_medium))
+    {
+        return 0U;
+    }
+    if (profile->feature_mask & BUMP_FEATURE_STATIC_LEG)
+    {
+        if (profile->mode != BUMP_MODE_STATIC_LEG ||
+            profile->static_leg_y_offset_m < -0.005f ||
+            profile->static_leg_y_offset_m > 0.005f ||
+            profile->leg_ramp_step_m <= 0.0f)
+        {
+            return 0U;
+        }
+    }
+    else if (profile->mode != BUMP_MODE_SPEED_YAW)
+    {
+        return 0U;
+    }
+    return 1U;
+}
+
 static uint32_t bumpy_timer_add(uint32_t timer_ms, uint32_t dt_ms)
 {
     if (timer_ms > (0xFFFFFFFFUL - dt_ms))
@@ -2013,13 +2078,13 @@ uint8_t Bumpy_Action_Start(uint16_t profile_id)
     const BumpyActionProfile_t *profile;
     uint8_t profile_fallback = 0U;
     profile = bumpy_action_get_profile(profile_id);
-    if (profile == NULL)
+    if (!bumpy_action_profile_valid(profile))
     {
         profile_id = 0U;
         profile = bumpy_action_get_profile(profile_id);
         profile_fallback = 1U;
     }
-    if (profile == NULL)
+    if (!bumpy_action_profile_valid(profile))
     {
         return 0U;
     }
@@ -2078,7 +2143,7 @@ static BumpyActionResult_t bumpy_action_update_detect_10ms(void)
     const BumpyActionProfile_t *profile;
     BumpyState_t previous_state;
     profile = bumpy_action_get_profile(g_bumpy_action.profile_id);
-    if (profile == NULL)
+    if (!bumpy_action_profile_valid(profile))
     {
         return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
     }
@@ -2159,7 +2224,7 @@ static BumpyActionResult_t bumpy_action_update_crossing_10ms(void)
     uint8_t finish_allowed;
     float speed_cmd;
     profile = bumpy_action_get_profile(g_bumpy_action.profile_id);
-    if (profile == NULL)
+    if (!bumpy_action_profile_valid(profile))
     {
         return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
     }
@@ -2271,7 +2336,7 @@ static BumpyActionResult_t bumpy_action_update_recover_10ms(void)
 {
     const BumpyActionProfile_t *profile;
     profile = bumpy_action_get_profile(g_bumpy_action.profile_id);
-    if (profile == NULL)
+    if (!bumpy_action_profile_valid(profile))
     {
         return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
     }
