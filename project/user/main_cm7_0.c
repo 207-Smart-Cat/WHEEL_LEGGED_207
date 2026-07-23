@@ -1,4 +1,5 @@
 #include "app_headfile.h"
+#include "bumpy_control.h"
 
 volatile bool system_fully_ready = false;
 
@@ -181,6 +182,7 @@ int main(void)
 #if !NAV_HAND_PUSH_TEST_MODE
     static uint8_t navigation_task_div = 0;
 #endif
+    Bumpy_Action_Log_Task();
     // �˴���д��Ҫѭ��ִ�еĴ���
 #if !NAV_HAND_PUSH_TEST_MODE
     if (IPC_Consume_Motor_Zero_Request_Core0())
