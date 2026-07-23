@@ -1122,6 +1122,18 @@
             <name>$PROJ_DIR$\..\..\code\battery_monitor.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\camera_assist.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\camera_assist.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\camera_test_display.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\camera_test_display.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\app_headfile.h</name>
         </file>
         <file>
