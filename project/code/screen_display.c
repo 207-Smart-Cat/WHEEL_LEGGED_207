@@ -612,9 +612,9 @@ void show_page_1(void)
     ips200_show_string(5, y_start + row_height * 8 + 5, temp_str);
     sprintf(temp_str, "Leg:%-6.3f", core_a_status.pid_out_leg);
     ips200_show_string(125, y_start + row_height * 8 + 5, temp_str);
-    sprintf(temp_str, "NX:%-6.2f", core_a_status.nav_x);
+    sprintf(temp_str, "HB:%-6lu", (unsigned long)core_a_status.heartbeat);
     ips200_show_string(5, y_start + row_height * 9 + 5, temp_str);
-    sprintf(temp_str, "NY:%-6.2f", core_a_status.nav_y);
+    sprintf(temp_str, "OK:%-6.0f", core_a_status.nav_valid);
     ips200_show_string(125, y_start + row_height * 9 + 5, temp_str);
 
     sprintf(temp_str, "NV:%-6.2f", core_a_status.nav_v);
@@ -1307,9 +1307,17 @@ static void ui_draw_home(void)
 #if defined(CY_CORE_CM7_1)
 static void ui_draw_vision(void)
 {
+    static uint8_t camera_init_done = 0;
+
     if (force_ui_refresh)
     {
         CameraTestDisplay_ResetRenderState();
+    }
+
+    if (!camera_init_done)
+    {
+        CameraAssist_Init();
+        camera_init_done = 1;
     }
 
     CameraAssist_ProcessFrame();

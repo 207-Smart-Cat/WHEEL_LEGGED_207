@@ -126,9 +126,9 @@ void Navi_Remove_Gravity(float *p_ax, float *p_ay, float *p_az) {
 
 
 
-    *p_ax = (raw_data.accel[0] - g_comp_x) * GRAVITY;
+    *p_ax = (raw_data.accel[0] + g_comp_x) * GRAVITY;
 
-    *p_ay = (raw_data.accel[1] - g_comp_y) * GRAVITY;
+    *p_ay = (raw_data.accel[1] + g_comp_y) * GRAVITY;
 
     *p_az = (raw_data.accel[2] - g_comp_z) * GRAVITY;
 

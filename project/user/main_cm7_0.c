@@ -28,6 +28,8 @@ __no_init CoreB_Command_t core_b_cmd;
 #define PIT_Navigation (PIT_CH15)
 #define LED1 (P19_0)
 #define IMU_ACC_RAW_VOFA_TEST_MODE (0)
+#define WHEEL_SPEED_DEBUG_PRINT_MODE (0)
+#define NAV_ACC_DEBUG_PRINT_MODE (1)
 // **************************** ȫ�ֱ������� ****************************
 
 // ���+��������У�
@@ -177,7 +179,12 @@ int main(void)
   {
     static uint8_t battery_update_div = 0;
     static uint8_t ipc_status_push_div = 0;
+#if WHEEL_SPEED_DEBUG_PRINT_MODE
     static uint8_t wheel_speed_print_div = 0;
+#endif
+#if NAV_ACC_DEBUG_PRINT_MODE
+    static uint8_t nav_acc_print_div = 0;
+#endif
 #if !NAV_HAND_PUSH_TEST_MODE
     static uint8_t navigation_task_div = 0;
 #endif
@@ -214,6 +221,7 @@ int main(void)
         ipc_status_push_div = 0;
         IPC_Push_Status_From_CoreA();
     }
+#if WHEEL_SPEED_DEBUG_PRINT_MODE
     wheel_speed_print_div++;
     if (wheel_speed_print_div >= 100)
     {
@@ -222,6 +230,18 @@ int main(void)
                motor_value.receive_left_speed_data,
                motor_value.receive_right_speed_data);
     }
+#endif
+#if NAV_ACC_DEBUG_PRINT_MODE
+    nav_acc_print_div++;
+    if (nav_acc_print_div >= 50)
+    {
+        nav_acc_print_div = 0;
+        printf("%f,%f,%f\r\n",
+               filter_data.accel[0],
+               filter_data.accel[1],
+               filter_data.accel[2]);
+    }
+#endif
 
     // Core0 main-loop debug output disabled for balance timing test.
     //printf("%f,%f,%f,%f ,%f,%f,%f\n",robot_pose.x,robot_pose.y,robot_pose.yaw,robot_pose.v,robot_pose.w,filter_data.accel[0],robot_pose.bias_ax);
