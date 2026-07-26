@@ -5,7 +5,7 @@
 
 // ** 宏定义区域 **
 #define RGB565_SKYBLUE 0x87CE
-#define IPS200_TYPE (IPS200_TYPE_SPI)
+#define IPS200_TYPE (IPS200_TYPE_PARALLEL8)
 
 // ** 全局变量区域 **
 extern uint8 IPS200_flag; //  屏幕显示flag（PIT中断置位）
