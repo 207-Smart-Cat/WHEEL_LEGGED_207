@@ -147,6 +147,7 @@ static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float m
     const float ANTI_STALL_ERROR_START = 60.0f;
     const float ANTI_STALL_RECOVER_ERROR = 20.0f;
     const float ANTI_STALL_RECOVER_RATIO = 0.85f;
+    const float ANTI_STALL_INTEGRAL_GAIN = 1.6f;
     const float ANTI_STALL_INTEGRAL_LIMIT = 50000.0f;
     const float ANTI_STALL_PWM_GAIN = 0.04f;
     const float ANTI_STALL_PWM_LIMIT = 4000.0f;
@@ -187,8 +188,7 @@ static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float m
         anti_stall_dbg_enabled = 1.0f;
         return 0.0f;
     }
-
-    g_anti_stall_assist.integral += speed_error;
+    g_anti_stall_assist.integral += ANTI_STALL_INTEGRAL_GAIN * speed_error;
     g_anti_stall_assist.integral = constrain_float(g_anti_stall_assist.integral, 0.0f, ANTI_STALL_INTEGRAL_LIMIT);
     g_anti_stall_assist.assist_pwm = constrain_float(ANTI_STALL_PWM_GAIN * g_anti_stall_assist.integral, 0.0f, ANTI_STALL_PWM_LIMIT);
     g_anti_stall_assist.clear_reason = ANTI_STALL_CLEAR_NONE;
