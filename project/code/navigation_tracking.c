@@ -559,7 +559,7 @@ void task_navigation_control(void) {
             }
             #endif
             
-            Navi_Data_Set_Origin(0);   // 发车瞬间重置朝向原点
+            Navi_Data_Set_Origin(1);   // 发车瞬间重置朝向原点
             navi_parse_global_path(); // 解析特殊动作剧本
             navi_speed_profile_reset();
             is_action_busy = 0;

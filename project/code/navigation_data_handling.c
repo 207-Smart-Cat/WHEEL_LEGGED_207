@@ -262,6 +262,7 @@ void Navi_Data_Set_Origin(uint8_t reset_yaw){
     robot_pose.y = 0;
     robot_pose.v = 0.0f;
     robot_pose.w = 0.0f;
+    robot_pose.radius = 999.0f;
     robot_pose.bias_ax = 0.0f;
     robot_pose.bias_w = 0.0f;
     robot_pose.slip_level = 0;
@@ -487,9 +488,10 @@ void navi_ekf_update(void) {
     // ====================================================================
     float dx = 0.0f, dy = 0.0f;
     float dtheta = opt_w * dt; // dt时间内总转角
+    robot_pose.radius = 999.0f;
 
-    // 设定角速度死区 (约 0.057度/s)，判断是否为“直线运动”
-    if (fabsf(opt_w) < 1e-3f) {
+    // Use midpoint integration for low yaw rates to avoid arc-model cancellation.
+    if (fabsf(opt_w) < NAVI_ARC_MIN_YAWRATE_RADPS) {
         // [情形 1] 直行或微小抖动时：退化为二阶中点积分（防止除零溢出）
         float half_dtheta = dtheta / 2.0f;
         dx = opt_v * cosf(yaw_rad + half_dtheta) * dt;
@@ -498,6 +500,7 @@ void navi_ekf_update(void) {
         // [情形 2] 中高速弯道运动：使用精确解析圆弧积分
         // 半径 R = v / w
         float radius = opt_v / opt_w; 
+        robot_pose.radius = radius;
         
         // 解析积分结果
         dx = radius * (sinf(yaw_rad + dtheta) - sinf(yaw_rad));

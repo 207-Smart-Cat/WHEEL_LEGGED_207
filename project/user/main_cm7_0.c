@@ -27,7 +27,6 @@ __no_init CoreB_Command_t core_b_cmd;
 #define PIT_Jump (PIT_CH14)
 #define PIT_Navigation (PIT_CH15)
 #define LED1 (P19_0)
-#define IMU_ACC_RAW_VOFA_TEST_MODE (0)
 // **************************** ȫ�ֱ������� ****************************
 
 // ���+��������У�
@@ -53,55 +52,6 @@ extern volatile int jump_stop;
 extern uint32_t test_pit10_cnt;
 
 // **************************** ��װ���Բ��ֺ������� ****************************
-#if IMU_ACC_RAW_VOFA_TEST_MODE
-static void imu_acc_raw_vofa_test_loop(void)
-{
-  enum { ACC_AVG_WINDOW = 100 };
-  static float ax_buf[ACC_AVG_WINDOW] = {0.0f};
-  static float ay_buf[ACC_AVG_WINDOW] = {0.0f};
-  static float az_buf[ACC_AVG_WINDOW] = {0.0f};
-  static float ax_sum = 0.0f;
-  static float ay_sum = 0.0f;
-  static float az_sum = 0.0f;
-  static uint8_t index = 0;
-  static uint8_t count = 0;
-  float ax = (float)imu660rc_acc_x;
-  float ay = (float)imu660rc_acc_y;
-  float az = (float)imu660rc_acc_z;
-  float avg_x;
-  float avg_y;
-  float avg_z;
-
-  ax_sum -= ax_buf[index];
-  ay_sum -= ay_buf[index];
-  az_sum -= az_buf[index];
-
-  ax_buf[index] = ax;
-  ay_buf[index] = ay;
-  az_buf[index] = az;
-
-  ax_sum += ax;
-  ay_sum += ay;
-  az_sum += az;
-
-  index++;
-  if (index >= ACC_AVG_WINDOW)
-  {
-    index = 0;
-  }
-
-  if (count < ACC_AVG_WINDOW)
-  {
-    count++;
-  }
-
-  avg_x = ax_sum / (float)count;
-  avg_y = ay_sum / (float)count;
-  avg_z = az_sum / (float)count;
-
-  printf("%.0f,%.0f,%.0f,%.3f,%.3f,%.3f\n", ax, ay, az, avg_x, avg_y, avg_z);
-}
-#endif
 // ================= ������ =================
 int main(void)
 {
@@ -118,18 +68,7 @@ int main(void)
   gpio_init(LED1, GPO, GPIO_HIGH, GPO_PUSH_PULL); // ��ʼ�� LED1 ��� Ĭ�ϸߵ�ƽ �������ģʽ
   //=================================IMU��ʼ��=======================
   imu_init(LED1);
-#if IMU_ACC_RAW_VOFA_TEST_MODE
-  interrupt_global_enable(0);
-  system_delay_ms(500);
-  while (true)
-  {
-    imu_acc_raw_vofa_test_loop();
-    gpio_toggle_level(LED1);
-    system_delay_ms(20);
-  }
-#else
   pit_ms_init(PIT_IMU, 1);
-#endif
   //=================================ƽ�⶯����ʼ��========================
 #if !NAV_HAND_PUSH_TEST_MODE
   Balance_init(); // ��ʼ��ƽ����ƣ�����Kalman�˲��ĸ���������
@@ -150,7 +89,7 @@ int main(void)
 #if !NAV_HAND_PUSH_TEST_MODE
   pit_ms_init(PIT_Jump, 1); // ��Ծ����״̬�� 1ms ����
 #endif
-  pit_ms_init(PIT_Navigation, 10); // Navigation period matches ENCODER_DT=0.010f in navigation_data_handling.h.
+  pit_ms_init(PIT_Navigation, 5); // Navigation period matches ENCODER_DT=0.005f in navigation_data_handling.h.
 
 //  // === 1. ����ϵͳ��ʼ�� ===
 //    navi_data_init();
@@ -177,7 +116,7 @@ int main(void)
   {
     static uint8_t battery_update_div = 0;
     static uint8_t ipc_status_push_div = 0;
-    static uint8_t wheel_speed_print_div = 0;
+    static uint8_t radius_print_div = 0;
 #if !NAV_HAND_PUSH_TEST_MODE
     static uint8_t navigation_task_div = 0;
 #endif
@@ -214,13 +153,11 @@ int main(void)
         ipc_status_push_div = 0;
         IPC_Push_Status_From_CoreA();
     }
-    wheel_speed_print_div++;
-    if (wheel_speed_print_div >= 100)
+    radius_print_div++;
+    if (radius_print_div >= 5)
     {
-        wheel_speed_print_div = 0;
-        printf("wheel_speed,L:%d,R:%d\r\n",
-               motor_value.receive_left_speed_data,
-               motor_value.receive_right_speed_data);
+        radius_print_div = 0;
+        printf("%.3f,%.3f,%.3f\r\n", robot_pose.radius, (float)robot_pose.x, (float)robot_pose.y);
     }
 
     // Core0 main-loop debug output disabled for balance timing test.

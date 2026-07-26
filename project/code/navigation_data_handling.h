@@ -55,6 +55,8 @@
 
 #define STATIC_V_THRESHOLD  0.01f    // 静止判定速度阈值
 
+#define NAVI_ARC_MIN_YAWRATE_RADPS 0.10f    // Use midpoint integration below this yaw rate (rad/s)
+
 #define LOOK_AHEAD_DIST 0.6f // 前瞻距离：根据车速调整，通常 0.5m-1.0m
 
 
@@ -70,9 +72,9 @@
 
 //=========================运行参数===========================
 
-#define ENCODER_DT                    0.010f     // 10ms 采样周期
+#define ENCODER_DT                    0.005f     // 5ms sampling period
 
-#define YAW_HISTORY_LEN 300  // 采样窗口大小（如果10ms一次更新，这里代表最近 3000ms 的数据）
+#define YAW_HISTORY_LEN 600  // 600 samples at 5ms keeps about 3000ms of yaw history
 
 
 #define F_S(f) ((f) < 0 ? "-" : "")
@@ -146,6 +148,8 @@ typedef struct {
     float  v;               // 线速度 (m/s)
 
     float  w;               // 角速度 (rad /s)
+
+    float  radius;          // Odometry turn radius (m), 999.0f for midpoint integration
     
     float  bias_ax;         //加速度零偏
 
