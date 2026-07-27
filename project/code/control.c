@@ -8,6 +8,7 @@
 #include "process_rx.h"
 #include "jump_control.h"
 #include "vehicle_supervisor.h"
+#include "vision_control.h"
 
 #define BALANCE_CONTROL_RUN_LEG_CONTROL 1
 #define VISION_FRAME_TIMEOUT_TICKS 150U  // balance loop runs at 1 ms.
@@ -362,7 +363,7 @@ void Height_PID_Switch(bool high_mode)
     {
         y_current = 0.040f;
         Speed_p = 0.025f;
-        Direction_p = 14.93f;
+        Direction_p = 50.0f;
         bridge_high = 0;
     }
 
@@ -646,7 +647,7 @@ float Turn_target(float target_angle)
 }
 
 // 转向控制计算
-float Turn(float current_yaw, float target_yaw)
+static float turn_compute(float current_yaw, float target_yaw, uint8_t use_integral)
 {
     float yaw_error = target_yaw - current_yaw;
     float yaw_rate = IMU_data.gyro[2];
@@ -660,6 +661,7 @@ float Turn(float current_yaw, float target_yaw)
         yaw_error = 0.0f;
     }
 
+    if (use_integral)
     {
         const float turn_i_output_limit = 450.0f;
         const float turn_i_state_limit = 15000.0f;
@@ -680,9 +682,23 @@ float Turn(float current_yaw, float target_yaw)
                                           turn_i_output_limit);
         control_output = Direction_p * yaw_error + integral_output - Direction_d * yaw_rate;
     }
-    control_output = constrain_float(control_output, -2200.0f, 2200.0f);
+    else
+    {
+        g_turn_yaw_integral = 0.0f;
+        control_output = vision_control_pd_output(yaw_error, yaw_rate, Direction_p, Direction_d, 2200.0f);
+    }
 
     return control_output;
+}
+
+float Turn(float current_yaw, float target_yaw)
+{
+    return turn_compute(current_yaw, target_yaw, 1U);
+}
+
+static float Turn_PD(float current_yaw, float target_yaw)
+{
+    return turn_compute(current_yaw, target_yaw, 0U);
 }
 
 void Turn_Reset(void)
@@ -720,6 +736,10 @@ static void vision_mode_apply(void)
         g_vision_stale_ticks++;
     }
 
+    if (!g_vision_last_enabled)
+    {
+        Turn_Reset();
+    }
     g_vision_last_enabled = 1U;
     target_velocity = 50.0f;
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)
@@ -822,7 +842,9 @@ void balance_control()
     }
 
     Gyro_Pwm = GyroControl(Balance_Pwm, raw_gyro_x);
-    Turn_Pwm = Turn(IMU_data.filter_result.yaw, target_angle);
+    Turn_Pwm = core_b_cmd.vision_enabled ?
+               Turn_PD(IMU_data.filter_result.yaw, target_angle) :
+               Turn(IMU_data.filter_result.yaw, target_angle);
     assist_pwm = anti_stall_update(Runtime_Is_Module_Enabled(RUNTIME_MODULE_ANTI_STALL), target_velocity, now_velocity);
 
     out_speed_l = Velocity_Angle_left;
@@ -1265,10 +1287,6 @@ float min(float a, float b)
 {
     return (a < b) ? a : b;
 }
-
-
-
-
 
 
 

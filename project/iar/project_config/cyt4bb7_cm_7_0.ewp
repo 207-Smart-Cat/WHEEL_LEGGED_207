@@ -1131,6 +1131,12 @@
             <name>$PROJ_DIR$\..\..\code\control.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\vision_control.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\vision_control.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\jump_control.c</name>
         </file>
         <file>
