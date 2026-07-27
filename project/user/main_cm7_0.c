@@ -17,6 +17,11 @@ __no_init IpcLogBox_t ipc_log_box;
 #pragma location = IPC_CORE_B_SHARED_ADDR
 __no_init CoreB_Command_t core_b_cmd;
 
+// The camera capture pipeline writes raw pixels to this fixed SRAM address.
+// Reserve it in the Core0 image so camera frames cannot overwrite control data.
+#pragma location = 0x28026024
+__root __no_init uint8 core0_camera_capture_reserve[188U * 120U];
+
 // ==================== Peripheral assignments ====================
 #define PIT_IMU (PIT_CH0)
 #define PIT_Balance (PIT_CH10)

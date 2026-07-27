@@ -55,6 +55,9 @@
 #include "zf_device_config.h"
 #include "zf_device_mt9v03x.h"
 
+// Keep the camera frame-complete interrupt separate from the UART interrupt.
+#define MT9V03X_USE_ISR    CPUIntIdx6_IRQn
+
 vuint8 mt9v03x_finish_flag = 0;                                                 // 一场图像采集完成标志位
 uint8 mt9v03x_image[MT9V03X_H][MT9V03X_W];     
 
@@ -86,7 +89,7 @@ static void mt9v03x_trig_init(void)
 
     cy_stc_sysint_irq_t mt9v03x_trig_irq_cfg;
     mt9v03x_trig_irq_cfg.sysIntSrc  = tcpwm_0_interrupts_59_IRQn; 
-    mt9v03x_trig_irq_cfg.intIdx     = CPUIntIdx3_IRQn;
+    mt9v03x_trig_irq_cfg.intIdx     = MT9V03X_USE_ISR;
     mt9v03x_trig_irq_cfg.isEnabled  = true;
     interrupt_init(&mt9v03x_trig_irq_cfg, camera_finish_callback, 0);
 
