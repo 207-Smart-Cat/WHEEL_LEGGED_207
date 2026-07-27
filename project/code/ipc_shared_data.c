@@ -524,3 +524,733 @@ void IPC_Load_Params_From_Flash(void) {
         SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     }
 }
+
+// ================= Multi-group navigation record storage =================
+
+#define NAV_STORE_MAGIC              (0x4E415647UL)
+#define NAV_STORE_VERSION            (1U)
+#define NAV_STORE_BANK_PAGES         (4U)
+#define NAV_STORE_GROUP_PAGES        (8U)
+#define NAV_STORE_IMAGE_BYTES        (NAV_STORE_BANK_PAGES * FLASH_PAGE_SIZE)
+#define NAV_STORE_HEADER_BYTES       (32U)
+#define NAV_STORE_CORE0_SAVE_TICKS   (100U)
+#define NAV_STORE_CORE1_SAVE_TICKS   (20U)
+#define NAV_STORE_NO_BANK            (0xFFU)
+
+#pragma pack(push, 1)
+typedef struct {
+    uint32 magic;
+    uint16 version;
+    uint8 group;
+    uint8 flags;
+    uint32 sequence;
+    uint16 count;
+    uint16 record_size;
+    uint32 payload_crc;
+    uint32 header_crc;
+    uint32 reserved[2];
+} NavStoreHeader_t;
+#pragma pack(pop)
+
+typedef char nav_store_header_must_be_32_bytes[(sizeof(NavStoreHeader_t) == NAV_STORE_HEADER_BYTES) ? 1 : -1];
+typedef char nav_store_image_must_hold_500_points[(NAV_STORE_HEADER_BYTES + NAV_GROUP_POINT_MAX * sizeof(IpcNavFlashPoint_t) <= NAV_STORE_IMAGE_BYTES) ? 1 : -1];
+typedef char nav_store_page_layout_must_use_0_to_79[((NAV_GROUP_COUNT * NAV_STORE_GROUP_PAGES) == 80U && PARAM_FLASH_PAGE == 95U) ? 1 : -1];
+
+#if defined(CY_CORE_CM7_1)
+
+static uint32 nav_store_crc32(const uint8 *data, uint32 length)
+{
+    uint32 crc = 0xFFFFFFFFUL;
+    uint32 i;
+    uint8 bit;
+
+    for (i = 0; i < length; i++)
+    {
+        crc ^= data[i];
+        for (bit = 0; bit < 8U; bit++)
+        {
+            crc = (crc >> 1) ^ ((crc & 1U) ? 0xEDB88320UL : 0UL);
+        }
+    }
+    return ~crc;
+}
+
+static NavGroupSummary_t g_nav_group_summary[NAV_GROUP_COUNT];
+static IpcNavFlashPoint_t g_nav_store_points[NAV_GROUP_POINT_MAX];
+static uint32 g_nav_store_image[NAV_STORE_IMAGE_BYTES / sizeof(uint32)];
+static uint16 g_nav_store_count = 0;
+static uint8 g_nav_store_selected_group = 0;
+static volatile uint16 g_nav_store_save_delay = 0;
+static volatile uint8 g_nav_store_save_due = 0;
+static uint8 g_nav_store_local_dirty = 0;
+static uint32 g_nav_record_tx_seen = 0;
+static uint32 g_nav_load_seq_next = 0;
+static uint16 g_nav_load_start = 0;
+static uint8 g_nav_load_group = 0;
+static uint8 g_nav_load_intent = NAV_GROUP_INTENT_NONE;
+static uint8 g_nav_load_busy = 0;
+static uint8 g_nav_load_wait_ack = 0;
+
+static uint32 nav_store_bank_base_page(uint8 group, uint8 bank)
+{
+    return (uint32)group * NAV_STORE_GROUP_PAGES + (uint32)bank * NAV_STORE_BANK_PAGES;
+}
+
+static int nav_store_read_bank(uint8 group, uint8 bank, IpcNavFlashPoint_t *out_points, NavStoreHeader_t *out_header)
+{
+    NavStoreHeader_t header;
+    NavStoreHeader_t header_for_crc;
+    uint32 page;
+    uint32 stored_header_crc;
+    uint8 *image_bytes = (uint8 *)g_nav_store_image;
+
+    for (page = 0; page < NAV_STORE_BANK_PAGES; page++)
+    {
+        flash_read_page_to_buffer(0, nav_store_bank_base_page(group, bank) + page, FLASH_PAGE_LENGTH);
+        memcpy(&image_bytes[page * FLASH_PAGE_SIZE], flash_union_buffer, FLASH_PAGE_SIZE);
+    }
+
+    memcpy(&header, image_bytes, sizeof(header));
+    if (header.magic == 0xFFFFFFFFUL)
+    {
+        return 0;
+    }
+    // Work Flash may contain data written by earlier firmware versions.  It is
+    // not a damaged navigation record unless it carries this format's magic.
+    if (header.magic != NAV_STORE_MAGIC)
+    {
+        return 0;
+    }
+    if (header.version != NAV_STORE_VERSION ||
+        header.group != group ||
+        header.record_size != sizeof(IpcNavFlashPoint_t) ||
+        header.count > NAV_GROUP_POINT_MAX)
+    {
+        return -1;
+    }
+
+    header_for_crc = header;
+    stored_header_crc = header_for_crc.header_crc;
+    header_for_crc.header_crc = 0;
+    if (stored_header_crc != nav_store_crc32((const uint8 *)&header_for_crc, sizeof(header_for_crc)))
+    {
+        return -1;
+    }
+    if (header.payload_crc != nav_store_crc32(&image_bytes[NAV_STORE_HEADER_BYTES],
+                                              (uint32)header.count * sizeof(IpcNavFlashPoint_t)))
+    {
+        return -1;
+    }
+
+    if (out_points != NULL && header.count > 0U)
+    {
+        memcpy(out_points, &image_bytes[NAV_STORE_HEADER_BYTES],
+               (uint32)header.count * sizeof(IpcNavFlashPoint_t));
+    }
+    if (out_header != NULL)
+    {
+        *out_header = header;
+    }
+    return 1;
+}
+
+static uint8 nav_store_sequence_newer(uint32 lhs, uint32 rhs)
+{
+    return ((int32)(lhs - rhs) > 0) ? 1U : 0U;
+}
+
+static void nav_store_scan_group(uint8 group)
+{
+    NavStoreHeader_t header_a;
+    NavStoreHeader_t header_b;
+    int state_a = nav_store_read_bank(group, 0, NULL, &header_a);
+    int state_b = nav_store_read_bank(group, 1, NULL, &header_b);
+    NavGroupSummary_t *summary = &g_nav_group_summary[group];
+
+    memset(summary, 0, sizeof(*summary));
+    summary->active_bank = NAV_STORE_NO_BANK;
+
+    if (state_a == 1 && state_b == 1)
+    {
+        if (nav_store_sequence_newer(header_b.sequence, header_a.sequence))
+        {
+            summary->active_bank = 1;
+            summary->sequence = header_b.sequence;
+            summary->count = header_b.count;
+        }
+        else
+        {
+            summary->active_bank = 0;
+            summary->sequence = header_a.sequence;
+            summary->count = header_a.count;
+        }
+        summary->state = (summary->count == 0U) ? NAV_STORE_EMPTY : NAV_STORE_SAVED;
+    }
+    else if (state_a == 1 || state_b == 1)
+    {
+        NavStoreHeader_t *valid_header = (state_a == 1) ? &header_a : &header_b;
+        summary->active_bank = (state_a == 1) ? 0U : 1U;
+        summary->sequence = valid_header->sequence;
+        summary->count = valid_header->count;
+        summary->state = (summary->count == 0U) ? NAV_STORE_EMPTY : NAV_STORE_SAVED;
+    }
+    else if (state_a == 0 && state_b == 0)
+    {
+        summary->state = NAV_STORE_EMPTY;
+    }
+    else
+    {
+        summary->state = NAV_STORE_DAMAGED;
+    }
+}
+
+static uint8 nav_store_load_group(uint8 group)
+{
+    NavGroupSummary_t *summary;
+    NavStoreHeader_t header;
+
+    if (group >= NAV_GROUP_COUNT)
+    {
+        return 0;
+    }
+    summary = &g_nav_group_summary[group];
+    g_nav_store_selected_group = group;
+    g_nav_store_count = 0;
+    memset(g_nav_store_points, 0, sizeof(g_nav_store_points));
+
+    if (summary->state == NAV_STORE_EMPTY)
+    {
+        return 1;
+    }
+    if (summary->state == NAV_STORE_DAMAGED || summary->active_bank >= 2U)
+    {
+        return 0;
+    }
+    if (nav_store_read_bank(group, summary->active_bank, g_nav_store_points, &header) != 1)
+    {
+        nav_store_scan_group(group);
+        return 0;
+    }
+    g_nav_store_count = header.count;
+    return 1;
+}
+
+static uint8 nav_store_commit_selected(void)
+{
+    NavStoreHeader_t header;
+    NavStoreHeader_t verify_header;
+    NavGroupSummary_t *summary = &g_nav_group_summary[g_nav_store_selected_group];
+    uint8 target_bank = (summary->active_bank == 0U) ? 1U : 0U;
+    uint8 *image_bytes = (uint8 *)g_nav_store_image;
+    uint32 used_bytes;
+    uint32 used_pages;
+    int32 page;
+
+    memset(g_nav_store_image, 0xFF, sizeof(g_nav_store_image));
+    memset(&header, 0, sizeof(header));
+    header.magic = NAV_STORE_MAGIC;
+    header.version = NAV_STORE_VERSION;
+    header.group = g_nav_store_selected_group;
+    header.sequence = summary->sequence + 1U;
+    header.count = g_nav_store_count;
+    header.record_size = sizeof(IpcNavFlashPoint_t);
+    if (g_nav_store_count > 0U)
+    {
+        memcpy(&image_bytes[NAV_STORE_HEADER_BYTES], g_nav_store_points,
+               (uint32)g_nav_store_count * sizeof(IpcNavFlashPoint_t));
+    }
+    header.payload_crc = nav_store_crc32(&image_bytes[NAV_STORE_HEADER_BYTES],
+                                         (uint32)g_nav_store_count * sizeof(IpcNavFlashPoint_t));
+    header.header_crc = 0;
+    header.header_crc = nav_store_crc32((const uint8 *)&header, sizeof(header));
+    memcpy(image_bytes, &header, sizeof(header));
+
+    used_bytes = NAV_STORE_HEADER_BYTES + (uint32)g_nav_store_count * sizeof(IpcNavFlashPoint_t);
+    used_pages = (used_bytes + FLASH_PAGE_SIZE - 1U) / FLASH_PAGE_SIZE;
+    summary->state = NAV_STORE_SAVING;
+
+    for (page = (int32)used_pages - 1; page >= 1; page--)
+    {
+        memcpy(flash_union_buffer, &image_bytes[(uint32)page * FLASH_PAGE_SIZE], FLASH_PAGE_SIZE);
+        flash_write_page_from_buffer(0, nav_store_bank_base_page(g_nav_store_selected_group, target_bank) + (uint32)page,
+                                     FLASH_PAGE_LENGTH);
+    }
+    memcpy(flash_union_buffer, image_bytes, FLASH_PAGE_SIZE);
+    flash_write_page_from_buffer(0, nav_store_bank_base_page(g_nav_store_selected_group, target_bank), FLASH_PAGE_LENGTH);
+
+    if (nav_store_read_bank(g_nav_store_selected_group, target_bank, NULL, &verify_header) != 1 ||
+        verify_header.sequence != header.sequence || verify_header.count != header.count)
+    {
+        summary->state = NAV_STORE_ERROR;
+        return 0;
+    }
+
+    summary->active_bank = target_bank;
+    summary->sequence = header.sequence;
+    summary->count = header.count;
+    summary->state = (header.count == 0U) ? NAV_STORE_EMPTY : NAV_STORE_SAVED;
+    g_nav_store_local_dirty = 0;
+    g_nav_store_save_delay = 0;
+    return 1;
+}
+
+void NavStore_Init(void)
+{
+    uint8 group;
+    memset(g_nav_group_summary, 0, sizeof(g_nav_group_summary));
+    for (group = 0; group < NAV_GROUP_COUNT; group++)
+    {
+        nav_store_scan_group(group);
+    }
+    (void)nav_store_load_group(0);
+}
+
+const NavGroupSummary_t *NavStore_Get_Summary(uint8 group)
+{
+    return (group < NAV_GROUP_COUNT) ? &g_nav_group_summary[group] : NULL;
+}
+
+uint8 NavStore_Select_For_View(uint8 group)
+{
+    if (g_nav_store_local_dirty && !nav_store_commit_selected())
+    {
+        return 0;
+    }
+    return nav_store_load_group(group);
+}
+
+uint8 NavStore_Get_Selected_Group(void)
+{
+    return g_nav_store_selected_group;
+}
+
+uint16 NavStore_Get_Selected_Count(void)
+{
+    return g_nav_store_count;
+}
+
+uint8 NavStore_Get_Point(uint16 index, IpcNavFlashPoint_t *point)
+{
+    if (point == NULL || index >= g_nav_store_count)
+    {
+        return 0;
+    }
+    *point = g_nav_store_points[index];
+    return 1;
+}
+
+uint8 NavStore_Undo_Selected(void)
+{
+    if (g_nav_store_count == 0U || g_nav_group_summary[g_nav_store_selected_group].state == NAV_STORE_DAMAGED)
+    {
+        return 0;
+    }
+    g_nav_store_count--;
+    memset(&g_nav_store_points[g_nav_store_count], 0, sizeof(g_nav_store_points[g_nav_store_count]));
+    g_nav_group_summary[g_nav_store_selected_group].count = g_nav_store_count;
+    g_nav_group_summary[g_nav_store_selected_group].state = NAV_STORE_DIRTY;
+    g_nav_store_local_dirty = 1;
+    g_nav_store_save_delay = NAV_STORE_CORE1_SAVE_TICKS;
+    g_nav_store_save_due = 0;
+    return 1;
+}
+
+uint8 NavStore_Clear_Selected(void)
+{
+    g_nav_store_count = 0;
+    memset(g_nav_store_points, 0, sizeof(g_nav_store_points));
+    g_nav_group_summary[g_nav_store_selected_group].count = 0;
+    g_nav_group_summary[g_nav_store_selected_group].state = NAV_STORE_DIRTY;
+    g_nav_store_local_dirty = 1;
+    g_nav_store_save_delay = 0;
+    return nav_store_commit_selected();
+}
+
+uint8 NavStore_Flush_Selected(void)
+{
+    if (!g_nav_store_local_dirty)
+    {
+        return 1;
+    }
+
+    g_nav_store_save_delay = 0;
+    g_nav_store_save_due = 0;
+    return nav_store_commit_selected();
+}
+
+void NavStore_Tick50ms(void)
+{
+    if (g_nav_store_local_dirty && g_nav_store_save_delay > 0U)
+    {
+        g_nav_store_save_delay--;
+        if (g_nav_store_save_delay == 0U)
+        {
+            g_nav_store_save_due = 1;
+        }
+    }
+}
+
+uint8 NavStore_Request_Core0_Load(uint8 group, NavGroupIntent_t intent)
+{
+    if (group >= NAV_GROUP_COUNT || g_nav_load_busy)
+    {
+        return 0;
+    }
+    if (!NavStore_Select_For_View(group))
+    {
+        return 0;
+    }
+    if (intent == NAV_GROUP_INTENT_EXECUTE && g_nav_store_count < 2U)
+    {
+        return 0;
+    }
+    g_nav_load_group = group;
+    g_nav_load_intent = (uint8)intent;
+    g_nav_load_start = 0;
+    g_nav_load_busy = 1;
+    g_nav_load_wait_ack = 0;
+    return 1;
+}
+
+uint8 NavStore_Load_Is_Busy(void)
+{
+    return g_nav_load_busy;
+}
+
+void NavStore_Request_Core0_Flush(void)
+{
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    core_b_cmd.nav_force_save_seq++;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+}
+
+uint8 NavStore_Get_Record_State(void)
+{
+    SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (core_a_status.nav_record_tx_active)
+    {
+        return NAV_STORE_SAVING;
+    }
+    if (core_a_status.nav_record_dirty &&
+        core_b_cmd.nav_record_save_result == 2U &&
+        core_b_cmd.nav_record_saved_generation == core_a_status.nav_record_generation)
+    {
+        return NAV_STORE_ERROR;
+    }
+    if (core_a_status.nav_record_dirty)
+    {
+        return NAV_STORE_DIRTY;
+    }
+    return g_nav_group_summary[g_nav_store_selected_group].state;
+}
+
+void NavStore_Task(void)
+{
+    uint16 count;
+    uint16 i;
+
+    SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+
+    if (core_a_status.nav_record_tx_active && core_a_status.nav_record_tx_seq != g_nav_record_tx_seen)
+    {
+        if (core_a_status.nav_record_tx_group < NAV_GROUP_COUNT &&
+            core_a_status.nav_record_tx_count <= NAV_GROUP_CHUNK_POINTS &&
+            (uint32)core_a_status.nav_record_tx_start + core_a_status.nav_record_tx_count <= NAV_GROUP_POINT_MAX)
+        {
+            if (core_a_status.nav_record_tx_start == 0U)
+            {
+                g_nav_store_selected_group = core_a_status.nav_record_tx_group;
+                g_nav_store_count = 0;
+                memset(g_nav_store_points, 0, sizeof(g_nav_store_points));
+            }
+            memcpy(&g_nav_store_points[core_a_status.nav_record_tx_start], core_a_status.nav_record_tx_points,
+                   (uint32)core_a_status.nav_record_tx_count * sizeof(IpcNavFlashPoint_t));
+
+            if (core_a_status.nav_record_tx_final)
+            {
+                g_nav_store_count = core_a_status.nav_record_tx_total;
+                g_nav_group_summary[g_nav_store_selected_group].count = g_nav_store_count;
+                core_b_cmd.nav_record_save_result = nav_store_commit_selected() ? 1U : 2U;
+                core_b_cmd.nav_record_saved_generation = core_a_status.nav_record_tx_generation;
+            }
+        }
+        else
+        {
+            core_b_cmd.nav_record_save_result = 2U;
+        }
+        g_nav_record_tx_seen = core_a_status.nav_record_tx_seq;
+        core_b_cmd.nav_record_tx_ack_seq = g_nav_record_tx_seen;
+        SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    }
+
+    if (g_nav_store_local_dirty && g_nav_store_save_due)
+    {
+        g_nav_store_save_due = 0;
+        (void)nav_store_commit_selected();
+    }
+
+    if (g_nav_load_busy)
+    {
+        if (g_nav_load_wait_ack)
+        {
+            if (core_a_status.nav_load_ack_seq == core_b_cmd.nav_load_seq)
+            {
+                if (core_b_cmd.nav_load_final)
+                {
+                    g_nav_load_busy = 0;
+                }
+                else
+                {
+                    g_nav_load_start = (uint16)(g_nav_load_start + core_b_cmd.nav_load_count);
+                }
+                g_nav_load_wait_ack = 0;
+            }
+        }
+        else
+        {
+            count = (g_nav_store_count > g_nav_load_start) ? (uint16)(g_nav_store_count - g_nav_load_start) : 0U;
+            if (count > NAV_GROUP_CHUNK_POINTS)
+            {
+                count = NAV_GROUP_CHUNK_POINTS;
+            }
+            core_b_cmd.nav_load_group = g_nav_load_group;
+            core_b_cmd.nav_load_intent = g_nav_load_intent;
+            core_b_cmd.nav_load_start = g_nav_load_start;
+            core_b_cmd.nav_load_count = count;
+            core_b_cmd.nav_load_total = g_nav_store_count;
+            core_b_cmd.nav_load_final = ((uint32)g_nav_load_start + count >= g_nav_store_count) ? 1U : 0U;
+            for (i = 0; i < count; i++)
+            {
+                core_b_cmd.nav_load_points[i] = g_nav_store_points[g_nav_load_start + i];
+            }
+            g_nav_load_seq_next++;
+            if (g_nav_load_seq_next == 0U)
+            {
+                g_nav_load_seq_next = 1U;
+            }
+            core_b_cmd.nav_load_seq = g_nav_load_seq_next;
+            SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+            g_nav_load_wait_ack = 1;
+        }
+    }
+
+    memcpy(core_b_cmd.nav_group_summary, g_nav_group_summary, sizeof(g_nav_group_summary));
+    core_b_cmd.nav_selected_group = g_nav_store_selected_group;
+    core_b_cmd.nav_store_busy = g_nav_load_busy;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+}
+
+#else
+
+void NavStore_Init(void) {}
+void NavStore_Task(void) {}
+void NavStore_Tick50ms(void) {}
+const NavGroupSummary_t *NavStore_Get_Summary(uint8 group) { (void)group; return NULL; }
+uint8 NavStore_Select_For_View(uint8 group) { (void)group; return 0; }
+uint8 NavStore_Get_Selected_Group(void) { return 0; }
+uint16 NavStore_Get_Selected_Count(void) { return 0; }
+uint8 NavStore_Get_Point(uint16 index, IpcNavFlashPoint_t *point) { (void)index; (void)point; return 0; }
+uint8 NavStore_Request_Core0_Load(uint8 group, NavGroupIntent_t intent) { (void)group; (void)intent; return 0; }
+uint8 NavStore_Load_Is_Busy(void) { return 0; }
+uint8 NavStore_Undo_Selected(void) { return 0; }
+uint8 NavStore_Clear_Selected(void) { return 0; }
+uint8 NavStore_Flush_Selected(void) { return 0; }
+void NavStore_Request_Core0_Flush(void) {}
+uint8 NavStore_Get_Record_State(void) { return NAV_STORE_EMPTY; }
+
+#endif
+
+// ================= Core0 navigation-group IPC endpoint =================
+
+static volatile uint32 g_nav_record_generation = 0;
+static volatile uint8 g_nav_record_dirty = 0;
+static volatile uint16 g_nav_record_save_delay = 0;
+#if defined(CY_CORE_CM7_0)
+static uint8 g_nav_record_active_group = 0;
+#endif
+
+void IPC_Nav_Record_Mark_Dirty(void)
+{
+    g_nav_record_generation++;
+    g_nav_record_dirty = 1;
+    g_nav_record_save_delay = NAV_STORE_CORE0_SAVE_TICKS;
+}
+
+void IPC_Nav_Group_Core0_Tick10ms(void)
+{
+    if (g_nav_record_dirty && g_nav_record_save_delay > 0U)
+    {
+        g_nav_record_save_delay--;
+    }
+}
+
+#if defined(CY_CORE_CM7_0)
+
+void IPC_Nav_Group_Core0_Task(void)
+{
+    static uint32 load_seq_seen = 0;
+    static uint32 force_seq_seen = 0;
+    static uint32 tx_seq = 0;
+    static uint32 tx_generation = 0;
+    static uint16 tx_start = 0;
+    static uint16 tx_total = 0;
+    static uint8 tx_wait_ack = 0;
+    static uint8 tx_active = 0;
+    uint16 count;
+    uint16 i;
+
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+
+    if (core_b_cmd.nav_load_seq != 0U && core_b_cmd.nav_load_seq != load_seq_seen)
+    {
+        core_a_status.nav_load_result = 0;
+        if (core_b_cmd.nav_load_group < NAV_GROUP_COUNT &&
+            core_b_cmd.nav_load_count <= NAV_GROUP_CHUNK_POINTS &&
+            core_b_cmd.nav_load_total <= NAV_GROUP_POINT_MAX &&
+            (uint32)core_b_cmd.nav_load_start + core_b_cmd.nav_load_count <= NAV_GROUP_POINT_MAX)
+        {
+            if (core_b_cmd.nav_load_start == 0U)
+            {
+                vofa_mode_driver = 0.0f;
+                navi_ctrl.navi_mode_driver = 0;
+                memset(record_point_map, 0, sizeof(Navi_WayPoint_t) * NAVI_POINT_MAX);
+                record_point_count = 0;
+            }
+            for (i = 0; i < core_b_cmd.nav_load_count; i++)
+            {
+                IpcNavFlashPoint_t *src = &core_b_cmd.nav_load_points[i];
+                Navi_WayPoint_t *dst = &record_point_map[core_b_cmd.nav_load_start + i];
+                dst->x = src->x;
+                dst->y = src->y;
+                dst->yaw = src->yaw;
+                dst->action_cmd = src->action_cmd;
+                dst->type = (WayPoint_Type)src->type;
+                dst->valid = src->valid;
+            }
+            if (core_b_cmd.nav_load_final)
+            {
+                record_point_count = core_b_cmd.nav_load_total;
+                g_nav_record_active_group = core_b_cmd.nav_load_group;
+                g_nav_record_dirty = 0;
+                g_nav_record_save_delay = 0;
+                navi_ctrl.origin_set_flag = 0;
+                navi_record_update_status();
+                vofa_mode_map = 1.0f;
+                navi_ctrl.navi_mode_map = 1;
+                if (core_b_cmd.nav_load_intent == NAV_GROUP_INTENT_COLLECT)
+                {
+                    vofa_mode_driver = 2.0f;
+                    navi_ctrl.navi_mode_driver = 2;
+                }
+                else if (core_b_cmd.nav_load_intent == NAV_GROUP_INTENT_EXECUTE)
+                {
+                    vofa_mode_driver = 1.0f;
+                    navi_ctrl.navi_mode_driver = 1;
+                }
+            }
+            core_a_status.nav_load_result = 1;
+        }
+        else
+        {
+            core_a_status.nav_load_result = 2;
+        }
+        load_seq_seen = core_b_cmd.nav_load_seq;
+        core_a_status.nav_load_ack_seq = load_seq_seen;
+        SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
+    }
+
+    if (core_b_cmd.nav_force_save_seq != force_seq_seen)
+    {
+        force_seq_seen = core_b_cmd.nav_force_save_seq;
+        g_nav_record_save_delay = 0;
+    }
+
+    if (tx_active && tx_wait_ack && core_b_cmd.nav_record_tx_ack_seq == tx_seq)
+    {
+        tx_wait_ack = 0;
+        if (core_a_status.nav_record_tx_final)
+        {
+            if (core_b_cmd.nav_record_save_result == 1U &&
+                core_b_cmd.nav_record_saved_generation == tx_generation &&
+                g_nav_record_generation == tx_generation)
+            {
+                g_nav_record_dirty = 0;
+            }
+            else if (g_nav_record_generation == tx_generation)
+            {
+                g_nav_record_save_delay = NAV_STORE_CORE0_SAVE_TICKS;
+            }
+            tx_active = 0;
+            core_a_status.nav_record_tx_active = 0;
+        }
+        else
+        {
+            tx_start = (uint16)(tx_start + core_a_status.nav_record_tx_count);
+        }
+    }
+
+    if (!tx_active && g_nav_record_dirty && g_nav_record_save_delay == 0U)
+    {
+        tx_active = 1;
+        tx_wait_ack = 0;
+        tx_start = 0;
+        tx_total = record_point_count;
+        tx_generation = g_nav_record_generation;
+    }
+
+    if (tx_active && !tx_wait_ack)
+    {
+        if (tx_start > 0U && tx_generation != g_nav_record_generation)
+        {
+            tx_active = 0;
+            g_nav_record_save_delay = NAV_STORE_CORE0_SAVE_TICKS;
+        }
+        else
+        {
+            count = (tx_total > tx_start) ? (uint16)(tx_total - tx_start) : 0U;
+            if (count > NAV_GROUP_CHUNK_POINTS)
+            {
+                count = NAV_GROUP_CHUNK_POINTS;
+            }
+            for (i = 0; i < count; i++)
+            {
+                Navi_WayPoint_t *src = &record_point_map[tx_start + i];
+                IpcNavFlashPoint_t *dst = &core_a_status.nav_record_tx_points[i];
+                dst->x = src->x;
+                dst->y = src->y;
+                dst->yaw = src->yaw;
+                dst->action_cmd = src->action_cmd;
+                dst->type = (uint8)src->type;
+                dst->valid = src->valid;
+            }
+            tx_seq++;
+            if (tx_seq == 0U)
+            {
+                tx_seq = 1U;
+            }
+            core_a_status.nav_record_tx_generation = tx_generation;
+            core_a_status.nav_record_tx_seq = tx_seq;
+            core_a_status.nav_record_tx_start = tx_start;
+            core_a_status.nav_record_tx_count = count;
+            core_a_status.nav_record_tx_total = tx_total;
+            core_a_status.nav_record_tx_group = g_nav_record_active_group;
+            core_a_status.nav_record_tx_final = ((uint32)tx_start + count >= tx_total) ? 1U : 0U;
+            core_a_status.nav_record_tx_active = 1;
+            tx_wait_ack = 1;
+        }
+    }
+
+    core_a_status.nav_active_group = g_nav_record_active_group;
+    core_a_status.nav_record_generation = g_nav_record_generation;
+    core_a_status.nav_record_dirty = g_nav_record_dirty;
+    core_a_status.nav_record_tx_active = tx_active;
+    SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
+}
+
+#else
+
+void IPC_Nav_Group_Core0_Task(void) {}
+
+#endif

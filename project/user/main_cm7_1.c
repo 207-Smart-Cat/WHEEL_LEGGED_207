@@ -32,6 +32,7 @@ int main(void)
 
     // ============================= 基础外设初始化 =============================
     flash_init();
+    NavStore_Init();
     Runtime_Status_Init();
 
     screen_display_init();
@@ -70,6 +71,7 @@ int main(void)
         static uint8_t ipc_coreb_update_div = 0;
 
         screen_display_process();
+        NavStore_Task();
         wifi_process_loop();
         wifi_report_task();
         wifi_health_check_task();

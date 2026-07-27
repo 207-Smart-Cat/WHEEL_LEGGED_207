@@ -50,8 +50,10 @@ typedef enum {
     UI_SCREEN_HOME = 0,
     UI_SCREEN_MODE_SELECT,
     UI_SCREEN_MODE_ACTION,
+    UI_SCREEN_GROUP_SELECT,
     UI_SCREEN_RECORD_COLLECT,
     UI_SCREEN_RECORD_PREVIEW,
+    UI_SCREEN_RECORD_MANAGE,
     UI_SCREEN_MONITOR,
     UI_SCREEN_PARAM_PAGE,
     UI_SCREEN_PARAM_SELECT,
@@ -73,8 +75,17 @@ typedef enum {
     UI_ACTION_NONE = 0,
     UI_ACTION_SAVE_FLASH,
     UI_ACTION_LOAD_FLASH,
-    UI_ACTION_DEFAULT_PARAMS
+    UI_ACTION_DEFAULT_PARAMS,
+    UI_ACTION_NAV_OVERWRITE,
+    UI_ACTION_NAV_CLEAR
 } ui_confirm_action_t;
+
+typedef enum {
+    UI_GROUP_ACTION_COLLECT = 0,
+    UI_GROUP_ACTION_EXECUTE,
+    UI_GROUP_ACTION_PREVIEW,
+    UI_GROUP_ACTION_MANAGE
+} ui_group_action_t;
 
 typedef struct {
     uint8_t stable_level;
@@ -230,6 +241,51 @@ static const ui_cn_glyph_t k_ui_cn_glyphs[] = {
     {0x6E05, {0x00,0x60,0x33,0xFC,0x18,0x60,0x0F,0xFC,0x00,0x60,0x67,0xFE,0x30,0x00,0x0F,0xFC,0x0F,0x0C,0x1B,0xFC,0x1B,0x0C,0x33,0xFC,0x33,0x0C,0x03,0x3C,0x00,0x00,0x00,0x00}},
     {0x666E, {0x0C,0x30,0x06,0x60,0x3F,0xFC,0x06,0x60,0x36,0x6C,0x1E,0x78,0x7F,0xFE,0x00,0x00,0x1F,0xF8,0x18,0x18,0x1F,0xF8,0x18,0x18,0x1F,0xF8,0x18,0x18,0x00,0x00,0x00,0x00}},
     {0x6392, {0x18,0xD8,0x18,0xD8,0x18,0xD8,0x7F,0xDE,0x18,0xD8,0x18,0xD8,0x1B,0xDE,0x1C,0xD8,0x78,0xD8,0x1B,0xDE,0x18,0xD8,0x18,0xD8,0x18,0xD8,0x78,0xD8,0x00,0x00,0x00,0x00}},
+    {0x7EC4, {0x10,0x00,0x11,0xF8,0x21,0x08,0x21,0x08,0x49,0x08,0xF9,0xF8,0x11,0x08,0x21,0x08,0x41,0x08,0xF9,0xF8,0x41,0x08,0x01,0x08,0x19,0x08,0xE1,0x08,0x47,0xFE,0x00,0x00}},
+    {0x5220, {0x00,0x02,0x7B,0xC2,0x4A,0x42,0x4A,0x4A,0x4A,0x4A,0x4A,0x4A,0x4A,0x4A,0xFF,0xEA,0x4A,0x4A,0x4A,0x4A,0x4A,0x4A,0x4A,0x4A,0x4A,0x42,0x5A,0x42,0x85,0x4A,0x08,0x84}},
+    {0x51CF, {0x00,0x14,0x40,0x12,0x20,0x10,0x27,0xFE,0x04,0x10,0x04,0x10,0x15,0xD0,0x14,0x12,0x24,0x12,0xE5,0xD4,0x25,0x54,0x25,0x48,0x25,0xDA,0x24,0x2A,0x28,0x46,0x10,0x82}},
+    {0x7B2C, {0x20,0x40,0x3F,0x7E,0x48,0x90,0x85,0x08,0x3F,0xF8,0x01,0x08,0x01,0x08,0x3F,0xF8,0x21,0x00,0x21,0x00,0x3F,0xFC,0x03,0x04,0x05,0x04,0x19,0x28,0xE1,0x10,0x01,0x00}},
+    {0x50A8, {0x10,0x20,0x10,0x20,0x18,0xFA,0x24,0x24,0x24,0x28,0x61,0xFE,0x60,0x20,0xBC,0x40,0x24,0xFC,0x25,0x44,0x26,0x44,0x24,0x7C,0x25,0x44,0x26,0x44,0x24,0x7C,0x20,0x44}},
+    {0x72B6, {0x08,0x40,0x08,0x48,0x08,0x44,0x48,0x44,0x28,0x40,0x2F,0xFE,0x08,0x40,0x08,0x40,0x18,0x40,0x28,0xA0,0xC8,0xA0,0x08,0x90,0x09,0x10,0x09,0x08,0x0A,0x04,0x0C,0x02}},
+    {0x6001, {0x01,0x00,0x01,0x00,0x7F,0xFC,0x01,0x00,0x02,0x80,0x04,0x40,0x0A,0x20,0x31,0x18,0xC0,0x06,0x01,0x00,0x08,0x88,0x48,0x84,0x48,0x12,0x48,0x12,0x87,0xF0,0x00,0x00}},
+    {0x6700, {0x1F,0xF0,0x10,0x10,0x1F,0xF0,0x10,0x10,0x1F,0xF0,0x00,0x00,0xFF,0xFE,0x22,0x00,0x3E,0xF8,0x22,0x88,0x3E,0x90,0x22,0x50,0x2F,0x20,0xF2,0x50,0x42,0x88,0x03,0x06}},
+    {0x540E, {0x00,0x10,0x00,0xF8,0x1F,0x00,0x10,0x00,0x10,0x00,0x1F,0xFE,0x10,0x00,0x10,0x00,0x10,0x00,0x17,0xF8,0x14,0x08,0x24,0x08,0x24,0x08,0x44,0x08,0x87,0xF8,0x04,0x08}},
+    {0x7C7B, {0x01,0x00,0x11,0x10,0x09,0x20,0x01,0x00,0x7F,0xFC,0x05,0x40,0x09,0x20,0x11,0x10,0x60,0x08,0x01,0x00,0xFF,0xFE,0x02,0x80,0x04,0x40,0x08,0x20,0x30,0x18,0xC0,0x06}},
+    {0x578B, {0x00,0x04,0x7F,0x84,0x12,0x24,0x12,0x24,0x12,0x24,0xFF,0xA4,0x12,0x24,0x22,0x04,0x22,0x14,0x41,0x08,0x81,0x00,0x3F,0xF8,0x01,0x00,0x01,0x00,0xFF,0xFE,0x00,0x00}},
+    {0x5355, {0x10,0x10,0x08,0x20,0x04,0x40,0x3F,0xF8,0x21,0x08,0x21,0x08,0x3F,0xF8,0x21,0x08,0x21,0x08,0x3F,0xF8,0x01,0x00,0x01,0x00,0xFF,0xFE,0x01,0x00,0x01,0x00,0x01,0x00}},
+    {0x8FB9, {0x00,0x40,0x20,0x40,0x10,0x40,0x13,0xFC,0x00,0x44,0x00,0x44,0xF0,0x44,0x10,0x84,0x10,0x84,0x11,0x04,0x11,0x04,0x12,0x28,0x14,0x10,0x28,0x00,0x47,0xFE,0x00,0x00}},
+    {0x6865, {0x20,0x10,0x20,0x78,0x23,0xC0,0x20,0x40,0xF8,0x40,0x27,0xFE,0x20,0xA0,0x71,0x10,0x6A,0x08,0xA5,0x16,0xA1,0x10,0x21,0x10,0x21,0x10,0x22,0x10,0x22,0x10,0x24,0x10}},
+    {0x7ED5, {0x10,0x80,0x10,0x80,0x20,0xBC,0x23,0xC0,0x48,0x50,0xF8,0x24,0x10,0xD4,0x23,0x0C,0x40,0x00,0xFB,0xFE,0x40,0x90,0x00,0x90,0x19,0x12,0xE1,0x12,0x42,0x0E,0x04,0x00}},
+    {0x6876, {0x20,0x00,0x27,0xF8,0x20,0x10,0x21,0xA0,0xF8,0x40,0x27,0xFC,0x24,0x44,0x74,0x44,0x6F,0xFC,0xA4,0x44,0xA4,0x44,0x27,0xFC,0x24,0x44,0x24,0x44,0x24,0x54,0x24,0x08}},
+    {0x53F0, {0x02,0x00,0x02,0x00,0x04,0x00,0x08,0x20,0x10,0x10,0x20,0x08,0x7F,0xFC,0x20,0x04,0x00,0x00,0x1F,0xF0,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x1F,0xF0,0x10,0x10}},
+    {0x9636, {0x00,0x20,0x7C,0x20,0x44,0x50,0x48,0x50,0x48,0x88,0x51,0x04,0x4A,0x02,0x48,0x88,0x44,0x88,0x44,0x88,0x44,0x88,0x68,0x88,0x50,0x88,0x41,0x08,0x41,0x08,0x42,0x08}},
+    {0x7EC8, {0x10,0x80,0x10,0x80,0x20,0xF8,0x21,0x08,0x4B,0x10,0xFC,0xA0,0x10,0x40,0x20,0xA0,0x43,0x18,0xFC,0x06,0x40,0xC0,0x00,0x20,0x18,0x10,0xE1,0x80,0x40,0x60,0x00,0x10}},
+    {0x539F, {0x00,0x00,0x3F,0xFE,0x20,0x80,0x21,0x00,0x27,0xF0,0x24,0x10,0x24,0x10,0x27,0xF0,0x24,0x10,0x24,0x10,0x27,0xF0,0x20,0x80,0x24,0x90,0x48,0x88,0x52,0x84,0x81,0x00}},
+    {0x4E2D, {0x01,0x00,0x01,0x00,0x01,0x00,0x01,0x00,0x3F,0xF8,0x21,0x08,0x21,0x08,0x21,0x08,0x21,0x08,0x21,0x08,0x3F,0xF8,0x21,0x08,0x01,0x00,0x01,0x00,0x01,0x00,0x01,0x00}},
+    {0x5931, {0x01,0x00,0x11,0x00,0x11,0x00,0x11,0x00,0x3F,0xF8,0x21,0x00,0x41,0x00,0x01,0x00,0xFF,0xFE,0x02,0x80,0x04,0x40,0x04,0x40,0x08,0x20,0x10,0x10,0x20,0x08,0xC0,0x06}},
+    {0x8D25, {0x00,0x40,0x7C,0x40,0x44,0x40,0x54,0x80,0x54,0xFE,0x55,0x08,0x56,0x88,0x54,0x88,0x54,0x88,0x54,0x50,0x54,0x50,0x10,0x20,0x28,0x50,0x24,0x88,0x45,0x04,0x82,0x02}},
+    {0x5269, {0x07,0x02,0x78,0x02,0x08,0x02,0xFF,0x82,0x2A,0x12,0x2A,0x92,0xEB,0x12,0x2A,0x92,0x6A,0x92,0xA9,0x92,0x1C,0x12,0x2A,0x12,0x49,0x02,0x88,0x82,0x08,0x0A,0x08,0x04}},
+    {0x4F59, {0x01,0x00,0x01,0x00,0x02,0x80,0x04,0x40,0x08,0x20,0x10,0x10,0x2F,0xE8,0xC1,0x06,0x01,0x00,0x3F,0xF8,0x01,0x00,0x11,0x10,0x11,0x08,0x21,0x04,0x45,0x04,0x02,0x00}},
+    {0x5C06, {0x08,0x80,0x08,0xF8,0x09,0x08,0x4A,0x10,0x28,0xA0,0x28,0x40,0x08,0x90,0x0B,0x10,0x18,0x10,0x2B,0xFE,0xC8,0x10,0x09,0x10,0x08,0x90,0x08,0x10,0x08,0x50,0x08,0x20}},
+    {0x672C, {0x01,0x00,0x01,0x00,0x01,0x00,0x01,0x00,0x7F,0xFC,0x03,0x80,0x05,0x40,0x05,0x40,0x09,0x20,0x11,0x10,0x21,0x08,0x4F,0xE4,0x81,0x02,0x01,0x00,0x01,0x00,0x01,0x00}},
+    {0x65E0, {0x00,0x00,0x3F,0xF0,0x02,0x00,0x02,0x00,0x02,0x00,0x02,0x00,0x7F,0xFC,0x04,0x80,0x04,0x80,0x04,0x80,0x08,0x80,0x08,0x80,0x10,0x84,0x20,0x84,0x40,0x7C,0x80,0x00}},
+    {0x6CD5, {0x00,0x40,0x20,0x40,0x10,0x40,0x10,0x40,0x87,0xFC,0x40,0x40,0x40,0x40,0x10,0x40,0x1F,0xFE,0x20,0x40,0xE0,0x80,0x21,0x00,0x22,0x10,0x24,0x08,0x2F,0xFC,0x04,0x04}},
+    {0x6709, {0x02,0x00,0x02,0x00,0xFF,0xFE,0x04,0x00,0x04,0x00,0x0F,0xF0,0x08,0x10,0x18,0x10,0x2F,0xF0,0x48,0x10,0x88,0x10,0x0F,0xF0,0x08,0x10,0x08,0x10,0x08,0x50,0x08,0x20}},
+    {0x8986, {0xFF,0xFE,0x04,0x40,0x3F,0xF8,0x24,0x48,0x3F,0xF8,0x12,0x00,0x27,0xFC,0x42,0x08,0x8B,0xF8,0x12,0x08,0x33,0xF8,0x51,0x00,0x93,0xF8,0x15,0x10,0x10,0xE0,0x17,0x1E}},
+    {0x76D6, {0x08,0x20,0x04,0x40,0x7F,0xFC,0x01,0x00,0x01,0x00,0x3F,0xF8,0x01,0x00,0x01,0x00,0xFF,0xFE,0x00,0x00,0x00,0x00,0x3F,0xF8,0x24,0x48,0x24,0x48,0x24,0x48,0xFF,0xFE}},
+    {0x635F, {0x10,0x00,0x10,0xF8,0x10,0x88,0x10,0x88,0xFC,0xF8,0x10,0x00,0x11,0xFC,0x15,0x04,0x19,0x24,0x31,0x24,0xD1,0x24,0x11,0x24,0x10,0x50,0x10,0x48,0x50,0x84,0x23,0x04}},
+    {0x574F, {0x10,0x00,0x10,0x00,0x13,0xFE,0x10,0x10,0x10,0x10,0xFC,0x20,0x10,0x20,0x10,0x68,0x10,0x64,0x10,0xA4,0x1D,0x22,0xE2,0x22,0x44,0x20,0x00,0x20,0x00,0x20,0x00,0x20}},
+    {0x52A0, {0x10,0x00,0x10,0x00,0x10,0x00,0x10,0x7C,0xFE,0x44,0x12,0x44,0x12,0x44,0x12,0x44,0x12,0x44,0x12,0x44,0x12,0x44,0x22,0x44,0x22,0x7C,0x4A,0x44,0x84,0x00}},
+    {0x8F7D, {0x08,0x20,0x08,0x28,0x7F,0x24,0x08,0x20,0xFF,0xFE,0x10,0x20,0x10,0x24,0xFF,0x24,0x20,0x24,0x48,0x28,0x7F,0x28,0x08,0x10,0x0F,0x12,0xF8,0x2A,0x08,0x46,0x08,0x82}},
+    {0x5171, {0x04,0x20,0x04,0x20,0x04,0x20,0x04,0x20,0x3F,0xFC,0x04,0x20,0x04,0x20,0x04,0x20,0x04,0x20,0x04,0x20,0x7F,0xFE,0x00,0x00,0x04,0x20,0x08,0x10,0x10,0x08,0x20,0x04}},
+    {0x9875, {0x00,0x00,0x7F,0xFC,0x02,0x00,0x04,0x00,0x1F,0xF0,0x10,0x10,0x11,0x10,0x11,0x10,0x11,0x10,0x11,0x10,0x11,0x10,0x12,0x90,0x02,0x40,0x04,0x20,0x18,0x10,0x60,0x08}},
+    {0x7FFB, {0x0E,0x00,0xF1,0xDC,0x92,0x44,0x54,0x44,0xFF,0x54,0x38,0xCC,0x54,0x44,0x82,0x44,0x7C,0x4C,0x54,0xD4,0x55,0x64,0x7C,0x44,0x54,0x44,0x54,0x44,0x7D,0x54,0x44,0x88}},
+    {0x5B89, {0x02,0x00,0x01,0x00,0x3F,0xFC,0x20,0x04,0x42,0x08,0x02,0x00,0x02,0x00,0xFF,0xFE,0x04,0x20,0x08,0x20,0x18,0x40,0x06,0x40,0x01,0x80,0x02,0x60,0x0C,0x10,0x70,0x08}},
+    {0x5168, {0x01,0x00,0x01,0x00,0x02,0x80,0x04,0x40,0x08,0x20,0x10,0x10,0x2F,0xE8,0xC1,0x06,0x01,0x00,0x01,0x00,0x1F,0xF0,0x01,0x00,0x01,0x00,0x01,0x00,0x7F,0xFC,0x00,0x00}},
+    {0x65AD, {0x04,0x00,0x04,0x04,0x55,0x78,0x4E,0x40,0x44,0x40,0x7F,0x40,0x44,0x7E,0x4E,0x48,0x55,0x48,0x65,0x48,0x44,0x48,0x44,0x48,0x40,0x48,0x7F,0x88,0x00,0x88,0x01,0x08}},
+    {0x636E, {0x20,0x00,0x23,0xFC,0x22,0x04,0x22,0x04,0xFB,0xFC,0x22,0x20,0x22,0x20,0x2B,0xFE,0x32,0x20,0xE2,0x20,0x22,0xFC,0x22,0x84,0x22,0x84,0x24,0x84,0xA4,0xFC,0x48,0x84}},
+    {0x5F55, {0x00,0x00,0x3F,0xF0,0x00,0x10,0x00,0x10,0x1F,0xF0,0x00,0x10,0x00,0x10,0xFF,0xFE,0x01,0x00,0x21,0x08,0x11,0x90,0x05,0x60,0x09,0x20,0x31,0x18,0xC5,0x06,0x02,0x00}},
+    {0x8BB0, {0x00,0x00,0x20,0x00,0x11,0xF8,0x10,0x08,0x00,0x08,0x00,0x08,0xF0,0x08,0x11,0xF8,0x11,0x08,0x11,0x00,0x11,0x00,0x11,0x00,0x15,0x02,0x19,0x02,0x10,0xFE,0x00,0x00}},
 };
 
 static const uint16_t UI_TEXT_T_TITLE_HOME[] = {0x5F00, 0x673A, 0x8BBE, 0x7F6E, 0x0000};
@@ -257,10 +313,45 @@ static const uint16_t UI_TEXT_T_MODE_3[] = {0x79D1, 0x76EE, 0x4E09, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_COLLECT[] = {0x6253, 0x70B9, 0x91C7, 0x96C6, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_EXECUTE[] = {0x6253, 0x70B9, 0x6267, 0x884C, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_PREVIEW[] = {0x6253, 0x70B9, 0x9884, 0x89C8, 0x0000};
-static const uint16_t UI_TEXT_T_POINT_UNDO[] = {0x64A4, 0x9500, 0x6253, 0x70B9, 0x0000};
-static const uint16_t UI_TEXT_T_POINT_CLEAR[] = {0x6E05, 0x7A7A, 0x6253, 0x70B9, 0x0000};
+static const uint16_t UI_TEXT_T_POINT_MANAGE[] = {0x5220, 0x51CF, 0x6253, 0x70B9, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_NORMAL[] = {0x666E, 0x901A, 0x822A, 0x70B9, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_MINE[] = {0x6392, 0x96F7, 0x65CB, 0x8F6C, 0x70B9, 0x0000};
+static const uint16_t UI_TEXT_T_SELECT_COLLECT_GROUP[] = {0x9009, 0x62E9, 0x91C7, 0x96C6, 0x7EC4, 0x0000};
+static const uint16_t UI_TEXT_T_SELECT_EXECUTE_GROUP[] = {0x9009, 0x62E9, 0x6267, 0x884C, 0x7EC4, 0x0000};
+static const uint16_t UI_TEXT_T_SELECT_PREVIEW_GROUP[] = {0x9009, 0x62E9, 0x9884, 0x89C8, 0x7EC4, 0x0000};
+static const uint16_t UI_TEXT_T_SELECT_MANAGE_GROUP[] = {0x9009, 0x62E9, 0x5220, 0x51CF, 0x7EC4, 0x0000};
+static const uint16_t UI_TEXT_T_STORAGE_STATE[] = {0x5B58, 0x50A8, 0x72B6, 0x6001, 0x0000};
+static const uint16_t UI_TEXT_T_SAVED[] = {0x5DF2, 0x4FDD, 0x5B58, 0x0000};
+static const uint16_t UI_TEXT_T_DIRTY[] = {0x5F85, 0x4FDD, 0x5B58, 0x0000};
+static const uint16_t UI_TEXT_T_SAVING[] = {0x4FDD, 0x5B58, 0x4E2D, 0x0000};
+static const uint16_t UI_TEXT_T_SAVE_FAILED[] = {0x4FDD, 0x5B58, 0x5931, 0x8D25, 0x0000};
+static const uint16_t UI_TEXT_T_LOADING[] = {0x52A0, 0x8F7D, 0x4E2D, 0x0000};
+static const uint16_t UI_TEXT_T_DAMAGED[] = {0x6570, 0x636E, 0x635F, 0x574F, 0x0000};
+static const uint16_t UI_TEXT_T_EMPTY[] = {0x7A7A, 0x0000};
+static const uint16_t UI_TEXT_T_CURRENT_COUNT[] = {0x5F53, 0x524D, 0x70B9, 0x6570, 0x0000};
+static const uint16_t UI_TEXT_T_LAST_POINT[] = {0x6700, 0x540E, 0x822A, 0x70B9, 0x0000};
+static const uint16_t UI_TEXT_T_POINT_TYPE[] = {0x822A, 0x70B9, 0x7C7B, 0x578B, 0x0000};
+static const uint16_t UI_TEXT_T_CURRENT_REMAIN[] = {0x5F53, 0x524D, 0x5269, 0x4F59, 0x0000};
+static const uint16_t UI_TEXT_T_WILL_UNDO[] = {0x5C06, 0x64A4, 0x9500, 0x0000};
+static const uint16_t UI_TEXT_T_UNDO_LAST[] = {0x64A4, 0x9500, 0x6700, 0x540E, 0x4E00, 0x70B9, 0x0000};
+static const uint16_t UI_TEXT_T_CLEAR_GROUP[] = {0x6E05, 0x7A7A, 0x672C, 0x7EC4, 0x0000};
+static const uint16_t UI_TEXT_T_CONFIRM_CLEAR[] = {0x786E, 0x8BA4, 0x6E05, 0x7A7A, 0x0000};
+static const uint16_t UI_TEXT_T_CONFIRM_OVERWRITE[] = {0x786E, 0x8BA4, 0x8986, 0x76D6, 0x0000};
+static const uint16_t UI_TEXT_T_CLEAR_NO_RESTORE[] = {0x6E05, 0x7A7A, 0x540E, 0x65E0, 0x6CD5, 0x6062, 0x590D, 0x0000};
+static const uint16_t UI_TEXT_T_HAS_DATA[] = {0x5DF2, 0x6709, 0x6570, 0x636E, 0x0000};
+static const uint16_t UI_TEXT_T_CLEARED[] = {0x5DF2, 0x6E05, 0x7A7A, 0x0000};
+static const uint16_t UI_TEXT_T_DI[] = {0x7B2C, 0x0000};
+static const uint16_t UI_TEXT_T_GROUP_WORD[] = {0x7EC4, 0x0000};
+static const uint16_t UI_TEXT_T_POINT_WORD[] = {0x70B9, 0x0000};
+static const uint16_t UI_TEXT_T_TOTAL[] = {0x5171, 0x0000};
+static const uint16_t UI_TEXT_T_PAGE[] = {0x9875, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_HOME[] = {0x539F, 0x70B9, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_NORMAL[] = {0x666E, 0x901A, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_MINE[] = {0x6392, 0x96F7, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_CONE[] = {0x7ED5, 0x6876, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_BRIDGE[] = {0x5355, 0x8FB9, 0x6865, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_JUMP[] = {0x53F0, 0x9636, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_STOP[] = {0x7EC8, 0x70B9, 0x0000};
 static const uint16_t UI_TEXT_T_RESERVED[] = {0x9884, 0x7559, 0x63A5, 0x53E3, 0x0000};
 static const uint16_t UI_TEXT_T_NO_HOOK[] = {0x672A, 0x63A5, 0x5165, 0x63A7, 0x5236, 0x0000};
 static const uint16_t UI_TEXT_T_WIFI_SILENT[] = {0x9759, 0x9ED8, 0x0000};
@@ -291,6 +382,11 @@ static const uint16_t UI_TEXT_T_HINT_APPLY[] = {0x786E, 0x8BA4, 0x5E94, 0x7528, 
 static const uint16_t UI_TEXT_T_HINT_SWITCH[] = {0x786E, 0x8BA4, 0x5207, 0x6362, 0x0020, 0x53D6, 0x6D88, 0x8FD4, 0x56DE, 0x0000};
 static const uint16_t UI_TEXT_T_HINT_TOGGLE[] = {0x786E, 0x8BA4, 0x5F00, 0x5173, 0x0020, 0x53D6, 0x6D88, 0x8FD4, 0x56DE, 0x0000};
 static const uint16_t UI_TEXT_T_HINT_SELECT[] = {0x786E, 0x8BA4, 0x6267, 0x884C, 0x0020, 0x53D6, 0x6D88, 0x8FD4, 0x56DE, 0x0000};
+static const uint16_t UI_TEXT_T_HINT_GROUP[] = {0x4E0A, 0x4E0B, 0x9009, 0x62E9, 0x0020, 0x786E, 0x8BA4, 0x8FDB, 0x5165, 0x0020, 0x8FD4, 0x56DE, 0x0000};
+static const uint16_t UI_TEXT_T_HINT_COLLECT[] = {0x786E, 0x8BA4, 0x8BB0, 0x5F55, 0x0020, 0x8FD4, 0x56DE, 0x4FDD, 0x5B58, 0x0000};
+static const uint16_t UI_TEXT_T_HINT_COLLECT_TYPE[] = {0x4E0A, 0x4E0B, 0x7C7B, 0x578B, 0x0020, 0x786E, 0x8BA4, 0x8BB0, 0x5F55, 0x0020, 0x8FD4, 0x56DE, 0x4FDD, 0x5B58, 0x0000};
+static const uint16_t UI_TEXT_T_HINT_PREVIEW[] = {0x4E0A, 0x4E0B, 0x7FFB, 0x9875, 0x0020, 0x8FD4, 0x56DE, 0x0000};
+static const uint16_t UI_TEXT_T_HINT_MANAGE[] = {0x4E0A, 0x4E0B, 0x9009, 0x62E9, 0x0020, 0x786E, 0x8BA4, 0x64CD, 0x4F5C, 0x0020, 0x8FD4, 0x56DE, 0x0000};
 static const uint16_t UI_TEXT_T_ID[] = {0x7F16, 0x53F7, 0x0000};
 static const uint16_t UI_TEXT_T_NAME[] = {0x540D, 0x79F0, 0x0000};
 static const uint16_t UI_TEXT_T_VALUE[] = {0x6570, 0x503C, 0x0000};
@@ -731,6 +827,15 @@ static ui_screen_t ui_screen = UI_SCREEN_HOME;
 static uint8_t ui_home_index = 0;
 static uint8_t ui_mode_index = 0;
 static uint8_t ui_mode_action_index = 0;
+static ui_group_action_t ui_group_action = UI_GROUP_ACTION_COLLECT;
+static uint8_t ui_group_index = 0;
+static uint8_t ui_group_top = 0;
+static uint8_t ui_selected_group = 0;
+static uint8_t ui_manage_index = 0;
+static uint8_t ui_manage_notice = 0;
+static uint8_t ui_record_exit_pending = 0;
+static uint8_t ui_record_exit_wait = 0;
+static uint8_t ui_group_load_pending = 0;
 static uint8_t ui_record_type_index = 0;
 static uint16 ui_record_preview_top = 0;
 static uint8_t ui_wifi_index = 0;
@@ -833,8 +938,7 @@ static const uint16_t *const k_mode_action_texts[] = {
     UI_TEXT_T_POINT_COLLECT,
     UI_TEXT_T_POINT_EXECUTE,
     UI_TEXT_T_POINT_PREVIEW,
-    UI_TEXT_T_POINT_UNDO,
-    UI_TEXT_T_POINT_CLEAR
+    UI_TEXT_T_POINT_MANAGE
 };
 
 static const uint16_t *const k_record_type_texts[] = {
@@ -1216,14 +1320,67 @@ static const uint16_t *ui_current_record_type_text(void)
     return k_record_type_texts[(ui_current_record_type() == WP_TYPE_MINE_SWEEP) ? 1U : 0U];
 }
 
-static void ui_nav_enter_record_collect(void)
+static const uint16_t *ui_waypoint_type_text(uint8 type)
 {
-    if (!ui_mode_allows_mine_type())
+    switch ((WayPoint_Type)type)
     {
-        ui_record_type_index = 0;
+        case WP_TYPE_HOME:       return UI_TEXT_T_TYPE_HOME;
+        case WP_TYPE_MINE_SWEEP: return UI_TEXT_T_TYPE_MINE;
+        case WP_TYPE_CONE_CONE:  return UI_TEXT_T_TYPE_CONE;
+        case WP_TYPE_BRIDGE:     return UI_TEXT_T_TYPE_BRIDGE;
+        case WP_TYPE_JUMP:       return UI_TEXT_T_TYPE_JUMP;
+        case WP_TYPE_STOP:       return UI_TEXT_T_TYPE_STOP;
+        case WP_TYPE_NORMAL:
+        default:                 return UI_TEXT_T_TYPE_NORMAL;
     }
-    ui_send_param_update(P_NAVI_MODE_DRIVER, 2.0f);
-    ui_set_screen(UI_SCREEN_RECORD_COLLECT);
+}
+
+static const uint16_t *ui_storage_state_text(uint8 state)
+{
+    switch ((NavStoreState_t)state)
+    {
+        case NAV_STORE_EMPTY:   return UI_TEXT_T_EMPTY;
+        case NAV_STORE_SAVED:   return UI_TEXT_T_SAVED;
+        case NAV_STORE_DAMAGED: return UI_TEXT_T_DAMAGED;
+        case NAV_STORE_DIRTY:   return UI_TEXT_T_DIRTY;
+        case NAV_STORE_SAVING:  return UI_TEXT_T_SAVING;
+        case NAV_STORE_ERROR:
+        default:                return UI_TEXT_T_SAVE_FAILED;
+    }
+}
+
+static const uint16_t *ui_group_title(void)
+{
+    switch (ui_group_action)
+    {
+        case UI_GROUP_ACTION_EXECUTE: return UI_TEXT_T_SELECT_EXECUTE_GROUP;
+        case UI_GROUP_ACTION_PREVIEW: return UI_TEXT_T_SELECT_PREVIEW_GROUP;
+        case UI_GROUP_ACTION_MANAGE:  return UI_TEXT_T_SELECT_MANAGE_GROUP;
+        case UI_GROUP_ACTION_COLLECT:
+        default:                      return UI_TEXT_T_SELECT_COLLECT_GROUP;
+    }
+}
+
+static void ui_draw_storage_state(uint16 x, uint16 y, uint8 state)
+{
+    ui_show_string_safe(x, y, "              ");
+    ui_show_text(x, y, ui_storage_state_text(state));
+}
+
+static void ui_group_keep_visible(void)
+{
+    if (ui_group_index < ui_group_top)
+    {
+        ui_group_top = ui_group_index;
+    }
+    else if (ui_group_index >= (uint8_t)(ui_group_top + 7U))
+    {
+        ui_group_top = (uint8_t)(ui_group_index - 6U);
+    }
+    if (ui_group_top > (NAV_GROUP_COUNT - 7U))
+    {
+        ui_group_top = NAV_GROUP_COUNT - 7U;
+    }
 }
 
 static void ui_nav_record_current_point(void)
@@ -1231,31 +1388,6 @@ static void ui_nav_record_current_point(void)
     ui_send_param_update(P_NAVI_WIFI_TYPE, (float)ui_current_record_type());
     ui_send_param_update(P_NAVI_WIFI_ACTION, 0.0f);
     ui_send_param_update(P_NAVI_TRIGGER_RECORD, 2.0f);
-}
-
-static void ui_nav_execute_record_map(void)
-{
-    ui_send_param_update(P_NAVI_MODE_MAP, 1.0f);
-    ui_send_param_update(P_NAVI_MODE_DRIVER, 1.0f);
-    ui_set_screen(UI_SCREEN_MODE_ACTION);
-}
-
-static void ui_nav_preview_record_map(void)
-{
-    ui_send_param_update(P_NAVI_MODE_MAP, 1.0f);
-    ui_send_param_update(P_NAVI_PRINT_POSE_EN, 2.0f);
-}
-
-static void ui_nav_undo_record_point(void)
-{
-    ui_send_param_update(P_NAVI_MODE_DRIVER, 2.0f);
-    ui_send_param_update(P_NAVI_TRIGGER_RECORD, 3.0f);
-}
-
-static void ui_nav_clear_record_map(void)
-{
-    ui_send_param_update(P_NAVI_MODE_DRIVER, 2.0f);
-    ui_send_param_update(P_NAVI_MODE_MAP, 2.0f);
 }
 static void ui_restore_default_params(void)
 {
@@ -1336,106 +1468,177 @@ static void ui_draw_mode_action(void)
     ui_show_text(8, 34, UI_TEXT_T_CURRENT);
     ui_show_text(64, 34, k_mode_texts[mode]);
     ui_draw_text_list_at(70, k_mode_action_texts, ARRAY_SIZE(k_mode_action_texts), ui_mode_action_index, 0, ARRAY_SIZE(k_mode_action_texts));
-    ui_draw_footer_text_str("UP/DN sel OK run BACK");
+    ui_draw_footer_text(UI_TEXT_T_HINT_GROUP);
+}
+
+static void ui_draw_group_select(void)
+{
+    char line[20];
+    uint8 row;
+
+    ui_draw_title_text(ui_group_title());
+    for (row = 0; row < 7U; row++)
+    {
+        uint8 group = (uint8)(ui_group_top + row);
+        uint16 y = (uint16)(38U + row * 34U);
+        const NavGroupSummary_t *summary;
+
+        if (group >= NAV_GROUP_COUNT)
+        {
+            break;
+        }
+        summary = NavStore_Get_Summary(group);
+        ips200_show_char(4, y, group == ui_group_index ? '>' : ' ');
+        ui_show_text(20, y, UI_TEXT_T_DI);
+        sprintf(line, "%02d", (int)(group + 1U));
+        ui_show_string_safe(36, y, line);
+        ui_show_text(54, y, UI_TEXT_T_GROUP_WORD);
+        sprintf(line, "%3d", summary != NULL ? (int)summary->count : 0);
+        ui_show_string_safe(76, y, line);
+        ui_show_text(104, y, UI_TEXT_T_POINT_WORD);
+        ui_draw_storage_state(132, y, summary != NULL ? summary->state : NAV_STORE_ERROR);
+    }
+
+    sprintf(line, "%d/2", ui_group_top == 0U ? 1 : 2);
+    ui_show_text(8, 276, UI_TEXT_T_PAGE);
+    ui_show_string_safe(28, 276, line);
+    if (NavStore_Load_Is_Busy())
+    {
+        ui_show_text(104, 276, UI_TEXT_T_LOADING);
+    }
+    ui_draw_footer_text(UI_TEXT_T_HINT_GROUP);
 }
 
 static void ui_draw_record_collect(void)
 {
     char line[40];
-    uint8_t mode = Runtime_Get_Vehicle_Mode();
-    if (mode >= ARRAY_SIZE(k_mode_texts)) mode = 0;
+    uint8 state = NavStore_Get_Record_State();
     if (!ui_mode_allows_mine_type()) ui_record_type_index = 0;
 
     ui_draw_title_text(UI_TEXT_T_POINT_COLLECT);
-    ui_show_text(8, 34, UI_TEXT_T_TITLE_MODE);
-    ui_show_text(76, 34, k_mode_texts[mode]);
-    ui_show_text(8, 62, UI_TEXT_T_ACTION);
-    ui_show_text(76, 62, ui_current_record_type_text());
-
-    sprintf(line, "Count:%d", (int)core_a_status.navi_record_count);
-    ips200_show_string(8, 100, line);
-    sprintf(line, "Last:%d Type:%d", (int)core_a_status.navi_record_last_idx, (int)core_a_status.navi_record_last_type);
-    ips200_show_string(8, 126, line);
-    sprintf(line, "X:% .3f", core_a_status.navi_record_last_x);
-    ips200_show_string(8, 152, line);
-    sprintf(line, "Y:% .3f", core_a_status.navi_record_last_y);
-    ips200_show_string(8, 178, line);
-
-    if (ui_mode_allows_mine_type())
+    ui_show_text(8, 36, UI_TEXT_T_DI);
+    sprintf(line, "%02d", (int)(ui_selected_group + 1U));
+    ui_show_string_safe(24, 36, line);
+    ui_show_text(42, 36, UI_TEXT_T_GROUP_WORD);
+    ui_show_text(8, 64, UI_TEXT_T_STORAGE_STATE);
+    ui_draw_storage_state(96, 64, state == NAV_STORE_EMPTY ? NAV_STORE_SAVED : state);
+    ui_show_text(8, 96, UI_TEXT_T_CURRENT_COUNT);
+    sprintf(line, ":%3d / 500", (int)core_a_status.navi_record_count);
+    ui_show_string_safe(88, 96, line);
+    ui_show_text(8, 126, UI_TEXT_T_LAST_POINT);
+    if (core_a_status.navi_record_count > 0U)
     {
-        ui_draw_footer_text_str("UP/DN type OK rec BACK");
+        sprintf(line, ":%03d", (int)core_a_status.navi_record_last_idx + 1);
     }
     else
     {
-        ui_draw_footer_text_str("OK record BACK menu");
+        sprintf(line, ":---");
     }
-}
-static const char *ui_record_preview_type_name(uint8 type)
-{
-    switch ((WayPoint_Type)type)
+    ui_show_string_safe(88, 126, line);
+    ui_show_text(8, 156, UI_TEXT_T_POINT_TYPE);
+    ui_show_text(88, 156, ui_current_record_type_text());
+    sprintf(line, "X:% .3f", core_a_status.navi_record_last_x);
+    ui_show_string_safe(8, 190, line);
+    sprintf(line, "Y:% .3f", core_a_status.navi_record_last_y);
+    ui_show_string_safe(8, 218, line);
+
+    if (ui_mode_allows_mine_type())
     {
-        case WP_TYPE_NORMAL:     return "NORMAL";
-        case WP_TYPE_MINE_SWEEP: return "MINE";
-        case WP_TYPE_STOP:       return "STOP";
-        case WP_TYPE_HOME:       return "HOME";
-        default:                 return "UNK";
+        ui_draw_footer_text(UI_TEXT_T_HINT_COLLECT_TYPE);
+    }
+    else
+    {
+        ui_draw_footer_text(UI_TEXT_T_HINT_COLLECT);
     }
 }
 
 static void ui_draw_record_preview(void)
 {
     char line[44];
-    uint16 count = core_a_status.navi_record_preview_count;
-    uint16 start = core_a_status.navi_record_preview_start;
+    uint16 count = NavStore_Get_Selected_Count();
+    uint16 page = count == 0U ? 1U : (uint16)(ui_record_preview_top / 4U + 1U);
+    uint16 pages = count == 0U ? 1U : (uint16)((count + 3U) / 4U);
 
     ui_draw_title_text(UI_TEXT_T_POINT_PREVIEW);
-    sprintf(line, "Count:%d  Page:%d", (int)count, (int)start);
-    ips200_show_string(8, 34, line);
+    ui_show_text(8, 34, UI_TEXT_T_DI);
+    sprintf(line, "%02d", (int)(ui_selected_group + 1U));
+    ui_show_string_safe(24, 34, line);
+    ui_show_text(42, 34, UI_TEXT_T_GROUP_WORD);
+    ui_show_text(76, 34, UI_TEXT_T_TOTAL);
+    sprintf(line, "%3d", (int)count);
+    ui_show_string_safe(96, 34, line);
+    ui_show_text(122, 34, UI_TEXT_T_POINT_WORD);
+    ui_show_text(140, 34, UI_TEXT_T_DI);
+    sprintf(line, "%d/%d", (int)page, (int)pages);
+    ui_show_string_safe(156, 34, line);
+    ui_show_text(216, 34, UI_TEXT_T_PAGE);
 
     if (count == 0)
     {
-        ips200_show_string(8, 78, "No record points");
-        ui_draw_footer_text_str("BACK menu");
+        ui_show_text(96, 128, UI_TEXT_T_EMPTY);
+        ui_draw_footer_text(UI_TEXT_T_HINT_PREVIEW);
         return;
-    
+    }
 
-
-
-
-
-}
-
-    for (uint8_t row = 0; row < IPC_NAV_RECORD_PREVIEW_ROWS; row++)
+    for (uint8_t row = 0; row < 4U; row++)
     {
-        IpcNavRecordPreviewPoint_t *pt = &core_a_status.navi_record_preview[row];
-        uint16 y = (uint16)(60 + row * 56);
-        if (!pt->valid)
+        IpcNavFlashPoint_t point;
+        uint16 index = (uint16)(ui_record_preview_top + row);
+        uint16 y = (uint16)(60U + row * 56U);
+        if (index >= count || !NavStore_Get_Point(index, &point))
         {
             continue;
         }
 
-        sprintf(line, "%03d %-6s X:% .2f", (int)pt->idx, ui_record_preview_type_name(pt->type), pt->x);
-        ips200_show_string(8, y, line);
-        sprintf(line, "    Y:% .2f  Yaw:% .1f", pt->y, pt->yaw);
-        ips200_show_string(8, (uint16)(y + 20), line);
- 
+        sprintf(line, "%03d", (int)(index + 1U));
+        ui_show_string_safe(8, y, line);
+        ui_show_text(42, y, ui_waypoint_type_text(point.type));
+        sprintf(line, "X:% .2f Y:% .2f Yaw:% .1f", point.x, point.y, point.yaw);
+        ui_show_string_safe(8, (uint16)(y + 20U), line);
+    }
 
+    ui_draw_footer_text(UI_TEXT_T_HINT_PREVIEW);
+}
 
+static void ui_draw_record_manage(void)
+{
+    char line[32];
+    IpcNavFlashPoint_t point;
+    uint16 count = NavStore_Get_Selected_Count();
+    const NavGroupSummary_t *summary = NavStore_Get_Summary(ui_selected_group);
 
+    ui_draw_title_text(UI_TEXT_T_POINT_MANAGE);
+    ui_show_text(8, 36, UI_TEXT_T_DI);
+    sprintf(line, "%02d", (int)(ui_selected_group + 1U));
+    ui_show_string_safe(24, 36, line);
+    ui_show_text(42, 36, UI_TEXT_T_GROUP_WORD);
+    ui_show_text(8, 68, UI_TEXT_T_CURRENT_REMAIN);
+    sprintf(line, ":%d", (int)count);
+    ui_show_string_safe(88, 68, line);
+    ui_show_text(8, 100, UI_TEXT_T_WILL_UNDO);
+    if (count > 0U && NavStore_Get_Point((uint16)(count - 1U), &point))
+    {
+        sprintf(line, ":%03d", (int)count);
+        ui_show_string_safe(72, 100, line);
+        ui_show_text(8, 128, UI_TEXT_T_POINT_TYPE);
+        ui_show_text(88, 128, ui_waypoint_type_text(point.type));
+    }
+    else
+    {
+        ui_show_text(88, 100, UI_TEXT_T_EMPTY);
+    }
 
-
-
-
-
-
-
-
-
-
-
-   }
-
-    ui_draw_footer_text_str("UP/DN page BACK menu");
+    ui_show_text_selected(8, 184, ui_manage_index == 0U, UI_TEXT_T_UNDO_LAST);
+    ui_show_text_selected(8, 222, ui_manage_index == 1U, UI_TEXT_T_CLEAR_GROUP);
+    if (ui_manage_notice == 1U)
+    {
+        ui_show_text(8, 266, UI_TEXT_T_CLEARED);
+    }
+    else if (summary != NULL)
+    {
+        ui_draw_storage_state(8, 266, summary->state);
+    }
+    ui_draw_footer_text(UI_TEXT_T_HINT_MANAGE);
 }
 static uint8_t ui_param_group_count(void)
 {
@@ -1739,6 +1942,30 @@ static void ui_draw_confirm(void)
 {
     char line[32];
     const char *name = "None";
+    const NavGroupSummary_t *summary;
+
+    if (ui_confirm_action == UI_ACTION_NAV_OVERWRITE || ui_confirm_action == UI_ACTION_NAV_CLEAR)
+    {
+        summary = NavStore_Get_Summary(ui_selected_group);
+        ui_draw_title_text(ui_confirm_action == UI_ACTION_NAV_CLEAR ? UI_TEXT_T_CONFIRM_CLEAR : UI_TEXT_T_CONFIRM_OVERWRITE);
+        ips200_draw_line(8, 58, 231, 58, RGB565_SKYBLUE);
+        ips200_draw_line(8, 58, 8, 246, RGB565_SKYBLUE);
+        ips200_draw_line(231, 58, 231, 246, RGB565_SKYBLUE);
+        ips200_draw_line(8, 246, 231, 246, RGB565_SKYBLUE);
+        ui_show_text(28, 82, UI_TEXT_T_DI);
+        sprintf(line, "%02d", (int)(ui_selected_group + 1U));
+        ips200_show_string(44, 82, line);
+        ui_show_text(62, 82, UI_TEXT_T_GROUP_WORD);
+        sprintf(line, "  %d", summary != NULL ? (int)summary->count : 0);
+        ips200_show_string(82, 82, line);
+        ui_show_text(122, 82, UI_TEXT_T_POINT_WORD);
+        ui_show_text(44, 122, ui_confirm_action == UI_ACTION_NAV_CLEAR ? UI_TEXT_T_CLEAR_NO_RESTORE : UI_TEXT_T_HAS_DATA);
+        ui_show_text_selected(44, 190, ui_confirm_yes, UI_TEXT_T_YES);
+        ui_show_text_selected(142, 190, !ui_confirm_yes, UI_TEXT_T_NO);
+        ui_draw_footer_text(UI_TEXT_T_HINT_SELECT);
+        return;
+    }
+
     if (ui_confirm_action == UI_ACTION_SAVE_FLASH) name = "Save Flash";
     else if (ui_confirm_action == UI_ACTION_LOAD_FLASH) name = "Load Flash";
     else if (ui_confirm_action == UI_ACTION_DEFAULT_PARAMS) name = "Load Param Init";
@@ -1838,15 +2065,11 @@ static void ui_handle_mode_action(ui_key_event_t events[UI_KEY_COUNT])
     }
     else if (events[UI_KEY_OK])
     {
-        switch (ui_mode_action_index)
-        {
-            case 0: ui_nav_enter_record_collect(); break;
-            case 1: ui_nav_execute_record_map(); break;
-            case 2: ui_nav_preview_record_map(); ui_set_screen(UI_SCREEN_MODE_ACTION); break;
-            case 3: ui_nav_undo_record_point(); ui_set_screen(UI_SCREEN_MODE_ACTION); break;
-            case 4: ui_nav_clear_record_map(); ui_set_screen(UI_SCREEN_MODE_ACTION); break;
-            default: ui_set_screen(UI_SCREEN_MODE_ACTION); break;
-        }
+        ui_group_action = (ui_group_action_t)ui_mode_action_index;
+        ui_group_index = 0;
+        ui_group_top = 0;
+        ui_group_load_pending = 0;
+        ui_set_screen(UI_SCREEN_GROUP_SELECT);
     }
     else if (events[UI_KEY_BACK])
     {
@@ -1854,8 +2077,122 @@ static void ui_handle_mode_action(ui_key_event_t events[UI_KEY_COUNT])
     }
 }
 
+static void ui_handle_group_select(ui_key_event_t events[UI_KEY_COUNT])
+{
+    const NavGroupSummary_t *summary;
+
+    if (ui_group_load_pending != 0U)
+    {
+        if (!NavStore_Load_Is_Busy())
+        {
+            uint8 pending = ui_group_load_pending;
+            ui_group_load_pending = 0;
+            if (core_a_status.nav_load_result == 1U)
+            {
+                if (pending == (uint8)(UI_GROUP_ACTION_COLLECT + 1U))
+                {
+                    ui_record_exit_pending = 0;
+                    ui_record_exit_wait = 0;
+                    if (!ui_mode_allows_mine_type()) ui_record_type_index = 0;
+                    ui_set_screen(UI_SCREEN_RECORD_COLLECT);
+                }
+                else
+                {
+                    ui_set_screen(UI_SCREEN_MODE_ACTION);
+                }
+            }
+        }
+        return;
+    }
+
+    if (events[UI_KEY_UP])
+    {
+        ui_group_index = (ui_group_index == 0U) ? (NAV_GROUP_COUNT - 1U) : (uint8)(ui_group_index - 1U);
+        ui_group_keep_visible();
+        ui_set_screen(UI_SCREEN_GROUP_SELECT);
+    }
+    else if (events[UI_KEY_DOWN])
+    {
+        ui_group_index = (uint8)((ui_group_index + 1U) % NAV_GROUP_COUNT);
+        ui_group_keep_visible();
+        ui_set_screen(UI_SCREEN_GROUP_SELECT);
+    }
+    else if (events[UI_KEY_OK])
+    {
+        summary = NavStore_Get_Summary(ui_group_index);
+        if (summary == NULL)
+        {
+            return;
+        }
+        ui_selected_group = ui_group_index;
+
+        if (ui_group_action == UI_GROUP_ACTION_COLLECT)
+        {
+            if (summary->state == NAV_STORE_DAMAGED || summary->count > 0U)
+            {
+                ui_confirm_action = UI_ACTION_NAV_OVERWRITE;
+                ui_confirm_yes = 0;
+                ui_set_screen(UI_SCREEN_CONFIRM);
+            }
+            else if (NavStore_Request_Core0_Load(ui_selected_group, NAV_GROUP_INTENT_COLLECT))
+            {
+                ui_group_load_pending = (uint8)(UI_GROUP_ACTION_COLLECT + 1U);
+                ui_set_screen(UI_SCREEN_GROUP_SELECT);
+            }
+        }
+        else if (ui_group_action == UI_GROUP_ACTION_EXECUTE)
+        {
+            if (summary->state == NAV_STORE_SAVED && summary->count >= 2U &&
+                NavStore_Request_Core0_Load(ui_selected_group, NAV_GROUP_INTENT_EXECUTE))
+            {
+                ui_group_load_pending = (uint8)(UI_GROUP_ACTION_EXECUTE + 1U);
+                ui_set_screen(UI_SCREEN_GROUP_SELECT);
+            }
+        }
+        else if (ui_group_action == UI_GROUP_ACTION_PREVIEW)
+        {
+            if (summary->state != NAV_STORE_DAMAGED && NavStore_Select_For_View(ui_selected_group))
+            {
+                ui_record_preview_top = 0;
+                ui_set_screen(UI_SCREEN_RECORD_PREVIEW);
+            }
+        }
+        else
+        {
+            (void)NavStore_Select_For_View(ui_selected_group);
+            ui_manage_index = 0;
+            ui_manage_notice = 0;
+            ui_set_screen(UI_SCREEN_RECORD_MANAGE);
+        }
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        ui_set_screen(UI_SCREEN_MODE_ACTION);
+    }
+}
+
 static void ui_handle_record_collect(ui_key_event_t events[UI_KEY_COUNT])
 {
+    uint8 state = NavStore_Get_Record_State();
+
+    if (ui_record_exit_pending)
+    {
+        if (ui_record_exit_wait > 0U)
+        {
+            ui_record_exit_wait--;
+        }
+        else if (state == NAV_STORE_SAVED || state == NAV_STORE_EMPTY)
+        {
+            ui_record_exit_pending = 0;
+            ui_set_screen(UI_SCREEN_GROUP_SELECT);
+        }
+        else if (state == NAV_STORE_ERROR)
+        {
+            ui_record_exit_pending = 0;
+        }
+        return;
+    }
+
     if (!ui_mode_allows_mine_type())
     {
         ui_record_type_index = 0;
@@ -1868,53 +2205,82 @@ static void ui_handle_record_collect(ui_key_event_t events[UI_KEY_COUNT])
     }
     else if (events[UI_KEY_OK])
     {
-        ui_nav_record_current_point();
+        if (state == NAV_STORE_ERROR)
+        {
+            NavStore_Request_Core0_Flush();
+        }
+        else if (!NavStore_Load_Is_Busy())
+        {
+            ui_nav_record_current_point();
+        }
         ui_set_screen(UI_SCREEN_RECORD_COLLECT);
     }
     else if (events[UI_KEY_BACK])
     {
-        ui_set_screen(UI_SCREEN_MODE_ACTION);
+        NavStore_Request_Core0_Flush();
+        ui_record_exit_pending = 1;
+        ui_record_exit_wait = 2;
+        ui_set_screen(UI_SCREEN_RECORD_COLLECT);
     }
 }
 static void ui_handle_record_preview(ui_key_event_t events[UI_KEY_COUNT])
 {
-    uint16 count = (uint16)core_a_status.navi_record_preview_count;
+    uint16 count = NavStore_Get_Selected_Count();
 
     if (events[UI_KEY_UP])
     {
-        if (ui_record_preview_top >= IPC_NAV_RECORD_PREVIEW_ROWS)
+        if (ui_record_preview_top >= 4U)
         {
-            ui_record_preview_top = (uint16)(ui_record_preview_top - IPC_NAV_RECORD_PREVIEW_ROWS);
+            ui_record_preview_top = (uint16)(ui_record_preview_top - 4U);
         }
         else
         {
             ui_record_preview_top = 0;
         }
-        IPC_Set_Nav_Record_Preview_Start(ui_record_preview_top);
         ui_set_screen(UI_SCREEN_RECORD_PREVIEW);
     }
     else if (events[UI_KEY_DOWN])
     {
-        if ((uint16)(ui_record_preview_top + IPC_NAV_RECORD_PREVIEW_ROWS) < count)
+        if ((uint16)(ui_record_preview_top + 4U) < count)
         {
-            ui_record_preview_top = (uint16)(ui_record_preview_top + IPC_NAV_RECORD_PREVIEW_ROWS);
+            ui_record_preview_top = (uint16)(ui_record_preview_top + 4U);
         }
-        IPC_Set_Nav_Record_Preview_Start(ui_record_preview_top);
-        ui_set_screen(UI_SCREEN_RECORD_PREVIEW);
-    }
-    else if (
-
-
-
-
-events[UI_KEY_OK])
-    {
-        IPC_Set_Nav_Record_Preview_Start(ui_record_preview_top);
         ui_set_screen(UI_SCREEN_RECORD_PREVIEW);
     }
     else if (events[UI_KEY_BACK])
     {
-        ui_set_screen(UI_SCREEN_MODE_ACTION);
+        ui_set_screen(UI_SCREEN_GROUP_SELECT);
+    }
+}
+
+static void ui_handle_record_manage(ui_key_event_t events[UI_KEY_COUNT])
+{
+    if (events[UI_KEY_UP] || events[UI_KEY_DOWN])
+    {
+        ui_manage_index = ui_manage_index ? 0U : 1U;
+        ui_set_screen(UI_SCREEN_RECORD_MANAGE);
+    }
+    else if (events[UI_KEY_OK])
+    {
+        if (ui_manage_index == 0U)
+        {
+            (void)NavStore_Undo_Selected();
+            ui_manage_notice = 0;
+            ui_set_screen(UI_SCREEN_RECORD_MANAGE);
+        }
+        else
+        {
+            ui_confirm_action = UI_ACTION_NAV_CLEAR;
+            ui_confirm_yes = 0;
+            ui_set_screen(UI_SCREEN_CONFIRM);
+        }
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        if (NavStore_Flush_Selected())
+        {
+            ui_set_screen(UI_SCREEN_GROUP_SELECT);
+        }
     }
 }
 static void ui_handle_monitor(ui_key_event_t events[UI_KEY_COUNT])
@@ -2261,25 +2627,57 @@ static void ui_handle_confirm(ui_key_event_t events[UI_KEY_COUNT])
     }
     else if (events[UI_KEY_OK])
     {
+        ui_confirm_action_t action = ui_confirm_action;
         if (ui_confirm_yes)
         {
-            if (ui_confirm_action == UI_ACTION_SAVE_FLASH) IPC_Save_Params_To_Flash();
-            else if (ui_confirm_action == UI_ACTION_LOAD_FLASH) IPC_Load_Params_From_Flash();
-            else if (ui_confirm_action == UI_ACTION_DEFAULT_PARAMS) ui_restore_default_params();
+            if (action == UI_ACTION_SAVE_FLASH) IPC_Save_Params_To_Flash();
+            else if (action == UI_ACTION_LOAD_FLASH) IPC_Load_Params_From_Flash();
+            else if (action == UI_ACTION_DEFAULT_PARAMS) ui_restore_default_params();
+            else if (action == UI_ACTION_NAV_OVERWRITE)
+            {
+                (void)NavStore_Select_For_View(ui_selected_group);
+                if (NavStore_Clear_Selected() && NavStore_Request_Core0_Load(ui_selected_group, NAV_GROUP_INTENT_COLLECT))
+                {
+                    ui_group_load_pending = (uint8)(UI_GROUP_ACTION_COLLECT + 1U);
+                }
+            }
+            else if (action == UI_ACTION_NAV_CLEAR)
+            {
+                ui_manage_notice = NavStore_Clear_Selected() ? 1U : 0U;
+            }
         }
         ui_confirm_action = UI_ACTION_NONE;
-        ui_set_screen(UI_SCREEN_SYSTEM);
+        if (action == UI_ACTION_NAV_OVERWRITE)
+        {
+            ui_set_screen(UI_SCREEN_GROUP_SELECT);
+        }
+        else if (action == UI_ACTION_NAV_CLEAR)
+        {
+            ui_set_screen(UI_SCREEN_RECORD_MANAGE);
+        }
+        else
+        {
+            ui_set_screen(UI_SCREEN_SYSTEM);
+        }
     }
     else if (events[UI_KEY_BACK])
     {
+        ui_confirm_action_t action = ui_confirm_action;
         ui_confirm_action = UI_ACTION_NONE;
-        ui_set_screen(UI_SCREEN_SYSTEM);
+        if (action == UI_ACTION_NAV_OVERWRITE) ui_set_screen(UI_SCREEN_GROUP_SELECT);
+        else if (action == UI_ACTION_NAV_CLEAR) ui_set_screen(UI_SCREEN_RECORD_MANAGE);
+        else ui_set_screen(UI_SCREEN_SYSTEM);
     }
 }
 
 static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
 {
-    if (events[UI_KEY_BACK] == UI_EVENT_LONG)
+    if (events[UI_KEY_BACK] == UI_EVENT_LONG &&
+        ui_screen != UI_SCREEN_RECORD_COLLECT &&
+        ui_screen != UI_SCREEN_RECORD_PREVIEW &&
+        ui_screen != UI_SCREEN_RECORD_MANAGE &&
+        ui_screen != UI_SCREEN_GROUP_SELECT &&
+        ui_screen != UI_SCREEN_CONFIRM)
     {
         ui_set_screen(UI_SCREEN_HOME);
         return;
@@ -2290,8 +2688,10 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         case UI_SCREEN_HOME:        ui_handle_home(events); break;
         case UI_SCREEN_MODE_SELECT: ui_handle_mode(events); break;
         case UI_SCREEN_MODE_ACTION: ui_handle_mode_action(events); break;
+        case UI_SCREEN_GROUP_SELECT: ui_handle_group_select(events); break;
         case UI_SCREEN_RECORD_COLLECT: ui_handle_record_collect(events); break;
         case UI_SCREEN_RECORD_PREVIEW: ui_handle_record_preview(events); break;
+        case UI_SCREEN_RECORD_MANAGE: ui_handle_record_manage(events); break;
         case UI_SCREEN_MONITOR:     ui_handle_monitor(events); break;
         case UI_SCREEN_PARAM_PAGE:  ui_handle_param_page(events); break;
         case UI_SCREEN_PARAM_SELECT: ui_handle_param_select(events); break;
@@ -2324,11 +2724,17 @@ static void ui_render(void)
         case UI_SCREEN_MODE_ACTION:
             ui_draw_mode_action();
             break;
+        case UI_SCREEN_GROUP_SELECT:
+            ui_draw_group_select();
+            break;
         case UI_SCREEN_RECORD_COLLECT:
             ui_draw_record_collect();
             break;
         case UI_SCREEN_RECORD_PREVIEW:
             ui_draw_record_preview();
+            break;
+        case UI_SCREEN_RECORD_MANAGE:
+            ui_draw_record_manage();
             break;
         case UI_SCREEN_MONITOR:
             if (current_page == 0) show_page_1();

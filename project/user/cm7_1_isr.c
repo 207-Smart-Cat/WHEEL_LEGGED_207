@@ -117,7 +117,7 @@ void pit0_ch16_isr()                    // 定时器通道 16 周期中断服务函数
 void pit0_ch17_isr()                    // 定时器通道 17 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH17);
-     
+    NavStore_Tick50ms();
     IPS200_flag=1;
     
 }

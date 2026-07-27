@@ -63,6 +63,7 @@ void pit0_ch11_isr() // 双核参数同步，10ms
 {
     pit_isr_flag_clear(PIT_CH11);
     IPC_Check_And_Apply_Params_To_Core0();
+    IPC_Nav_Group_Core0_Tick10ms();
 }
 
 void pit0_ch12_isr() // 遥控器控制，重要（10ms）

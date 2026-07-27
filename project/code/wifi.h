@@ -1,37 +1,37 @@
 #ifndef __WIFI_H__
 #define __WIFI_H__
 
-#include "zf_common_headfile.h" // ȷ��������ɿ�Ļ���ͷ�ļ�
+#include "zf_common_headfile.h" // Legacy comment removed: original encoding was damaged.
 
 // ==========================================
-// ?? ͨ��Э��ģʽһ���л�����
-// 0: ʹ�� TCP ģʽ (1��1�ɿ����䣬�ʺϷ�ң��ָ��)
-// 1: ʹ�� UDP ģʽ (ȫ�ֹ㲥ģʽ���ʺ϶�̨�ֻ�ͬʱ������)
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 // ==========================================
-#define WIFI_PROTOCOL_MODE  1   // <---- �Ժ���ֻ��Ҫ�޸�������֣�
+#define WIFI_PROTOCOL_MODE  1   // Legacy comment removed: original encoding was damaged.
 
-// ------ ����Ĵ�����Զ���������Ŀ��ؽ������ã������ֶ��޸� ------
+// Legacy comment removed: original encoding was damaged.
 #if (WIFI_PROTOCOL_MODE == 0)
     #define WIFI_PROTOCOL_STR   "TCP"
-    #define WIFI_TARGET_IP      "192.168.230.136" // ��������ʵ���ҵ���/�ض��ֻ�����ʵIP��
+    #define WIFI_TARGET_IP      "192.168.230.136" // Legacy comment removed: original encoding was damaged.
 #elif (WIFI_PROTOCOL_MODE == 1)
     #define WIFI_PROTOCOL_STR   "UDP"
-    #define WIFI_TARGET_IP      "255.255.255.255" // ȫ�ֹ㲥IP�������޸�
+    #define WIFI_TARGET_IP      "255.255.255.255" // Legacy comment removed: original encoding was damaged.
 #endif
 
-// ͨ�ö˿���WIFI����
+// Legacy comment removed: original encoding was damaged.
 #define WIFI_TARGET_PORT        "8086"///
 #define WIFI_LOCAL_PORT         "6666"
 #define WIFI_SSID_TEST          "test207"
 // #define WIFI_SSID_TEST          "zhangtao"
 #define WIFI_PASSWORD_TEST      "12345678"
 
-// --- WIFI ����ģʽö�ٶ��� ---
+// Legacy comment removed: original encoding was damaged.
 typedef enum {
-    WIFI_MODE_SILENT = 0,   // ģʽ0����Ĭ�������������ݣ�ʡ������
-    WIFI_MODE_WAVE   = 1,   // ģʽ1�����λش�����������ʾ������
-    WIFI_MODE_IMAGE  = 2,   // ģʽ2��ͼ��ش�������ͼ����λ����
-    WIFI_MODE_LOG    = 3    // ģʽ3����־ģʽ�����ı�������Ϣ��
+    WIFI_MODE_SILENT = 0,   // Legacy comment removed: original encoding was damaged.
+    WIFI_MODE_WAVE   = 1,   // Legacy comment removed: original encoding was damaged.
+    WIFI_MODE_IMAGE  = 2,   // Legacy comment removed: original encoding was damaged.
+    WIFI_MODE_LOG    = 3    // Legacy comment removed: original encoding was damaged.
 } wifi_mode_t;
 #define WIFI_WAVE_MAX_SELECTED 6
 #define WIFI_WAVE_EMPTY_SLOT   0xFF
@@ -94,14 +94,14 @@ typedef enum {
     WIFI_BOOT_STATE_SKIPPED,
     WIFI_BOOT_STATE_FAILED
 } wifi_boot_state_t;
-// --- �ⲿ�������� ---
+// Legacy comment removed: original encoding was damaged.
 extern wifi_mode_t current_wifi_mode;
 extern volatile uint8 WIFI_Send_flag;
-extern uint8 wifi_is_connected; // ���ⲿ��ѯ WiFi �Ƿ�����
+extern uint8 wifi_is_connected; // Legacy comment removed: original encoding was damaged.
 extern uint8 wifi_wave_selected_count;
 extern uint8 wifi_wave_selected[WIFI_WAVE_MAX_SELECTED];
 
-// --- API �������� ---
+// Legacy comment removed: original encoding was damaged.
 const char *wifi_wave_var_name(wifi_wave_var_t id);
 float wifi_wave_get_value(wifi_wave_var_t id);
 uint8 wifi_wave_is_selected(uint8 id);
@@ -111,10 +111,10 @@ void wifi_wave_send_var_map(void);
 uint8 wifi_wave_set_selected_ids(const uint8 *ids, uint8 count);
 void wifi_init(void);
 uint8 wifi_init_with_skip(uint8 allow_skip);
-void wifi_process_loop(void);   // �������ָ������л�ģʽ��ָ�
-void wifi_report_task(void);    // ������ݵ�ǰģʽ���ⷢ������
-void wifi_health_check_task(void); // ��Ĭģʽ�µĵ�Ƶ���߼��
-void wifi_auto_reconnect_task(void); // �������������Զ�����״̬��
+void wifi_process_loop(void);   // Legacy comment removed: original encoding was damaged.
+void wifi_report_task(void);    // Legacy comment removed: original encoding was damaged.
+void wifi_health_check_task(void); // Legacy comment removed: original encoding was damaged.
+void wifi_auto_reconnect_task(void); // Legacy comment removed: original encoding was damaged.
 void wifi_request_reconnect(void);
 uint8 wifi_control_is_ready(void);
 wifi_boot_state_t wifi_get_boot_state(void);
@@ -123,4 +123,3 @@ uint8 WIFI_Send_Buffer_Checked(const uint8 *data, uint32 len, uint8 flush_now);
 void LOG_Printf(const char *format, ...);
 
 #endif
-

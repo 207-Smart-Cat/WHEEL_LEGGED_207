@@ -16,19 +16,19 @@
 #define PI 3.141592653589793
 #endif
 #define MAX_DUTY (70) // motor PWM max = 7000
-#define MIN_LEG_LENGTH 0.04 // ��С�Ȳ�����
-#define MAX_LEG_LENGTH 0.1  // ����Ȳ�����?
+#define MIN_LEG_LENGTH 0.04 // Minimum allowed leg length.
+#define MAX_LEG_LENGTH 0.1  // Maximum allowed leg length.
 
-#define RPITCH_ROLL 0.05f //��������Э���� (�������ֵ��������˲����ڸ��½Ƕ�ʱ�����ٵزο���ǰ��ë�̵ļ��ٶȼƶ���)0.05
-#define QPITCH_ROLL 0.05f //��������Э���� (��С���ֵ���������˲��������������ǵ���ʷ���Ի��֣�ʹ������켣��÷ǳ�ƽ��?0.05
+#define RPITCH_ROLL 0.05f // Roll/pitch process noise.
+#define QPITCH_ROLL 0.05f // Roll/pitch measurement noise.
 extern const float servo_alpha;
 
 // ========================================================
-// 1. ����ʱ������������ (�ᱻ IPC ����ʵʱ����)
+// Runtime values. IPC and Flash may update these after startup.
 // ========================================================
-extern float target_velocity;    // Ŀ���ٶ�
-extern float target_angle;       // Ŀ��Ƕ�?
-extern float target_motor_Stand; // Ŀ�����Ƕ�
+extern float target_velocity;    // Target velocity.
+extern float target_angle;       // Target angle.
+extern float target_motor_Stand; // Target motor angle.
 extern float x_current, y_current;
 extern float leg_x_gain, leg_x_limit, leg_x_min_step, leg_x_step_limit;
 extern float jump_burst_pwm, jump_burst_ms, jump_air_retract_y, jump_buffer_y, jump_landing_max_ms;
@@ -47,7 +47,7 @@ extern float vofa_trigger_record, vofa_mode_driver, vofa_mode_map;
 extern float vofa_print_pose_en, vofa_print_pose_period;
 
 // ========================================================
-// 2. ��������ϵͳĬ�ϳ�ʼֵ�������� (���� _init ��׺)
+// Default values used to initialize the control system.
 // ========================================================
 extern const float Q_yaw_init, Q_pr_init, Q_bias_init, R_yaw_init, R_pr_init;
 extern const float Speed_p_init, Speed_i_init, Speed_d_init;
@@ -61,7 +61,7 @@ extern const float Jump_Burst_Pwm_init, Jump_Burst_Ms_init, Jump_Air_Retract_Y_i
 extern const float Air_roll_p_init, Air_roll_i_init, Air_roll_d_init;
 extern const float Direction_p_init, Direction_i_init, Direction_d_init;
 
-// ����������Ƴ�ʼ�?
+// Navigation and magnetometer defaults.
 extern const float Nav_q_v_init, Nav_q_w_init, Nav_q_bias_ax_init, Nav_q_bias_w_init;
 extern const float Nav_r_v_normal_init, Nav_r_v_slip_init, Nav_r_w_normal_init, Nav_r_w_slip_init, Nav_r_gyro_init;
 extern const float Navi_Mode_Driver_init, Navi_Mode_Map_init, Navi_Trigger_Record_init;

@@ -4,8 +4,7 @@
 #include "imu.h"
 
 // ========================================================
-// 1. ����ʱ�������� (�������?IPC ���̸���)
-//��Ҫ������ĳ�ʼֵ���������2��
+// Runtime values. IPC and Flash may overwrite these after startup.
 // ========================================================
 float target_velocity = 0;
 float target_angle = 180.0f;
@@ -17,7 +16,7 @@ float mag_offset_x = -0.080f, mag_offset_y = 0.040f;
 float mag_scale_x = 1.0f, mag_scale_y = 1.0499f;
 
 pid_param_t motor_speed, motor_Stand, motor_direction, motor_gyro, air_roll_pid, motor_leg_pid;
-const float servo_alpha = 0.55f; //һ��ƽ����Խ��Խ����
+const float servo_alpha = 0.55f; // Servo low-pass filter coefficient.
 
 float Speed_p = 0, Speed_i = 0, Speed_d = 0;
 float Angle_p = 0, Angle_i = 0, Angle_d = 0;
@@ -29,8 +28,7 @@ float navi_speed_kp = 0, navi_speed_ki = 0, navi_speed_kd = 0;
 float navi_speed_max = 0, navi_speed_max_step = 0;
 
 // ========================================================
-// 2. ��������ϵͳȫ��Ĭ�ϳ�ʼֵ�ֵ� (���� _init ��׺)
-//������ĳ�ʼ�?// ========================================================
+// Default values used to initialize the control system.
 const float Q_yaw_init = 0.001f, Q_pr_init = 0.003f, Q_bias_init = 0.001f;
 const float R_yaw_init = 0.05f, R_pr_init = 0.05f;
 
@@ -38,7 +36,7 @@ const float Speed_p_init = 0.025f,  Speed_i_init = 0.0f, Speed_d_init = 0.0f;
 const float Angle_p_init = 12.3999f, Angle_i_init = 0.15f,  Angle_d_init = 0.0f;
 const float Gyro_p_init  = 15.0f,   Gyro_i_init  = 0.0f,   Gyro_d_init  = 0.0f;
 
-const float Target_Velocity_init = 0.0f, Target_Angle_init = 0.0f, Target_Motor_Stand_init = 0.0f;
+const float Target_Velocity_init = 0.0f, Target_Angle_init = 0.0f, Target_Motor_Stand_init = 4.0f;
 
 const float Leg_Kp_init = 0.0f,    Leg_Ki_init = 0.0f,    Leg_Kd_init = 0.0f;
 const float X_Current_init = 0.0f, Y_Current_init = 0.04f;
@@ -46,16 +44,16 @@ const float Leg_X_Gain_init = 5.0f, Leg_X_Limit_init = 0.020f, Leg_X_Min_Step_in
 const float Jump_Burst_Pwm_init = 1200.0f, Jump_Burst_Ms_init = 130.0f, Jump_Air_Retract_Y_init = 0.03f, Jump_Buffer_Y_init = 0.05f, Jump_Landing_Max_Ms_init = 600.0f;
 
 const float Air_roll_p_init = 3.0f, Air_roll_i_init = 0.03f, Air_roll_d_init = 0.0015f;
-const float Direction_p_init = 14.93f, Direction_i_init = 0.03f, Direction_d_init = 0.875f;
+const float Direction_p_init = 14.93f, Direction_i_init = 0.012f, Direction_d_init = 0.875f;
 
-// ����������ʼֵ
+// Navigation estimator defaults.
 const float Nav_q_v_init = 2.0f, Nav_q_w_init = 0.0099f;
 const float Nav_q_bias_ax_init = 0.015f, Nav_q_bias_w_init = 0.001f;
 const float Nav_r_v_normal_init = 0.01f, Nav_r_v_slip_init = 0.01f;
 const float Nav_r_w_normal_init = 0.002f, Nav_r_w_slip_init = 0.002f;
 const float Nav_r_gyro_init = 0.01f;
 
-// �������Ʋ�����ʼֵ��Ĭ��ֻ���㶨λ�����ӹ��ٶ�/ת��
+// Navigation mode and command defaults.
 const float Navi_Mode_Driver_init = 0.0f;
 const float Navi_Mode_Map_init = 0.0f;
 const float Navi_Trigger_Record_init = 0.0f;
@@ -65,13 +63,13 @@ const float Navi_Wifi_Cmd_init = 0.0f;
 const float Navi_Wifi_Remote_Type_init = 0.0f;
 const float Navi_Wifi_In_Action_init = 0.0f;
 
-// ����ѭ���ٶȾ��߲��������� -> Ŀ���ٶ�
+// Navigation speed-controller defaults.
 const float Navi_Speed_Kp_init = 220.0f;
 const float Navi_Speed_Ki_init = 0.0f;
 const float Navi_Speed_Kd_init = 20.0f;
-const float Navi_Speed_Max_init = 600.0f;
+const float Navi_Speed_Max_init = 300.0f;
 const float Navi_Speed_MaxStep_init = 12.0f;
 
-// �����Ʋ�����ʼֵ
+// Magnetometer calibration defaults.
 const float Mag_offset_x_init = 10.0f, Mag_offset_y_init = 0.01f;
 const float Mag_scale_x_init = 10.0f, Mag_scale_y_init = 0.01f;

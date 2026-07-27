@@ -44,8 +44,8 @@ float vofa_print_pose_period = 3000.0f; // 默认 3000ms 打印一次
 
 //====================================================全局静态变量定义=======================================================
 //打点专用的后台独立存储区
-static Navi_WayPoint_t record_point_map[NAVI_POINT_MAX]; 
-static uint16_t record_point_count = 0;
+Navi_WayPoint_t record_point_map[NAVI_POINT_MAX];
+uint16_t record_point_count = 0;
 static Navi_WayPoint_t static_point_map[NAVI_POINT_MAX]; 
 static uint16_t static_point_count = 0;
 
@@ -57,7 +57,7 @@ extern IMU_t IMU_data;
 extern uint8_t  is_action_busy ;         // 0:循迹控制         1:动作接管
 
 //====================================================函数声明=============================================
-static void navi_record_update_status(void);
+void navi_record_update_status(void);
 void navi_record_fill_preview(uint16 start, IpcNavRecordPreviewPoint_t *out, uint16 max_count, uint16 *actual_start, uint16 *actual_count);
 static void navi_record_undo_last(void);
 static void navi_speed_profile_reset(void);
@@ -68,7 +68,7 @@ static float navi_update_tracking_velocity(float distance, float stop_threshold,
 static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd);
 static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points);
 
-static void navi_record_update_status(void)
+void navi_record_update_status(void)
 {
     navi_ctrl.record_status.count = (float)record_point_count;
     if (record_point_count == 0)
@@ -149,6 +149,7 @@ static void navi_record_undo_last(void)
         navi_ctrl.origin_set_flag = 0;
     }
     navi_record_update_status();
+    IPC_Nav_Record_Mark_Dirty();
     IPC_LOG_Printf("\r\n>>> [NAVI_RECORD] undo last point, remain %d <<<\r\n", record_point_count);
 }
 
@@ -388,6 +389,7 @@ void navi_auto_record_task(void) {
         navi_ctrl.origin_set_flag = 1;
         
         navi_record_update_status();
+        IPC_Nav_Record_Mark_Dirty();
         IPC_LOG_Printf("\r\n>>> [手动打点] 第1次触发，坐标系原点(Home)已成功建立 <<<\r\n");
     } else {
         uint16_t idx = record_point_count;
@@ -399,6 +401,7 @@ void navi_auto_record_task(void) {
         record_point_map[idx].valid = 1;
         record_point_count++;
         navi_record_update_status();
+        IPC_Nav_Record_Mark_Dirty();
 
         IPC_LOG_Printf(" >>> [手动打点] 记录点[%03d]: X=%s%d.%02d, Y=%s%d.%02d | 类型:%s | 动作指令:%d <<<\r\n",
             idx,
@@ -785,7 +788,7 @@ void task_navigation_control(void) {
 
         case 2: {         
             //拖动到清空地图，就清空，然后就可以直接记录了（无论是否退出状态  2  ）
-            if (navi_ctrl.navi_mode_map == 2 && last_mode_map!=2) {             //清图
+            if (navi_ctrl.navi_mode_map == 2) {             //清图
                 record_point_count = 0;
                 navi_ctrl.origin_set_flag = 0;  // 重新标定原点
                 navi_ctrl.point_total_count = 0;
@@ -793,6 +796,10 @@ void task_navigation_control(void) {
 
                 memset(record_point_map, 0, sizeof(record_point_map));
                 memset(point_map, 0, sizeof(point_map));
+                navi_record_update_status();
+                IPC_Nav_Record_Mark_Dirty();
+                vofa_mode_map = 1.0f;
+                navi_ctrl.navi_mode_map = 1;
                 IPC_LOG_Printf("\r\n============= >>> [地图清空] 后台记录地图已成功清空 <<< =============\r\n");
             }
 

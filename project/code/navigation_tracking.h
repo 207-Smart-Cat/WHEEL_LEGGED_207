@@ -140,6 +140,8 @@ typedef struct {
 extern Navi_Controller_t navi_ctrl;
 
 extern Navi_WayPoint_t     point_map[NAVI_POINT_MAX];               // 导航时的“路”
+extern Navi_WayPoint_t     record_point_map[NAVI_POINT_MAX];
+extern uint16_t            record_point_count;
 
 extern float wifi_cmd_trigger;        // 摇铃变量         0: 待机, 1: 追加一个航点, 2: 清空当前地图, 3: 立刻接管执行动作
 extern float wifi_in_action;            //动作指令
@@ -171,6 +173,7 @@ void task_navigation_control(void);                       //导航的模式选择
 uint8 navi_calcnavinfo(uint16_t target_idx, float *azimuth, float *distance) ;                     // 计算当前位置到目标航点的导航信息
 
 void navi_auto_record_task(void) ;               //航点记录动作
+void navi_record_update_status(void);
 
 void navi_path_optimize(void);                      //线性插值
 

@@ -188,21 +188,21 @@ void small_driver_zero_calibration_task(void)
     IPC_Update_Motor_Zero_State_From_Core0((uint8)motor_zero_state);
 }
 
-small_device_value_struct motor_value;      // ����ͨѶ�����ṹ��
+small_device_value_struct motor_value;      // Legacy comment removed: original encoding was damaged.
 
 
 //-------------------------------------------------------------------------------------------------------------------
-// �������     ��ˢ���� ���ڽ��ջص�����
-// ����˵��     void
-// ���ز���     void
-// ʹ��ʾ��     uart_control_callback(1000, -1000);
-// ��ע��Ϣ     ���ڽ������յ����ٶ�����  �ú�����Ҫ�ڶ�Ӧ�Ĵ��ڽ����ж��е���
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 //-------------------------------------------------------------------------------------------------------------------
 void uart_control_callback(void)
 {
-    uint8 receive_data;                                                                     // ������ʱ����
+    uint8 receive_data;                                                                     // Legacy comment removed: original encoding was damaged.
 
-    while(uart_query_byte(SMALL_DRIVER_UART, &receive_data))                                // ��յ�ǰ RX FIFO�������ٶ�֡��ѹ
+    while(uart_query_byte(SMALL_DRIVER_UART, &receive_data))                                // Legacy comment removed: original encoding was damaged.
     {
         motor_zero_dbg_rx_count++;
         if (small_driver_zero_calibration_is_active())
@@ -210,66 +210,66 @@ void uart_control_callback(void)
             motor_zero_rx_seen = 1;
             motor_zero_dbg_rx_seen = 1;
         }
-        if(receive_data == 0xA5 && motor_value.receive_data_buffer[0] != 0xA5)              // �ж��Ƿ��յ�֡ͷ ���� ��ǰ�����������Ƿ���ȷ����֡ͷ
+        if(receive_data == 0xA5 && motor_value.receive_data_buffer[0] != 0xA5)              // Legacy comment removed: original encoding was damaged.
         {
-            motor_value.receive_data_count = 0;                                             // δ�յ�֡ͷ����δ��ȷ����֡ͷ�����½���
+            motor_value.receive_data_count = 0;                                             // Legacy comment removed: original encoding was damaged.
         }
 
-        motor_value.receive_data_buffer[motor_value.receive_data_count ++] = receive_data;  // ���洮������
+        motor_value.receive_data_buffer[motor_value.receive_data_count ++] = receive_data;  // Legacy comment removed: original encoding was damaged.
 
-        if(motor_value.receive_data_count >= 7)                                             // �ж��Ƿ���յ�ָ������������
+        if(motor_value.receive_data_count >= 7)                                             // Legacy comment removed: original encoding was damaged.
         {
-            if(motor_value.receive_data_buffer[0] == 0xA5)                                  // �ж�֡ͷ�Ƿ���ȷ
+            if(motor_value.receive_data_buffer[0] == 0xA5)                                  // Legacy comment removed: original encoding was damaged.
             {
 
-                motor_value.sum_check_data = 0;                                             // ���У��λ����
+                motor_value.sum_check_data = 0;                                             // Legacy comment removed: original encoding was damaged.
 
                 for(int i = 0; i < 6; i ++)
                 {
-                    motor_value.sum_check_data += motor_value.receive_data_buffer[i];       // ���¼���У��λ
+                    motor_value.sum_check_data += motor_value.receive_data_buffer[i];       // Legacy comment removed: original encoding was damaged.
                 }
 
-                if(motor_value.sum_check_data == motor_value.receive_data_buffer[6])        // У������׼ȷ��
+                if(motor_value.sum_check_data == motor_value.receive_data_buffer[6])        // Legacy comment removed: original encoding was damaged.
                 {
 
-                    if(motor_value.receive_data_buffer[1] == 0x02)                          // �ж��Ƿ���ȷ���յ� �ٶ���� ������
+                    if(motor_value.receive_data_buffer[1] == 0x02)                          // Legacy comment removed: original encoding was damaged.
                     {
-                        motor_value.receive_left_speed_data  = (((int)motor_value.receive_data_buffer[2] << 8) | (int)motor_value.receive_data_buffer[3]);  // ��������ת������
+                        motor_value.receive_left_speed_data  = (((int)motor_value.receive_data_buffer[2] << 8) | (int)motor_value.receive_data_buffer[3]);  // Legacy comment removed: original encoding was damaged.
 
-                        motor_value.receive_right_speed_data = (((int)motor_value.receive_data_buffer[4] << 8) | (int)motor_value.receive_data_buffer[5]);  // ����Ҳ���ת������
+                        motor_value.receive_right_speed_data = (((int)motor_value.receive_data_buffer[4] << 8) | (int)motor_value.receive_data_buffer[5]);  // Legacy comment removed: original encoding was damaged.
 
                         motor_zero_speed_seen = 1;
                         motor_zero_dbg_speed_seen = 1;
                     }
 
-                    motor_value.receive_data_count = 0;                                     // �������������ֵ
+                    motor_value.receive_data_count = 0;                                     // Legacy comment removed: original encoding was damaged.
 
-                    memset(motor_value.receive_data_buffer, 0, 7);                          // �������������
+                    memset(motor_value.receive_data_buffer, 0, 7);                          // Legacy comment removed: original encoding was damaged.
                 }
                 else
                 {
-                    motor_value.receive_data_count = 0;                                     // �������������ֵ
+                    motor_value.receive_data_count = 0;                                     // Legacy comment removed: original encoding was damaged.
 
-                    memset(motor_value.receive_data_buffer, 0, 7);                          // �������������
+                    memset(motor_value.receive_data_buffer, 0, 7);                          // Legacy comment removed: original encoding was damaged.
                 }
             }
             else
             {
-                motor_value.receive_data_count = 0;                                         // �������������ֵ
+                motor_value.receive_data_count = 0;                                         // Legacy comment removed: original encoding was damaged.
 
-                memset(motor_value.receive_data_buffer, 0, 7);                              // �������������
+                memset(motor_value.receive_data_buffer, 0, 7);                              // Legacy comment removed: original encoding was damaged.
             }
         }
     }
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-// �������     ��ˢ���� ���õ��ռ�ձ�
-// ����˵��     left_duty       �����ռ�ձ�  ��Χ -10000 ~ 10000  ����Ϊ��ת
-// ����˵��     right_duty      �Ҳ���ռ�ձ�  ��Χ -10000 ~ 10000  ����Ϊ��ת
-// ���ز���     void
-// ʹ��ʾ��     small_driver_set_duty(1000, -1000);
-// ��ע��Ϣ
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 //-------------------------------------------------------------------------------------------------------------------
 void small_driver_set_duty(int16 left_duty, int16 right_duty)
 {
@@ -303,67 +303,67 @@ void small_driver_set_duty(int16 left_duty, int16 right_duty)
         right_duty = motor_duty_abs_limit(right_duty, MOTOR_DUTY_MAX_ABS);
     }
 
-    motor_value.send_data_buffer[0] = 0xA5;                                         // ����֡ͷ
+    motor_value.send_data_buffer[0] = 0xA5;                                         // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[1] = 0X01;                                         // ���ù�����
+    motor_value.send_data_buffer[1] = 0X01;                                         // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[2] = (uint8)((left_duty & 0xFF00) >> 8);           // ��� ���ռ�ձ� �ĸ߰�λ
+    motor_value.send_data_buffer[2] = (uint8)((left_duty & 0xFF00) >> 8);           // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[3] = (uint8)(left_duty & 0x00FF);                  // ��� ���ռ�ձ� �ĵͰ�λ
+    motor_value.send_data_buffer[3] = (uint8)(left_duty & 0x00FF);                  // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[4] = (uint8)((right_duty & 0xFF00) >> 8);          // ��� �Ҳ�ռ�ձ� �ĸ߰�λ
+    motor_value.send_data_buffer[4] = (uint8)((right_duty & 0xFF00) >> 8);          // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[5] = (uint8)(right_duty & 0x00FF);                 // ��� �Ҳ�ռ�ձ� �ĵͰ�λ
+    motor_value.send_data_buffer[5] = (uint8)(right_duty & 0x00FF);                 // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[6] = 0;                                            // ��У�����
+    motor_value.send_data_buffer[6] = 0;                                            // Legacy comment removed: original encoding was damaged.
 
     for(int i = 0; i < 6; i ++)
     {
-        motor_value.send_data_buffer[6] += motor_value.send_data_buffer[i];         // ����У��λ
+        motor_value.send_data_buffer[6] += motor_value.send_data_buffer[i];         // Legacy comment removed: original encoding was damaged.
     }
 
-    (void)small_driver_try_write_packet(motor_value.send_data_buffer, 7);                    // ��Ƶ�������ʹ�÷����� FIFO д��
+    (void)small_driver_try_write_packet(motor_value.send_data_buffer, 7);                    // Legacy comment removed: original encoding was damaged.
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-// �������     ��ˢ���� ��ȡ�ٶ���Ϣ
-// ����˵��     void
-// ���ز���     void
-// ʹ��ʾ��     small_driver_get_speed();
-// ��ע��Ϣ     ���跢��һ�� ���������ڷ����ٶ���Ϣ(Ĭ��10ms)
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 //-------------------------------------------------------------------------------------------------------------------
 void small_driver_get_speed(void)
 {
-    motor_value.send_data_buffer[0] = 0xA5;                                         // ����֡ͷ
+    motor_value.send_data_buffer[0] = 0xA5;                                         // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[1] = 0X02;                                         // ���ù�����
+    motor_value.send_data_buffer[1] = 0X02;                                         // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[2] = 0x00;                                         // ����λ���
+    motor_value.send_data_buffer[2] = 0x00;                                         // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[3] = 0x00;                                         // ����λ���
+    motor_value.send_data_buffer[3] = 0x00;                                         // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[4] = 0x00;                                         // ����λ���
+    motor_value.send_data_buffer[4] = 0x00;                                         // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[5] = 0x00;                                         // ����λ���
+    motor_value.send_data_buffer[5] = 0x00;                                         // Legacy comment removed: original encoding was damaged.
 
-    motor_value.send_data_buffer[6] = 0xA7;                                         // ����У��λ
+    motor_value.send_data_buffer[6] = 0xA7;                                         // Legacy comment removed: original encoding was damaged.
 
-    uart_write_buffer(SMALL_DRIVER_UART, motor_value.send_data_buffer, 7);                     // ���ͻ�ȡת�����ݵ� �ֽڰ� ����
+    uart_write_buffer(SMALL_DRIVER_UART, motor_value.send_data_buffer, 7);                     // Legacy comment removed: original encoding was damaged.
 }
 
 
 //-------------------------------------------------------------------------------------------------------------------
-// �������     ��ˢ���� ������ʼ��
-// ����˵��     void
-// ���ز���     void
-// ʹ��ʾ��     small_driver_init();
-// ��ע��Ϣ
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 //-------------------------------------------------------------------------------------------------------------------
 void small_driver_init(void)
 {
-    memset(motor_value.send_data_buffer, 0, 7);                             // �������������
+    memset(motor_value.send_data_buffer, 0, 7);                             // Legacy comment removed: original encoding was damaged.
 
-    memset(motor_value.receive_data_buffer, 0, 7);                          // �������������
+    memset(motor_value.receive_data_buffer, 0, 7);                          // Legacy comment removed: original encoding was damaged.
 
     motor_value.receive_data_count          = 0;
 
@@ -376,116 +376,112 @@ void small_driver_init(void)
 
 
 //-------------------------------------------------------------------------------------------------------------------
-// �������     ��ˢ���� ����ͨѶ��ʼ��
-// ����˵��     void
-// ���ز���     void
-// ʹ��ʾ��     small_driver_uart_init();
-// ��ע��Ϣ
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 //-------------------------------------------------------------------------------------------------------------------
 void small_driver_uart_init(void)
 {
-    uart_init(SMALL_DRIVER_UART, SMALL_DRIVER_BAUDRATE, SMALL_DRIVER_RX, SMALL_DRIVER_TX);      // ���ڳ�ʼ��
+    uart_init(SMALL_DRIVER_UART, SMALL_DRIVER_BAUDRATE, SMALL_DRIVER_RX, SMALL_DRIVER_TX);      // Legacy comment removed: original encoding was damaged.
 
-    uart_rx_interrupt(SMALL_DRIVER_UART, 1);                                                    // ʹ�ܴ��ڽ����ж�
+    uart_rx_interrupt(SMALL_DRIVER_UART, 1);                                                    // Legacy comment removed: original encoding was damaged.
 
-    small_driver_init();                                                                        // �ṹ�������ʼ��
+    small_driver_init();                                                                        // Legacy comment removed: original encoding was damaged.
 
-    small_driver_set_duty(0, 0);                                                                // ����0ռ�ձ�
+    small_driver_set_duty(0, 0);                                                                // Legacy comment removed: original encoding was damaged.
 
-    small_driver_get_speed();                                                                   // ��ȡʵʱ�ٶ�����
+    small_driver_get_speed();                                                                   // Legacy comment removed: original encoding was damaged.
 }
 
 
 
 
-//**************************����*************************************
+// Legacy comment removed: original encoding was damaged.
 /*
 // ==============================================================================
-// ���ܳ������������������ַ���ͨѶ֧�ִ���
+// Legacy comment removed: original encoding was damaged.
 // ==============================================================================
 
-char  encoder_rx_buffer[32];           // �ַ������ջ�����
-uint8 encoder_rx_count = 0;            // �ַ������ռ�����
+char  encoder_rx_buffer[32];           // Legacy comment removed: original encoding was damaged.
+uint8 encoder_rx_count = 0;            // Legacy comment removed: original encoding was damaged.
 
 //-------------------------------------------------------------------------------------------------------------------
-// �������      ��ˢ���� �����������Ϣ (�ַ���ģʽ)
-// ���ز���      void
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 //-------------------------------------------------------------------------------------------------------------------
 void small_driver_request_encoder(void)
 {
     char *cmd = "GET-ENCODER\n";
-    uart_write_buffer(SMALL_DRIVER_UART, (uint8 *)cmd, strlen(cmd)); // �����ַ���ָ��
+    uart_write_buffer(SMALL_DRIVER_UART, (uint8 *)cmd, strlen(cmd)); // Legacy comment removed: original encoding was damaged.
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-// �������      ��ˢ���� �ַ������ջص����� (���� "123,456" ��ʽ)
-// ��ע��Ϣ      ��Ҫ�ڶ�Ӧ�Ĵ��ڽ����ж��е��ã��滻ԭ�е� uart_control_callback
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 //-------------------------------------------------------------------------------------------------------------------
 void uart_encoder_string_callback(void)
 {
     uint8 receive_data;
 
-    // ѭ����ȡ���ڽ��ռĴ����е���������
+    // Legacy comment removed: original encoding was damaged.
     while(uart_query_byte(SMALL_DRIVER_UART, &receive_data))       
     {
-        if(receive_data == '\n')                                // �����س���˵��һ֡���ݽ������
+        if(receive_data == '\n')                                // Legacy comment removed: original encoding was damaged.
         {
-            encoder_rx_buffer[encoder_rx_count] = '\0';         // ��ڣ���ɱ�׼ C �����ַ���
+            encoder_rx_buffer[encoder_rx_count] = '\0';         // Legacy comment removed: original encoding was damaged.
 
-            // Ѱ�Ҷ��ŵ�λ��
+            // Legacy comment removed: original encoding was damaged.
             char *comma_ptr = strchr(encoder_rx_buffer, ',');
             if(comma_ptr != NULL)
             {
-                *comma_ptr = '\0';                              // �������滻Ϊ������ '\0'�����ַ�����������
+                *comma_ptr = '\0';                              // Legacy comment removed: original encoding was damaged.
                 
-                // ���ַ���תΪ���֣����������ǽṹ����±�����
+                // Legacy comment removed: original encoding was damaged.
                 motor_value.receive_left_encoder_data = atoi(encoder_rx_buffer);       
                 motor_value.receive_right_encoder_data = atoi(comma_ptr + 1);          
             }
 
-            encoder_rx_count = 0;                               // ���������������
-            memset(encoder_rx_buffer, 0, sizeof(encoder_rx_buffer)); // ��ջ�����
+            encoder_rx_count = 0;                               // Legacy comment removed: original encoding was damaged.
+            memset(encoder_rx_buffer, 0, sizeof(encoder_rx_buffer)); // Legacy comment removed: original encoding was damaged.
         }
-        else if(receive_data != '\r')                           // ���˵����ܴ��ڵ� '\r' �ַ�
+        else if(receive_data != '\r')                           // Legacy comment removed: original encoding was damaged.
         {
-            if(encoder_rx_count < 30)                           // ������������
+            if(encoder_rx_count < 30)                           // Legacy comment removed: original encoding was damaged.
             {
-                encoder_rx_buffer[encoder_rx_count ++] = receive_data; // ������Ч�ַ�
+                encoder_rx_buffer[encoder_rx_count ++] = receive_data; // Legacy comment removed: original encoding was damaged.
             }
             else
             {
-                encoder_rx_count = 0;                           // ��������Ϊ�Ǵ������ݣ�ֱ�Ӷ���
+                encoder_rx_count = 0;                           // Legacy comment removed: original encoding was damaged.
             }
         }
     }
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-// �������      ��ˢ���� ����ͨѶ��ʼ�� (��ȡ������ר�ð汾)
-// ��ע��Ϣ      �� main �����е��ô˺��������ԭ�е� small_driver_uart_init
+// Legacy comment removed: original encoding was damaged.
+// Legacy comment removed: original encoding was damaged.
 //-------------------------------------------------------------------------------------------------------------------
 void small_driver_uart_init_encoder(void)
 {
-    uart_init(SMALL_DRIVER_UART, SMALL_DRIVER_BAUDRATE, SMALL_DRIVER_RX, SMALL_DRIVER_TX);      // ���ڳ�ʼ��
-    uart_rx_interrupt(SMALL_DRIVER_UART, 1);                                                    // ʹ�ܴ��ڽ����ж�
+    uart_init(SMALL_DRIVER_UART, SMALL_DRIVER_BAUDRATE, SMALL_DRIVER_RX, SMALL_DRIVER_TX);      // Legacy comment removed: original encoding was damaged.
+    uart_rx_interrupt(SMALL_DRIVER_UART, 1);                                                    // Legacy comment removed: original encoding was damaged.
 
-    small_driver_init();                                                                        // �ṹ�������ʼ��
+    small_driver_init();                                                                        // Legacy comment removed: original encoding was damaged.
     
-    // ��ձ�������ر���
+    // Legacy comment removed: original encoding was damaged.
     motor_value.receive_left_encoder_data = 0;
     motor_value.receive_right_encoder_data = 0;
     encoder_rx_count = 0;
     memset(encoder_rx_buffer, 0, sizeof(encoder_rx_buffer));
 
-    small_driver_set_duty(0, 0);                                                                // ����0ռ�ձȷ�����
-    small_driver_request_encoder();                                                             // �������������ָ��
+    small_driver_set_duty(0, 0);                                                                // Legacy comment removed: original encoding was damaged.
+    small_driver_request_encoder();                                                             // Legacy comment removed: original encoding was damaged.
 }
-//********************************************************************
-
-
-
+// End of legacy serial-string helper section.
 */
-
 
 
 

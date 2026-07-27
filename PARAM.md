@@ -25,7 +25,7 @@ Source: `project/code/param.c`
 | `Air_roll_i_init` | `0.03f` | Air roll control I |
 | `Air_roll_d_init` | `0.0015f` | Air roll control D |
 | `Direction_p_init` | `14.93f` | Yaw/direction control P |
-| `Direction_i_init` | `0.03f` | Yaw/direction control I |
+| `Direction_i_init` | `0.012f` | Yaw/direction control I |
 | `Direction_d_init` | `0.875f` | Yaw/direction control D |
 | `Leg_Kp_init` | `0.0f` | Leg-height PID P |
 | `Leg_Ki_init` | `0.0f` | Leg-height PID I |
@@ -62,7 +62,7 @@ Source: `project/code/param.c`
 | --- | ---: | ---: |
 | `target_velocity` | `0` | `Target_Velocity_init = 0.0f` |
 | `target_angle` | `180.0f` | `Target_Angle_init = 0.0f` |
-| `target_motor_Stand` | `0` | `Target_Motor_Stand_init = 0.0f` |
+| `target_motor_Stand` | `0` | `Target_Motor_Stand_init = 4.0f` |
 | `x_current` | `0` | `X_Current_init = 0.0f` |
 | `y_current` | `0.04` | `Y_Current_init = 0.04f` |
 | `servo_alpha` | `0.55f` | Fixed const |
@@ -155,7 +155,7 @@ Sources: `project/code/navigation_data_handling.h`, `project/code/navigation_tra
 | `Navi_Speed_Kp_init` | `220.0f` | Navigation speed planner P |
 | `Navi_Speed_Ki_init` | `0.0f` | Navigation speed planner I |
 | `Navi_Speed_Kd_init` | `20.0f` | Navigation speed planner D |
-| `Navi_Speed_Max_init` | `600.0f` | Navigation speed max |
+| `Navi_Speed_Max_init` | `300.0f` | Navigation speed max |
 | `Navi_Speed_MaxStep_init` | `12.0f` | Navigation speed max step |
 
 ## Turn, Anti-Stall, And Misc Control Limits
