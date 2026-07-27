@@ -138,6 +138,11 @@ typedef struct {
     uint8 nav_store_busy;
     uint8 nav_store_reserved[2];
     uint32 runtime_module_enable_mask;
+    uint32 vision_frame_seq;
+    float vision_angle_offset_deg;
+    int16 vision_lane_error_px;
+    uint8 vision_enabled;
+    uint8 vision_valid;
 } CoreB_Command_t;
 
 // ==========================================================
@@ -168,6 +173,7 @@ void IPC_Push_Status_From_CoreA(void);
 void IPC_Pull_Status_To_CoreB(void);
 void IPC_Check_And_Apply_Params_To_Core0(void);
 void IPC_Update_Wifi_Status_From_CoreB(uint8 connected);
+void IPC_Update_Vision_Command_CoreB(uint8 enabled, uint8 valid, uint32 frame_seq, int16 lane_error_px, float angle_offset_deg);
 uint8 IPC_CoreB_Wifi_Is_Connected(void); // Core 0 专用更新函数
 uint64_t IPC_Get_All_Param_Mask(void);
 void IPC_Request_Param_Update(ParamID_e id, float value);

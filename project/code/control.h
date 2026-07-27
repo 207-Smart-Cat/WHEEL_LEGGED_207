@@ -38,5 +38,6 @@ void pid_low_init(void);
 float leg_sensor_filter(float new_val, bool is_first_run);
 float max(float a, float b);
 float min(float a, float b);
+void Turn_Reset(void);
 
 #endif /* CODE_ENGINE_H_ */

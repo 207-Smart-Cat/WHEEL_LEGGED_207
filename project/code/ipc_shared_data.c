@@ -281,6 +281,19 @@ void IPC_Update_Wifi_Status_From_CoreB(uint8 connected) {
     Runtime_Set_Wifi_Connected(connected);
 }
 
+void IPC_Update_Vision_Command_CoreB(uint8 enabled, uint8 valid, uint32 frame_seq,
+                                     int16 lane_error_px, float angle_offset_deg)
+{
+    __disable_irq();
+    core_b_cmd.vision_enabled = enabled ? 1U : 0U;
+    core_b_cmd.vision_valid = valid ? 1U : 0U;
+    core_b_cmd.vision_frame_seq = frame_seq;
+    core_b_cmd.vision_lane_error_px = lane_error_px;
+    core_b_cmd.vision_angle_offset_deg = angle_offset_deg;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    __enable_irq();
+}
+
 uint8 IPC_CoreB_Wifi_Is_Connected(void) {
     return g_runtime_status.wifi_connected;
 }

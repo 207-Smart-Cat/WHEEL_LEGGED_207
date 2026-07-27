@@ -22,6 +22,8 @@ typedef struct
     int16 lane_center_x;
     int16 lane_error_px;
     int16 heading_error_px;
+    float vision_angle_raw_deg;
+    float vision_angle_offset_deg;
     uint16 exposure_time;
     uint8 threshold;
     uint8 valid_rows;

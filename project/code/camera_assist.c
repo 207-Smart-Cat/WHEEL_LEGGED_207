@@ -1,4 +1,5 @@
 #include "camera_assist.h"
+#include "vision_control.h"
 
 #include "cy_device_headers.h"
 #include "zf_device_mt9v03x.h"
@@ -15,6 +16,7 @@
 #define CAMERA_ASSIST_DARK_OFFSET       (28U)
 
 CameraAssistStatus_t camera_assist_status;
+static VisionControlState_t camera_vision_control;
 
 static uint8 camera_frame_snapshot[MT9V03X_H][MT9V03X_W];
 static uint32 camera_histogram[256];
@@ -28,6 +30,7 @@ static void camera_reset_status(void)
     camera_assist_status.lane_center_x = CAMERA_ASSIST_TARGET_X;
     camera_assist_status.mode = CAMERA_ASSIST_MODE_CENTER;
     camera_assist_status.exposure_time = MT9V03X_EXP_TIME_DEF;
+    vision_control_reset(&camera_vision_control);
 }
 
 static uint8 camera_capture_snapshot(void)
@@ -272,11 +275,17 @@ static void camera_update_lane(uint8 threshold)
             camera_assist_status.heading_error_px = 0;
         }
         camera_assist_status.lane_valid = 1;
+        camera_assist_status.vision_angle_offset_deg =
+            vision_control_update(&camera_vision_control, camera_assist_status.lane_error_px);
+        camera_assist_status.vision_angle_raw_deg = camera_vision_control.raw_offset_deg;
     }
     else
     {
         camera_assist_status.lane_valid = 0;
         camera_assist_status.heading_error_px = 0;
+        vision_control_reset(&camera_vision_control);
+        camera_assist_status.vision_angle_raw_deg = 0.0f;
+        camera_assist_status.vision_angle_offset_deg = 0.0f;
     }
 }
 

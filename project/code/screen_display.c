@@ -1171,6 +1171,16 @@ static uint8_t ui_handle_emergency_combo(void)
 }
 static void ui_set_screen(ui_screen_t screen)
 {
+#if defined(CY_CORE_CM7_1)
+    if (screen == UI_SCREEN_VISION)
+    {
+        IPC_Update_Vision_Command_CoreB(1U, 0U, 0U, 0, 0.0f);
+    }
+    else if (ui_screen == UI_SCREEN_VISION)
+    {
+        IPC_Update_Vision_Command_CoreB(0U, 0U, 0U, 0, 0.0f);
+    }
+#endif
     ui_screen = screen;
     ips200_clear();
     force_ui_refresh = 1;
@@ -1445,6 +1455,11 @@ static void ui_draw_vision(void)
     }
 
     CameraAssist_ProcessFrame();
+    IPC_Update_Vision_Command_CoreB(1U,
+                                    camera_assist_status.lane_valid,
+                                    camera_assist_status.frame_count,
+                                    camera_assist_status.lane_error_px,
+                                    camera_assist_status.vision_angle_offset_deg);
     CameraTestDisplay_Render();
 }
 

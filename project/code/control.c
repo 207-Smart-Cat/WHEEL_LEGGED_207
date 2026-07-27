@@ -10,6 +10,7 @@
 #include "vehicle_supervisor.h"
 
 #define BALANCE_CONTROL_RUN_LEG_CONTROL 1
+#define VISION_FRAME_TIMEOUT_TICKS 150U  // balance loop runs at 1 ms.
 
 // 全局变量
 extern float target_velocity;      // 目标速度
@@ -50,6 +51,10 @@ float out_gyro_l  = 0, out_gyro_r  = 0;
 // 其他变量
 static float balance_last_error = 0.0f;
 static float gyro_last_error = 0.0f;
+static float g_turn_yaw_integral = 0.0f;
+static uint8_t g_vision_last_enabled = 0U;
+static uint32_t g_vision_last_frame_seq = 0U;
+static uint8_t g_vision_stale_ticks = 0U;
 extern IMU_t IMU_data;            // IMU数据
 float roll;              // 倾斜角度
 int engine_change = 600; // 发动机变化量
@@ -656,22 +661,21 @@ float Turn(float current_yaw, float target_yaw)
     }
 
     {
-        static float yaw_integral = 0.0f;
         const float turn_i_output_limit = 450.0f;
         const float turn_i_state_limit = 15000.0f;
         float integral_output;
 
         if (yaw_error == 0.0f)
         {
-            yaw_integral *= 0.995f;
+            g_turn_yaw_integral *= 0.995f;
         }
         else
         {
-            yaw_integral += yaw_error;
-            yaw_integral = constrain_float(yaw_integral, -turn_i_state_limit, turn_i_state_limit);
+            g_turn_yaw_integral += yaw_error;
+            g_turn_yaw_integral = constrain_float(g_turn_yaw_integral, -turn_i_state_limit, turn_i_state_limit);
         }
 
-        integral_output = constrain_float(Direction_i * yaw_integral,
+        integral_output = constrain_float(Direction_i * g_turn_yaw_integral,
                                           -turn_i_output_limit,
                                           turn_i_output_limit);
         control_output = Direction_p * yaw_error + integral_output - Direction_d * yaw_rate;
@@ -679,6 +683,54 @@ float Turn(float current_yaw, float target_yaw)
     control_output = constrain_float(control_output, -2200.0f, 2200.0f);
 
     return control_output;
+}
+
+void Turn_Reset(void)
+{
+    g_turn_yaw_integral = 0.0f;
+}
+
+static float vision_wrap_angle(float angle)
+{
+    while (angle > 180.0f) angle -= 360.0f;
+    while (angle < -180.0f) angle += 360.0f;
+    return angle;
+}
+
+static void vision_mode_apply(void)
+{
+    uint8_t enabled = core_b_cmd.vision_enabled;
+    uint8_t valid = core_b_cmd.vision_valid;
+
+    if (!enabled)
+    {
+        if (g_vision_last_enabled) Turn_Reset();
+        g_vision_last_enabled = 0U;
+        g_vision_stale_ticks = 0U;
+        return;
+    }
+
+    if (core_b_cmd.vision_frame_seq != g_vision_last_frame_seq)
+    {
+        g_vision_last_frame_seq = core_b_cmd.vision_frame_seq;
+        g_vision_stale_ticks = 0U;
+    }
+    else if (g_vision_stale_ticks < 255U)
+    {
+        g_vision_stale_ticks++;
+    }
+
+    g_vision_last_enabled = 1U;
+    target_velocity = 50.0f;
+    if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)
+    {
+        target_angle = vision_wrap_angle(IMU_data.filter_result.yaw + core_b_cmd.vision_angle_offset_deg);
+    }
+    else
+    {
+        target_angle = IMU_data.filter_result.yaw;
+        Turn_Reset();
+    }
 }
 
 // Balance control main function.
@@ -721,6 +773,8 @@ void balance_control()
         target_angle = IMU_data.filter_result.yaw;
         First_angle = false;
     }
+
+    vision_mode_apply();
 
     roll = IMU_data.filter_result.roll;
 

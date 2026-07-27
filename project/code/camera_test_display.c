@@ -1,6 +1,7 @@
 #include "camera_test_display.h"
 
 #include "camera_assist.h"
+#include "ipc_shared_data.h"
 #include "zf_common_font.h"
 #include "zf_device_ips200.h"
 #include "zf_device_mt9v03x.h"
@@ -85,17 +86,18 @@ void CameraTestDisplay_DrawStatusText(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 20U, line);
     sprintf(line, "Center: %3d px     ", status->lane_center_x);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 40U, line);
-    sprintf(line, "Error : %3d px     ", status->lane_error_px);
+    sprintf(line, "ErrPx : %3d       ", status->lane_error_px);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 60U, line);
-    sprintf(line, "Head  : %3d px     ", status->heading_error_px);
+    sprintf(line, "MapDeg:%6.2f     ", status->vision_angle_raw_deg);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 80U, line);
-    sprintf(line, "Rows:%3u Thr:%3u   ", status->valid_rows, status->threshold);
+    sprintf(line, "VisDeg:%6.2f     ", status->vision_angle_offset_deg);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
-    sprintf(line, "Dark  : %3u %%      ", status->dark_ratio_pct);
+    sprintf(line, "Yaw:%7.2f T:%7.2f", core_a_status.yaw, core_a_status.target_angle_status);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
-    sprintf(line, "Exp: %4u           ", status->exposure_time);
+    sprintf(line, "TurnPWM:%7.1f", core_a_status.pid_out_turn);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
-    camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, "Y:center R:lane G:L M:R");
+    sprintf(line, "Rows:%3u %s", status->valid_rows, status->lane_valid ? "ACTIVE" : "SEARCH");
+    camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
 }
 
 static void camera_test_show_info(uint16 y, const char *text)
@@ -198,15 +200,16 @@ void CameraTestDisplay_Render(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 20U, line);
     sprintf(line, "Center: %3d px     ", status->lane_center_x);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 40U, line);
-    sprintf(line, "Error : %3d px     ", status->lane_error_px);
+    sprintf(line, "ErrPx : %3d       ", status->lane_error_px);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 60U, line);
-    sprintf(line, "Head  : %3d px     ", status->heading_error_px);
+    sprintf(line, "MapDeg:%6.2f     ", status->vision_angle_raw_deg);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 80U, line);
-    sprintf(line, "Rows:%3u Thr:%3u   ", status->valid_rows, status->threshold);
+    sprintf(line, "VisDeg:%6.2f     ", status->vision_angle_offset_deg);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
-    sprintf(line, "Dark  : %3u %%      ", status->dark_ratio_pct);
+    sprintf(line, "Yaw:%7.2f T:%7.2f", core_a_status.yaw, core_a_status.target_angle_status);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
-    sprintf(line, "Exp:%4u  UP:- DOWN:+", status->exposure_time);
+    sprintf(line, "TurnPWM:%7.1f", core_a_status.pid_out_turn);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
-    camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, "BACK menu Y:center R:lane");
+    sprintf(line, "Rows:%3u %s", status->valid_rows, status->lane_valid ? "ACTIVE" : "SEARCH");
+    camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
 }
