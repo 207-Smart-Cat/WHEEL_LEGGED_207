@@ -7,6 +7,7 @@
 #include "small_driver_uart_control.h"
 #include "vehicle_supervisor.h"
 #include "navigation_touch_logic.h"
+#include "runtime_status.h"
 
 // ==================== 动作状态机实例 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -244,6 +245,7 @@ static void navi_action_remote_jump_clear(void)
 // 全局路径预处理：提取需要动作接管的特殊航点
 // ==============================================================================
 void navi_parse_global_path(void) {
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
     action_seq.total_count = 0;
     action_seq.current_ptr = 0;
     action_fsm.state = FSM_IDLE;
@@ -263,7 +265,12 @@ void navi_parse_global_path(void) {
     jump_engine_suspend = 0;
 
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
-        if (point_map[i].type == WP_TYPE_MINE_SWEEP ||  point_map[i].type == WP_TYPE_JUMP)  {
+        // Course 3 bridge and stair points are semantic markers only in this phase.
+        // They stay out of action_seq so tracking advances them normally. When their
+        // sub-FSMs are implemented, enqueue both types and complete via
+        // action_done_pending/action_done_idx.
+        if (point_map[i].type == WP_TYPE_MINE_SWEEP ||
+            (point_map[i].type == WP_TYPE_JUMP && mode != VEHICLE_MODE_COURSE_3))  {
             if (point_map[i].type == WP_TYPE_JUMP) {
                 point_map[i].action_cmd = NAVI_JUMP_ACTION_MODE;
             }

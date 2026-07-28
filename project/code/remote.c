@@ -268,6 +268,23 @@ static WayPoint_Type Remote_GetRecordPointType(void)
         }
     }
 
+    // Course 3: CH4 low/mid/high records normal/bridge/stair waypoints.
+    // CH6 still triggers the record, and the navigation layer creates HOME first.
+    if (mode == VEHICLE_MODE_COURSE_3)
+    {
+        int32_t ch4 = Remote_GetChannelData(4);
+
+        if (ch4 < REMOTE_CH4_MID_THRESHOLD)
+        {
+            return WP_TYPE_NORMAL;
+        }
+        if (ch4 < REMOTE_CH4_HIGH_THRESHOLD)
+        {
+            return WP_TYPE_BRIDGE;
+        }
+        return WP_TYPE_JUMP;
+    }
+
     return WP_TYPE_NORMAL;
 }
 
