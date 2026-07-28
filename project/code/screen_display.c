@@ -2836,6 +2836,7 @@ void screen_display_process(void)
         ui_key_event_t events[UI_KEY_COUNT];
         IPS200_flag = 0;
 
+#if defined(CY_CORE_CM7_1)
         IPC_Pull_Status_To_CoreB();
         if (Course3Vision_ShouldEnter(Runtime_Get_Vehicle_Mode(), core_a_status.course3_display_state, ui_course3_vision_active))
         {
@@ -2848,6 +2849,7 @@ void screen_display_process(void)
             ui_course3_vision_active = 0U;
             ui_set_screen(ui_course3_saved_screen);
         }
+#endif
 
         if (ui_is_battery_low())
         {
