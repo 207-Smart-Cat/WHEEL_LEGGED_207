@@ -5,6 +5,7 @@
 #include "param.h"
 #include "navigation_data_handling.h"
 #include "navigation_tracking.h"
+#include "navigation_action.h"
 #include "imu.h"
 #include "wifi.h"
 #include "battery_monitor.h"

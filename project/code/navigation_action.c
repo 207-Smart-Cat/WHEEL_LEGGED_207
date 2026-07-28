@@ -54,6 +54,8 @@ static uint8_t course3_align_searching = 0;
 static BridgeRollPeakTracker_t bridge_roll_tracker;
 static float bridge_original_leg_y = 0.0f;
 static uint8_t bridge_hold_active = 0U;
+static uint8_t course3_display_state = COURSE3_DISPLAY_IDLE;
+static uint8_t course3_display_done_pending_clear = 0U;
 
 #define COURSE3_ALIGN_SPEED             (70.0f)
 #define COURSE3_SEARCH_SPEED            (20.0f)
@@ -96,6 +98,24 @@ uint8_t Navi_Action_Servo_Takeover_Active(void)
 uint8_t Navi_Action_Vision_Align_Active(void)
 {
     return (action_fsm.state == FSM_COURSE3_TRACK_ALIGN) ? 1U : 0U;
+}
+
+uint8_t Navi_Action_Get_Course3_Display_State(void)
+{
+    uint8_t state = course3_display_state;
+
+    if (state == COURSE3_DISPLAY_DONE)
+    {
+        if (course3_display_done_pending_clear)
+        {
+            course3_display_done_pending_clear = 0U;
+        }
+        else
+        {
+            course3_display_state = COURSE3_DISPLAY_IDLE;
+        }
+    }
+    return state;
 }
 
 #define NAVI_JUMP_FORWARD_SPEED       NAVI_JUMP_RUNUP_SPEED
@@ -281,6 +301,8 @@ void navi_parse_global_path(void) {
     is_action_busy = 0;
     action_done_pending = 0;
     action_done_idx = 0;
+    course3_display_state = COURSE3_DISPLAY_IDLE;
+    course3_display_done_pending_clear = 0U;
 #if (NAVI_JUMP_ACTION_MODE == 2U)
     jump_sequence_done_count = 0;
     jump_course_back_yaw = 0.0f;
@@ -347,6 +369,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state = FSM_COURSE3_TRACK_ALIGN;
                 action_fsm.state_timer_ms = 0U;
                 is_action_busy = 1U;
+                course3_display_state = COURSE3_DISPLAY_TRACK_ALIGN;
             }
             else if (upcoming_type == WP_TYPE_JUMP && distance < (DISTANCE_THRESHOLD * 3.0f)) {                        // 跳跃动作
                 point_map[target_idx].action_cmd = NAVI_JUMP_ACTION_MODE;
@@ -452,6 +475,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 }
                 action_fsm.state = FSM_COURSE3_ACTION;
                 action_fsm.state_timer_ms = 0U;
+                course3_display_state = COURSE3_DISPLAY_ACTION;
             }
             break;
         }
@@ -463,6 +487,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             {
                 action_fsm.state = FSM_COURSE3_DONE;
                 action_fsm.state_timer_ms = 0U;
+                course3_display_state = COURSE3_DISPLAY_DONE;
+                course3_display_done_pending_clear = 1U;
                 break;
             }
 
@@ -481,6 +507,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             {
                 action_fsm.state = FSM_COURSE3_DONE;
                 action_fsm.state_timer_ms = 0U;
+                course3_display_state = COURSE3_DISPLAY_DONE;
+                course3_display_done_pending_clear = 1U;
             }
             break;
 

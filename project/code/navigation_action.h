@@ -5,6 +5,7 @@
 
 #include "navigation_tracking.h"  // 引入航点类型 WayPoint_Type
 #include "course3_align_logic.h"
+#include "course3_display_state.h"
 
 // ========================== 宏定义 ==========================
 #define MAX_ACTION_NUM  50    // 最多缓存 50 个特殊动作点
@@ -114,6 +115,7 @@ uint8_t Navi_Action_Start_Remote_Jump(void);
 void Navi_Action_Remote_Jump_Tick(void);
 uint8_t Navi_Action_Remote_Jump_Active(void);
 uint8_t Navi_Action_Vision_Align_Active(void);
+uint8_t Navi_Action_Get_Course3_Display_State(void);
 void navi_parse_global_path(void);
 void Navi_Action_Manager(uint16_t curr_idx) ;
 uint8_t Navi_Action_Consume_Done(uint16_t curr_idx);

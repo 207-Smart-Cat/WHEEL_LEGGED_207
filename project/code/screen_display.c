@@ -837,6 +837,8 @@ static uint8_t ui_record_exit_pending = 0;
 static uint8_t ui_record_exit_wait = 0;
 static uint8_t ui_group_load_pending = 0;
 static uint8_t ui_record_type_index = 0;
+static ui_screen_t ui_course3_saved_screen = UI_SCREEN_HOME;
+static uint8_t ui_course3_vision_active = 0U;
 static uint16 ui_record_preview_top = 0;
 static uint8_t ui_wifi_index = 0;
 static uint8_t ui_wave_group = 0;
@@ -1461,6 +1463,7 @@ static void ui_draw_vision(void)
                                     camera_assist_status.lane_error_px,
                                     camera_assist_status.vision_angle_offset_deg);
     CameraTestDisplay_Render();
+    CameraTestDisplay_DrawCourse3FsmOverlay();
 }
 
 #endif
@@ -2832,6 +2835,19 @@ void screen_display_process(void)
     {
         ui_key_event_t events[UI_KEY_COUNT];
         IPS200_flag = 0;
+
+        IPC_Pull_Status_To_CoreB();
+        if (Course3Vision_ShouldEnter(Runtime_Get_Vehicle_Mode(), core_a_status.course3_display_state, ui_course3_vision_active))
+        {
+            if (ui_screen != UI_SCREEN_VISION) ui_course3_saved_screen = ui_screen;
+            ui_course3_vision_active = 1U;
+            ui_set_screen(UI_SCREEN_VISION);
+        }
+        else if (Course3Vision_ShouldRestore(core_a_status.course3_display_state, ui_course3_vision_active))
+        {
+            ui_course3_vision_active = 0U;
+            ui_set_screen(ui_course3_saved_screen);
+        }
 
         if (ui_is_battery_low())
         {

@@ -2,6 +2,7 @@
 
 #include "camera_assist.h"
 #include "ipc_shared_data.h"
+#include "course3_display_state.h"
 #include "zf_common_font.h"
 #include "zf_device_ips200.h"
 #include "zf_device_mt9v03x.h"
@@ -98,6 +99,22 @@ void CameraTestDisplay_DrawStatusText(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
     sprintf(line, "Rows:%3u %s", status->valid_rows, status->lane_valid ? "ACTIVE" : "SEARCH");
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
+}
+
+void CameraTestDisplay_DrawCourse3FsmOverlay(void)
+{
+    const char *text = Course3DisplayState_Text(core_a_status.course3_display_state);
+
+    if (text == 0)
+    {
+        return;
+    }
+
+    ips200_set_color(RGB565_RED, RGB565_BLACK);
+    ips200_set_font(IPS200_16X16_FONT);
+    ips200_show_string(8U, 164U, text);
+    ips200_set_font(IPS200_8X16_FONT);
+    ips200_set_color(RGB565_WHITE, RGB565_BLACK);
 }
 
 static void camera_test_show_info(uint16 y, const char *text)
