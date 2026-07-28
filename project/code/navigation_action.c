@@ -64,6 +64,7 @@ static uint8_t bridge_hold_active = 0U;
 #define COURSE3_BRIDGE_SPEED             (400.0f)
 #define COURSE3_BRIDGE_LEG_Y             (0.05f)
 #define COURSE3_BRIDGE_HOLD_MS           (1000U)
+#define COURSE3_ACTION_DIRECTION_P        (50.0f)
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif
@@ -291,7 +292,7 @@ void navi_parse_global_path(void) {
     jump_engine_suspend = 0;
 
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
-        // Course 3 bridge and stair points share Track_align -> Action -> Done.
+        // 科目三单边桥和台阶经过 Track_align -> Action -> Done。
         if (point_map[i].type == WP_TYPE_MINE_SWEEP ||
             (point_map[i].type == WP_TYPE_JUMP && mode != VEHICLE_MODE_COURSE_3) ||
             (mode == VEHICLE_MODE_COURSE_3 &&
@@ -386,6 +387,13 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             else if (upcoming_type == WP_TYPE_STOP && distance < (DISTANCE_THRESHOLD * 8.0f)) {
                 action_fsm.state = FSM_STOP_PARKING;
             }
+            else if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
+                     upcoming_type == WP_TYPE_NORMAL &&
+                     navi_isreach_target_point(target_idx)) {
+                action_fsm.state = FSM_COURSE3_ACTION;
+                action_fsm.state_timer_ms = 0U;
+                is_action_busy = 1U;
+            }
             else if (upcoming_type == WP_TYPE_NORMAL && distance < (DISTANCE_THRESHOLD * 2.0f)) {
                 action_fsm.state = FSM_IDLE;
             }
@@ -438,7 +446,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 if (point_map[target_idx].type == WP_TYPE_BRIDGE)
                 {
                     bridge_original_leg_y = y_current;
-                    BridgeRollPeak_Reset(&bridge_roll_tracker, IMU_data.filter_result.roll);
+                    /* 车身换轴后，导航坐标中的横滚为 -IMU pitch（右倾为正）。 */
+                    BridgeRollPeak_Reset(&bridge_roll_tracker, -IMU_data.filter_result.pitch);
                     bridge_hold_active = 0U;
                 }
                 action_fsm.state = FSM_COURSE3_ACTION;
@@ -448,6 +457,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
         }
 
         case FSM_COURSE3_ACTION:
+            /* 普通点、单边桥、台阶共用的科目三 Action 方向环参数。 */
+            Direction_p = COURSE3_ACTION_DIRECTION_P;
             if (point_map[target_idx].type != WP_TYPE_BRIDGE)
             {
                 action_fsm.state = FSM_COURSE3_DONE;
@@ -460,7 +471,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             y_current = COURSE3_BRIDGE_LEG_Y;
             if (!bridge_hold_active)
             {
-                if (BridgeRollPeak_Update(&bridge_roll_tracker, IMU_data.filter_result.roll))
+                if (BridgeRollPeak_Update(&bridge_roll_tracker, -IMU_data.filter_result.pitch))
                 {
                     bridge_hold_active = 1U;
                     action_fsm.state_timer_ms = 0U;
@@ -921,7 +932,21 @@ void Navi_Action_Remote_Jump_Tick(void)
 void Navi_Action_Manager(uint16_t  curr_idx) {
     if (remote_jump_active) return;
 
-    if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count) return; 
+    /* 普通科目三点不占用有限的特殊动作序列，但同样进入 Action 设置方向环参数。 */
+    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
+        curr_idx < navi_ctrl.point_total_count &&
+        point_map[curr_idx].type == WP_TYPE_NORMAL)
+    {
+        float real_distance = 0.0f;
+        float dummy_azimuth = 0.0f;
+        if (navi_calcnavinfo(curr_idx, &dummy_azimuth, &real_distance))
+        {
+            navi_action_fsm_update(curr_idx, real_distance);
+        }
+        return;
+    }
+
+    if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count) return;
 
     uint16_t  target_wp_idx = action_seq.list[action_seq.current_ptr].wp_index;
     
