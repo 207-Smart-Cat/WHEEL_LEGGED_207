@@ -1209,6 +1209,12 @@
             <name>$PROJ_DIR$\..\..\code\course3_align_logic.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\bridge_roll_peak.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\bridge_roll_peak.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\navigation_data_handling.c</name>
         </file>
         <file>

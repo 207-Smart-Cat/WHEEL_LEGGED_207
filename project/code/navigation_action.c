@@ -8,6 +8,7 @@
 #include "vehicle_supervisor.h"
 #include "navigation_touch_logic.h"
 #include "runtime_status.h"
+#include "bridge_roll_peak.h"
 
 #include <stdlib.h>
 
@@ -50,6 +51,9 @@ static uint32_t course3_align_last_frame = 0;
 static float course3_align_map_yaw = 0.0f;
 static uint32_t course3_align_last_valid_ms = 0;
 static uint8_t course3_align_searching = 0;
+static BridgeRollPeakTracker_t bridge_roll_tracker;
+static float bridge_original_leg_y = 0.0f;
+static uint8_t bridge_hold_active = 0U;
 
 #define COURSE3_ALIGN_SPEED             (70.0f)
 #define COURSE3_SEARCH_SPEED            (20.0f)
@@ -57,6 +61,9 @@ static uint8_t course3_align_searching = 0;
 #define COURSE3_ALIGN_LOST_MS           (3000U)
 #define COURSE3_SEARCH_SWEEP_DEG        (15.0f)
 #define COURSE3_SEARCH_PERIOD_MS        (2000U)
+#define COURSE3_BRIDGE_SPEED             (400.0f)
+#define COURSE3_BRIDGE_LEG_Y             (0.05f)
+#define COURSE3_BRIDGE_HOLD_MS           (1000U)
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif
@@ -428,6 +435,12 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             else if (Course3Align_IsComplete(&course3_align_samples))
             {
                 target_angle = navi_limit_angle180(Course3Align_ComputeYaw(&course3_align_samples));
+                if (point_map[target_idx].type == WP_TYPE_BRIDGE)
+                {
+                    bridge_original_leg_y = y_current;
+                    BridgeRollPeak_Reset(&bridge_roll_tracker, IMU_data.filter_result.roll);
+                    bridge_hold_active = 0U;
+                }
                 action_fsm.state = FSM_COURSE3_ACTION;
                 action_fsm.state_timer_ms = 0U;
             }
@@ -435,11 +448,37 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
         }
 
         case FSM_COURSE3_ACTION:
-            action_fsm.state = FSM_COURSE3_DONE;
-            action_fsm.state_timer_ms = 0U;
+            if (point_map[target_idx].type != WP_TYPE_BRIDGE)
+            {
+                action_fsm.state = FSM_COURSE3_DONE;
+                action_fsm.state_timer_ms = 0U;
+                break;
+            }
+
+            is_action_busy = 1U;
+            target_velocity = COURSE3_BRIDGE_SPEED;
+            y_current = COURSE3_BRIDGE_LEG_Y;
+            if (!bridge_hold_active)
+            {
+                if (BridgeRollPeak_Update(&bridge_roll_tracker, IMU_data.filter_result.roll))
+                {
+                    bridge_hold_active = 1U;
+                    action_fsm.state_timer_ms = 0U;
+                }
+            }
+            else if (action_fsm.state_timer_ms >= COURSE3_BRIDGE_HOLD_MS)
+            {
+                action_fsm.state = FSM_COURSE3_DONE;
+                action_fsm.state_timer_ms = 0U;
+            }
             break;
 
         case FSM_COURSE3_DONE:
+            if (point_map[target_idx].type == WP_TYPE_BRIDGE)
+            {
+                y_current = bridge_original_leg_y;
+                bridge_hold_active = 0U;
+            }
             action_done_pending = 1U;
             action_done_idx = target_idx;
             if (action_seq.current_ptr < action_seq.total_count &&
