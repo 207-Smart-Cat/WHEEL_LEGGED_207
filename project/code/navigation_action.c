@@ -9,6 +9,8 @@
 #include "navigation_touch_logic.h"
 #include "runtime_status.h"
 
+#include <stdlib.h>
+
 // ==================== 动作状态机实例 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
 ActionSequence_t action_seq = {0};
@@ -43,6 +45,18 @@ static float jump_motion_last_x = 0.0f;
 static NaviJumpTouchLogic_t jump_touch_logic = {0};
 static uint8_t jump_touch_inhibit_after_landing = 0;
 static uint8_t remote_jump_active = 0;
+static Course3AlignSamples_t course3_align_samples;
+static uint32_t course3_align_last_frame = 0;
+static float course3_align_map_yaw = 0.0f;
+static uint32_t course3_align_last_valid_ms = 0;
+static uint8_t course3_align_searching = 0;
+
+#define COURSE3_ALIGN_SPEED             (70.0f)
+#define COURSE3_SEARCH_SPEED            (20.0f)
+#define COURSE3_ALIGN_CENTER_PX         (5)
+#define COURSE3_ALIGN_LOST_MS           (3000U)
+#define COURSE3_SEARCH_SWEEP_DEG        (15.0f)
+#define COURSE3_SEARCH_PERIOD_MS        (2000U)
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif
@@ -69,6 +83,11 @@ uint8_t Navi_Action_Servo_Takeover_Active(void)
             action_fsm.state == FSM_JUMP_TAKEOFF ||
             action_fsm.state == FSM_JUMP_AIRBORNE ||
             action_fsm.state == FSM_JUMP_LANDING) ? 1U : 0U;
+}
+
+uint8_t Navi_Action_Vision_Align_Active(void)
+{
+    return (action_fsm.state == FSM_COURSE3_TRACK_ALIGN) ? 1U : 0U;
 }
 
 #define NAVI_JUMP_FORWARD_SPEED       NAVI_JUMP_RUNUP_SPEED
@@ -265,12 +284,11 @@ void navi_parse_global_path(void) {
     jump_engine_suspend = 0;
 
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
-        // Course 3 bridge and stair points are semantic markers only in this phase.
-        // They stay out of action_seq so tracking advances them normally. When their
-        // sub-FSMs are implemented, enqueue both types and complete via
-        // action_done_pending/action_done_idx.
+        // Course 3 bridge and stair points share Track_align -> Action -> Done.
         if (point_map[i].type == WP_TYPE_MINE_SWEEP ||
-            (point_map[i].type == WP_TYPE_JUMP && mode != VEHICLE_MODE_COURSE_3))  {
+            (point_map[i].type == WP_TYPE_JUMP && mode != VEHICLE_MODE_COURSE_3) ||
+            (mode == VEHICLE_MODE_COURSE_3 &&
+             (point_map[i].type == WP_TYPE_BRIDGE || point_map[i].type == WP_TYPE_JUMP)))  {
             if (point_map[i].type == WP_TYPE_JUMP) {
                 point_map[i].action_cmd = NAVI_JUMP_ACTION_MODE;
             }
@@ -308,6 +326,19 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state = FSM_MINE_APPROACH; 
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;         // 锁定动作接管
+            }
+            else if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
+                     (upcoming_type == WP_TYPE_BRIDGE || upcoming_type == WP_TYPE_JUMP) &&
+                     navi_isreach_target_point(target_idx))
+            {
+                Course3Align_Reset(&course3_align_samples);
+                course3_align_last_frame = core_b_cmd.vision_frame_seq;
+                course3_align_map_yaw = navi_limit_angle180(point_map[target_idx].yaw);
+                course3_align_last_valid_ms = 0U;
+                course3_align_searching = 0U;
+                action_fsm.state = FSM_COURSE3_TRACK_ALIGN;
+                action_fsm.state_timer_ms = 0U;
+                is_action_busy = 1U;
             }
             else if (upcoming_type == WP_TYPE_JUMP && distance < (DISTANCE_THRESHOLD * 3.0f)) {                        // 跳跃动作
                 point_map[target_idx].action_cmd = NAVI_JUMP_ACTION_MODE;
@@ -351,6 +382,74 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             else if (upcoming_type == WP_TYPE_NORMAL && distance < (DISTANCE_THRESHOLD * 2.0f)) {
                 action_fsm.state = FSM_IDLE;
             }
+            break;
+
+        case FSM_COURSE3_TRACK_ALIGN:
+        {
+            uint8_t new_frame = (core_b_cmd.vision_frame_seq != course3_align_last_frame) ? 1U : 0U;
+            is_action_busy = 1U;
+            if (new_frame)
+            {
+                course3_align_last_frame = core_b_cmd.vision_frame_seq;
+                if (core_b_cmd.vision_valid)
+                {
+                    if (course3_align_searching)
+                    {
+                        Course3Align_Reset(&course3_align_samples);
+                        course3_align_searching = 0U;
+                    }
+                    course3_align_last_valid_ms = action_fsm.state_timer_ms;
+                    target_velocity = COURSE3_ALIGN_SPEED;
+                    target_angle = navi_limit_angle180(IMU_data.filter_result.yaw + core_b_cmd.vision_angle_offset_deg);
+                    if (abs(core_b_cmd.vision_lane_error_px) <= COURSE3_ALIGN_CENTER_PX)
+                    {
+                        Course3Align_AddSample(&course3_align_samples,
+                                               core_b_cmd.vision_lane_error_px,
+                                               IMU_data.filter_result.yaw);
+                    }
+                }
+            }
+
+            if (!course3_align_searching &&
+                (action_fsm.state_timer_ms - course3_align_last_valid_ms >= COURSE3_ALIGN_LOST_MS))
+            {
+                course3_align_searching = 1U;
+                Course3Align_Reset(&course3_align_samples);
+            }
+
+            if (course3_align_searching)
+            {
+                float phase = (float)(action_fsm.state_timer_ms % COURSE3_SEARCH_PERIOD_MS) /
+                              (float)COURSE3_SEARCH_PERIOD_MS;
+                target_velocity = COURSE3_SEARCH_SPEED;
+                target_angle = navi_limit_angle180(course3_align_map_yaw +
+                               COURSE3_SEARCH_SWEEP_DEG * sinf(2.0f * 3.1415926f * phase));
+            }
+            else if (Course3Align_IsComplete(&course3_align_samples))
+            {
+                target_angle = navi_limit_angle180(Course3Align_ComputeYaw(&course3_align_samples));
+                action_fsm.state = FSM_COURSE3_ACTION;
+                action_fsm.state_timer_ms = 0U;
+            }
+            break;
+        }
+
+        case FSM_COURSE3_ACTION:
+            action_fsm.state = FSM_COURSE3_DONE;
+            action_fsm.state_timer_ms = 0U;
+            break;
+
+        case FSM_COURSE3_DONE:
+            action_done_pending = 1U;
+            action_done_idx = target_idx;
+            if (action_seq.current_ptr < action_seq.total_count &&
+                action_seq.list[action_seq.current_ptr].wp_index == target_idx)
+            {
+                action_seq.current_ptr++;
+            }
+            action_fsm.state = FSM_IDLE;
+            action_fsm.state_timer_ms = 0U;
+            is_action_busy = 0U;
             break;
             
             

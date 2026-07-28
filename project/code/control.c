@@ -9,6 +9,7 @@
 #include "jump_control.h"
 #include "vehicle_supervisor.h"
 #include "vision_control.h"
+#include "navigation_action.h"
 
 #define BALANCE_CONTROL_RUN_LEG_CONTROL 1
 #define VISION_FRAME_TIMEOUT_TICKS 150U  // balance loop runs at 1 ms.
@@ -715,7 +716,7 @@ static float vision_wrap_angle(float angle)
 
 static void vision_mode_apply(void)
 {
-    uint8_t enabled = core_b_cmd.vision_enabled;
+    uint8_t enabled = (core_b_cmd.vision_enabled || Navi_Action_Vision_Align_Active()) ? 1U : 0U;
     uint8_t valid = core_b_cmd.vision_valid;
 
     if (!enabled)
@@ -741,7 +742,6 @@ static void vision_mode_apply(void)
         Turn_Reset();
     }
     g_vision_last_enabled = 1U;
-    target_velocity = 50.0f;
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)
     {
         target_angle = vision_wrap_angle(IMU_data.filter_result.yaw + core_b_cmd.vision_angle_offset_deg);
@@ -842,7 +842,7 @@ void balance_control()
     }
 
     Gyro_Pwm = GyroControl(Balance_Pwm, raw_gyro_x);
-    Turn_Pwm = core_b_cmd.vision_enabled ?
+    Turn_Pwm = (core_b_cmd.vision_enabled || Navi_Action_Vision_Align_Active()) ?
                Turn_PD(IMU_data.filter_result.yaw, target_angle) :
                Turn(IMU_data.filter_result.yaw, target_angle);
     assist_pwm = anti_stall_update(Runtime_Is_Module_Enabled(RUNTIME_MODULE_ANTI_STALL), target_velocity, now_velocity);
@@ -1287,7 +1287,6 @@ float min(float a, float b)
 {
     return (a < b) ? a : b;
 }
-
 
 
 
