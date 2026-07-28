@@ -126,6 +126,7 @@ int main(void)
     small_driver_zero_calibration_task();
 #endif
     IPC_Nav_Group_Core0_Task();
+    Bumpy_Action_Log_Task();
 
 #if !NAV_HAND_PUSH_TEST_MODE
     navigation_task_div++;

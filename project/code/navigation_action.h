@@ -65,7 +65,7 @@ typedef enum {
     FSM_JUMP_TURN_BACK,
     FSM_JUMP_RAMP_UP,
     FSM_JUMP_STAIR_DOWN,
-    
+
     // --- 桥梁动作状态 ---
     FSM_BRIDGE_APPROACH,      // 接近桥梁
     FSM_BRIDGE_ON_BOARD,      // 桥面自适应
@@ -81,6 +81,11 @@ typedef enum {
     ,FSM_COURSE3_TRACK_ALIGN
     ,FSM_COURSE3_ACTION
     ,FSM_COURSE3_DONE
+
+    // --- 颠簸路段动作状态：追加在 P1 现有状态后，保留原枚举数值 ---
+    ,FSM_BUMP_DETECT
+    ,FSM_BUMP_CROSSING
+    ,FSM_BUMP_RECOVER
 } ActionState_e;
 
 // ========================== 数据结构定义 ==========================

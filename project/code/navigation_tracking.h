@@ -72,6 +72,8 @@ typedef enum {
         
     WP_TYPE_JUMP = 4,           // 跳跃台阶 
 
+    WP_TYPE_BUMP = 5,           // 颠簸路段
+
     WP_TYPE_STOP= 6,           // 终点返航
     
     WP_TYPE_HOME = 7           // 原点
@@ -97,6 +99,7 @@ typedef struct {
      * 2. 跳跃点(JUMP)：可直接用作起跳目标速度（如 450 代表 450mm/s）
      * 3. 绕桶点(CONE)：1 代表左绕，2 代表右绕
      * 4. 普通点(NORMAL)：非 0 时可作为局部动态限速值
+     * 5. 颠簸点(BUMP)：0 为基础穿越，1 为自适应速度，2 增加静态腿高。
      */
     uint16_t action_cmd;           //对于跳跃：0--》转一圈         1--》
 

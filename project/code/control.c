@@ -7,6 +7,7 @@
 #include "runtime_status.h"
 #include "process_rx.h"
 #include "jump_control.h"
+#include "bumpy_control.h"
 #include "vehicle_supervisor.h"
 #include "vision_control.h"
 #include "navigation_action.h"
@@ -894,6 +895,9 @@ void leg_control(float *x, float *y)
     float abs_pitch_error;
     float leg_gain_p;
     float leg_target;
+    float bump_leg_x_cmd;
+    float bump_leg_y_cmd;
+    uint8_t bump_leg_override;
     float projected_x;
     float projected_leg_error;
     float left_y_target;
@@ -907,6 +911,10 @@ void leg_control(float *x, float *y)
     int leg4;
     (void)leg_Ki;
     (void)leg_Kd;
+    bump_leg_override = Bumpy_Action_Get_Leg_Override(
+        &bump_leg_x_cmd,
+        &bump_leg_y_cmd);
+    (void)bump_leg_x_cmd;
 
     leg_dbg_tick += 1.0f;
 
@@ -967,7 +975,10 @@ const bool leg_adaptive_enable = false; // Keep fixed leg-height PID adaptation 
         float leg_x_step = constrain_float(leg_x_step_limit, 0.0001f, 0.02f);
         leg_dbg_x_step_used = leg_x_step;
         float base_x = constrain_float(*x, MIN_X, MAX_X);
-        float base_y = constrain_float(*y, MIN_Y, MAX_Y);
+        float base_y = constrain_float(
+            bump_leg_override ? bump_leg_y_cmd : *y,
+            MIN_Y,
+            MAX_Y);
         float leg_x_offset = speed_tilt_to_leg_x(g_leg_speed_tilt_deg, base_y);
         float x_target = constrain_float(base_x + leg_x_offset, MIN_X, MAX_X);
         Runtime_Set_Servo_Reason(RUNTIME_REASON_SERVO_FIXED);
@@ -1075,7 +1086,10 @@ const bool leg_adaptive_enable = false; // Keep fixed leg-height PID adaptation 
             }
         }
 
-        leg_target = constrain_float(*y, MIN_Y, MAX_Y);
+        leg_target = constrain_float(
+            bump_leg_override ? bump_leg_y_cmd : *y,
+            MIN_Y,
+            MAX_Y);
         leg_gain_p = fabsf(leg_Kp) * LEG_GAIN_SCALE;
         pitch_error = -angle * LEG_DEG_TO_RAD;
         abs_pitch_error = fabsf(pitch_error);

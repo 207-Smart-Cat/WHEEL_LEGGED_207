@@ -176,6 +176,7 @@ static float navi_get_reach_threshold(uint16_t target_idx)
         case WP_TYPE_CONE_CONE:
         case WP_TYPE_BRIDGE:
         case WP_TYPE_JUMP:
+        case WP_TYPE_BUMP:
         case WP_TYPE_NORMAL:
         case WP_TYPE_STOP:
         case WP_TYPE_HOME:
@@ -748,7 +749,8 @@ void task_navigation_control(void) {
                     action_seq.list[action_seq.current_ptr].wp_index == curr_idx &&
                     (is_action_busy || action_fsm.state != FSM_IDLE ||
                      point_map[curr_idx].type == WP_TYPE_MINE_SWEEP ||
-                     point_map[curr_idx].type == WP_TYPE_JUMP)) {
+                     point_map[curr_idx].type == WP_TYPE_JUMP ||
+                     point_map[curr_idx].type == WP_TYPE_BUMP)) {
                     break;
                 }
                 
@@ -1030,6 +1032,7 @@ const char* get_enum_name(WayPoint_Type type) {
         case WP_TYPE_NORMAL:      return "ÆÕÍ¨Ñ­¼£";
         case WP_TYPE_MINE_SWEEP:  return "¶¨µãÅÅÀ×";
         case WP_TYPE_JUMP:        return "ÌøÔ¾Ì¨½×";
+        case WP_TYPE_BUMP:        return "µßô¤Â·¶Î";
         case WP_TYPE_STOP:        return "ÖÕµã·µº½";
         case WP_TYPE_HOME:        return "Ô­µã";
         case WP_TYPE_BRIDGE:      return "µ¥±ßÇÅ";

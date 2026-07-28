@@ -1143,6 +1143,12 @@
             <name>$PROJ_DIR$\..\..\code\jump_control.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\bumpy_control.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\bumpy_control.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\vehicle_supervisor.c</name>
         </file>
         <file>

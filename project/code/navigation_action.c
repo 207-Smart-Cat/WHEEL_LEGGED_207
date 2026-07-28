@@ -7,6 +7,7 @@
 #include "small_driver_uart_control.h"
 #include "vehicle_supervisor.h"
 #include "navigation_touch_logic.h"
+#include "bumpy_control.h"
 #include "runtime_status.h"
 #include "bridge_roll_peak.h"
 
@@ -116,6 +117,18 @@ uint8_t Navi_Action_Get_Course3_Display_State(void)
         }
     }
     return state;
+}
+
+static void navi_bump_fault_exit(void)
+{
+    target_velocity = 0.0f;
+    target_angle = (float)IMU_data.filter_result.yaw;
+    vofa_mode_driver = 0.0f;
+    navi_ctrl.navi_mode_driver = 0U;
+    action_fsm.state = FSM_IDLE;
+    action_fsm.state_timer_ms = 0U;
+    action_fsm.is_airborne_expect = 0U;
+    is_action_busy = 0U;
 }
 
 #define NAVI_JUMP_FORWARD_SPEED       NAVI_JUMP_RUNUP_SPEED
@@ -311,11 +324,13 @@ void navi_parse_global_path(void) {
     navi_jump_motion_reset();
     navi_jump_touch_inhibit_reset();
     navi_jump_pose_update_end();
+    Bumpy_Action_Reset();
     jump_engine_suspend = 0;
 
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
         // 科目三单边桥和台阶经过 Track_align -> Action -> Done。
         if (point_map[i].type == WP_TYPE_MINE_SWEEP ||
+            point_map[i].type == WP_TYPE_BUMP ||
             (point_map[i].type == WP_TYPE_JUMP && mode != VEHICLE_MODE_COURSE_3) ||
             (mode == VEHICLE_MODE_COURSE_3 &&
              (point_map[i].type == WP_TYPE_BRIDGE || point_map[i].type == WP_TYPE_JUMP)))  {
@@ -400,6 +415,22 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 #else
 #error "Invalid NAVI_JUMP_ACTION_MODE"
 #endif
+            }
+            else if (upcoming_type == WP_TYPE_BUMP &&
+                     navi_isreach_target_point(target_idx)) {
+                if (Bumpy_Action_Start(point_map[target_idx].action_cmd)) {
+                    action_fsm.state = FSM_BUMP_DETECT;
+                    action_fsm.state_timer_ms = 0U;
+                    action_fsm.is_airborne_expect = 0U;
+                    is_action_busy = 1U;
+                }
+                else {
+                    IPC_LOG_Printf(
+                        "BUMP_ACTION,START_FAILED,wp=%u,profile=%u\r\n",
+                        (unsigned int)target_idx,
+                        (unsigned int)point_map[target_idx].action_cmd);
+                    navi_bump_fault_exit();
+                }
             }
             else if (upcoming_type == WP_TYPE_BRIDGE && distance < (DISTANCE_THRESHOLD * 8.0f)) {
                 action_fsm.state = FSM_BRIDGE_APPROACH;
@@ -872,6 +903,72 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 jump_stop = 0;
             }
             break;
+
+        // ------------------ 颠簸路段动作 ------------------
+        case FSM_BUMP_DETECT:
+        {
+            BumpyActionResult_t bump_result;
+
+            is_action_busy = 1U;
+            action_fsm.is_airborne_expect = 0U;
+            bump_result = Bumpy_Action_Process_5ms();
+
+            if (bump_result == BUMP_ACTION_RESULT_ENTER_CROSSING) {
+                action_fsm.state = FSM_BUMP_CROSSING;
+                action_fsm.state_timer_ms = 0U;
+            }
+            else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
+                     bump_result == BUMP_ACTION_RESULT_IDLE) {
+                navi_bump_fault_exit();
+            }
+            break;
+        }
+
+        case FSM_BUMP_CROSSING:
+        {
+            BumpyActionResult_t bump_result;
+
+            is_action_busy = 1U;
+            action_fsm.is_airborne_expect = 0U;
+            bump_result = Bumpy_Action_Process_5ms();
+
+            if (bump_result == BUMP_ACTION_RESULT_ENTER_RECOVER) {
+                action_fsm.state = FSM_BUMP_RECOVER;
+                action_fsm.state_timer_ms = 0U;
+            }
+            else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
+                     bump_result == BUMP_ACTION_RESULT_IDLE) {
+                navi_bump_fault_exit();
+            }
+            break;
+        }
+
+        case FSM_BUMP_RECOVER:
+        {
+            BumpyActionResult_t bump_result;
+
+            is_action_busy = 1U;
+            action_fsm.is_airborne_expect = 0U;
+            bump_result = Bumpy_Action_Process_5ms();
+
+            if (bump_result == BUMP_ACTION_RESULT_DONE) {
+                action_done_pending = 1U;
+                action_done_idx = target_idx;
+                if (action_seq.current_ptr < action_seq.total_count &&
+                    action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
+                    action_seq.current_ptr++;
+                }
+                action_fsm.state = FSM_IDLE;
+                action_fsm.state_timer_ms = 0U;
+                action_fsm.is_airborne_expect = 0U;
+                is_action_busy = 0U;
+            }
+            else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
+                     bump_result == BUMP_ACTION_RESULT_IDLE) {
+                navi_bump_fault_exit();
+            }
+            break;
+        }
 
         // ------------------ 桥梁动作 ------------------
         case FSM_BRIDGE_APPROACH:
