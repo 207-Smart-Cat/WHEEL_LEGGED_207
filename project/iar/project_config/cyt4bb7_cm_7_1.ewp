@@ -1140,6 +1140,12 @@
             <name>$PROJ_DIR$\..\..\code\vision_control.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\course3_display_state.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\course3_display_state.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\app_headfile.h</name>
         </file>
         <file>
