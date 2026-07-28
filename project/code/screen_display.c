@@ -11,6 +11,7 @@
 #include "runtime_status.h"
 #include "vehicle_supervisor.h"
 #include "battery_monitor.h"
+#include "course3_display_state.h"
 #if defined(CY_CORE_CM7_1)
 #include "camera_assist.h"
 #include "camera_test_display.h"
@@ -65,6 +66,7 @@ typedef enum {
     UI_SCREEN_WIFI_WAVE_SELECT,
     UI_SCREEN_MODULES,
     UI_SCREEN_SYSTEM,
+    UI_SCREEN_COURSE3_EXEC,
 #if defined(CY_CORE_CM7_1)
     UI_SCREEN_VISION,
 #endif
@@ -1468,6 +1470,43 @@ static void ui_draw_vision(void)
 
 #endif
 
+static void ui_draw_course3_exec(void)
+{
+    char line[40];
+    const char *type = Course3TargetType_Text(core_a_status.course3_target_type);
+    const char *state = Course3DisplayState_Text(core_a_status.course3_display_state);
+
+    if (force_ui_refresh)
+    {
+        ips200_clear();
+        ips200_show_string(28, 8, "--- COURSE3 NAV ---");
+        ips200_draw_line(0, 26, 239, 26, RGB565_SKYBLUE);
+        ips200_draw_line(0, 298, 239, 298, RGB565_SKYBLUE);
+    }
+    if (!core_a_status.course3_exec_active)
+    {
+        ips200_show_string(32, 132, "COURSE3 NOT RUNNING");
+        return;
+    }
+    sprintf(line, "Target: %-8s", (type != 0) ? type : "UNKNOWN");
+    ips200_show_string(8, 40, line);
+    sprintf(line, "State : %-12s", (state != 0) ? state : "NAVIGATING");
+    ips200_show_string(8, 60, line);
+    sprintf(line, "Now X:%7.2f Y:%7.2f", core_a_status.nav_x, core_a_status.nav_y);
+    ips200_show_string(8, 92, line);
+    sprintf(line, "Now Yaw:%7.2f", core_a_status.nav_yaw);
+    ips200_show_string(8, 112, line);
+    sprintf(line, "Tar X:%7.2f Y:%7.2f", core_a_status.course3_target_x, core_a_status.course3_target_y);
+    ips200_show_string(8, 144, line);
+    sprintf(line, "Tar Yaw:%7.2f", core_a_status.course3_target_yaw);
+    ips200_show_string(8, 164, line);
+    sprintf(line, "dX:%7.2f dY:%7.2f", core_a_status.course3_error_x, core_a_status.course3_error_y);
+    ips200_show_string(8, 196, line);
+    sprintf(line, "dYaw:%6.2f D:%6.2f", core_a_status.course3_error_yaw, core_a_status.course3_distance);
+    ips200_show_string(8, 216, line);
+    ips200_show_string(8, 270, "BACK: Home  UP+DN: Stop");
+}
+
 static void ui_draw_mode(void)
 {
     ui_draw_title_text(UI_TEXT_T_TITLE_MODE);
@@ -2116,7 +2155,8 @@ static void ui_handle_group_select(ui_key_event_t events[UI_KEY_COUNT])
                 }
                 else
                 {
-                    ui_set_screen(UI_SCREEN_MODE_ACTION);
+                    ui_set_screen((Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3) ?
+                                  UI_SCREEN_COURSE3_EXEC : UI_SCREEN_MODE_ACTION);
                 }
             }
         }
@@ -2721,6 +2761,7 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         case UI_SCREEN_WIFI_WAVE_SELECT: ui_handle_wifi_wave_select(events); break;
         case UI_SCREEN_MODULES:     ui_handle_modules(events); break;
         case UI_SCREEN_SYSTEM:      ui_handle_system(events); break;
+        case UI_SCREEN_COURSE3_EXEC: if (events[UI_KEY_BACK]) ui_set_screen(UI_SCREEN_HOME); break;
 #if defined(CY_CORE_CM7_1)
         case UI_SCREEN_VISION:      ui_handle_vision(events); break;
 #endif
@@ -2789,6 +2830,9 @@ static void ui_render(void)
         case UI_SCREEN_SYSTEM:
             ui_draw_system();
             break;
+        case UI_SCREEN_COURSE3_EXEC:
+            ui_draw_course3_exec();
+            break;
 #if defined(CY_CORE_CM7_1)
         case UI_SCREEN_VISION:
             ui_draw_vision();
@@ -2836,8 +2880,8 @@ void screen_display_process(void)
         ui_key_event_t events[UI_KEY_COUNT];
         IPS200_flag = 0;
 
-        IPC_Pull_Status_To_CoreB();
 #if defined(CY_CORE_CM7_1)
+        IPC_Pull_Status_To_CoreB();
         if (Course3Vision_ShouldEnter(Runtime_Get_Vehicle_Mode(), core_a_status.course3_display_state, ui_course3_vision_active))
         {
             if (ui_screen != UI_SCREEN_VISION) ui_course3_saved_screen = ui_screen;

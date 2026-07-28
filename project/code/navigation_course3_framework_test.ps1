@@ -32,8 +32,8 @@ if ($action -notmatch 'mode != VEHICLE_MODE_COURSE_3') {
     throw "Course 3 jumps must not enter the action sequence."
 }
 
-if ($action -notmatch 'point_map\[curr_idx\]\.type == WP_TYPE_NORMAL') {
-    throw "Course 3 normal-point action handoff was not found."
+if ($action -notmatch 'Course 3 bridge and stair points') {
+    throw "Course 3 empty-action handoff comment was not found."
 }
 
 Write-Host "course 3 waypoint framework checks passed"

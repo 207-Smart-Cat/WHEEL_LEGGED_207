@@ -59,11 +59,9 @@ static uint8_t course3_display_state = COURSE3_DISPLAY_IDLE;
 static uint8_t course3_display_done_pending_clear = 0U;
 
 #define COURSE3_ALIGN_SPEED             (70.0f)
-#define COURSE3_SEARCH_SPEED            (20.0f)
+#define COURSE3_SEARCH_SPEED            (100.0f)
 #define COURSE3_ALIGN_CENTER_PX         (5)
 #define COURSE3_ALIGN_LOST_MS           (3000U)
-#define COURSE3_SEARCH_SWEEP_DEG        (15.0f)
-#define COURSE3_SEARCH_PERIOD_MS        (2000U)
 #define COURSE3_BRIDGE_SPEED             (400.0f)
 #define COURSE3_BRIDGE_LEG_Y             (0.05f)
 #define COURSE3_BRIDGE_HOLD_MS           (1000U)
@@ -117,6 +115,58 @@ uint8_t Navi_Action_Get_Course3_Display_State(void)
         }
     }
     return state;
+}
+
+uint8_t Navi_Action_Course3_Execution_Active(void)
+{
+    return (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
+            navi_ctrl.navi_mode_driver == 1U &&
+            navi_ctrl.point_current_idx < navi_ctrl.point_total_count) ? 1U : 0U;
+}
+
+uint8_t Navi_Action_Get_Course3_Target_Type(void)
+{
+    return Navi_Action_Course3_Execution_Active() ?
+           (uint8_t)point_map[navi_ctrl.point_current_idx].type : (uint8_t)WP_TYPE_HOME;
+}
+
+float Navi_Action_Get_Course3_Target_X(void)
+{
+    return Navi_Action_Course3_Execution_Active() ? point_map[navi_ctrl.point_current_idx].x : 0.0f;
+}
+
+float Navi_Action_Get_Course3_Target_Y(void)
+{
+    return Navi_Action_Course3_Execution_Active() ? point_map[navi_ctrl.point_current_idx].y : 0.0f;
+}
+
+float Navi_Action_Get_Course3_Target_Yaw(void)
+{
+    return Navi_Action_Course3_Execution_Active() ? point_map[navi_ctrl.point_current_idx].yaw : 0.0f;
+}
+
+float Navi_Action_Get_Course3_Error_X(void)
+{
+    return Navi_Action_Get_Course3_Target_X() - robot_pose.x;
+}
+
+float Navi_Action_Get_Course3_Error_Y(void)
+{
+    return Navi_Action_Get_Course3_Target_Y() - robot_pose.y;
+}
+
+float Navi_Action_Get_Course3_Error_Yaw(void)
+{
+    return Navi_Action_Course3_Execution_Active() ?
+           navi_limit_angle180(Navi_Action_Get_Course3_Target_Yaw() - robot_pose.yaw) : 0.0f;
+}
+
+float Navi_Action_Get_Course3_Target_Distance(void)
+{
+    float error_x = Navi_Action_Get_Course3_Error_X();
+    float error_y = Navi_Action_Get_Course3_Error_Y();
+
+    return Navi_Action_Course3_Execution_Active() ? sqrtf(error_x * error_x + error_y * error_y) : 0.0f;
 }
 
 static void navi_bump_fault_exit(void)
@@ -423,12 +473,10 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     action_fsm.state_timer_ms = 0U;
                     action_fsm.is_airborne_expect = 0U;
                     is_action_busy = 1U;
-                }
-                else {
-                    IPC_LOG_Printf(
-                        "BUMP_ACTION,START_FAILED,wp=%u,profile=%u\r\n",
-                        (unsigned int)target_idx,
-                        (unsigned int)point_map[target_idx].action_cmd);
+                } else {
+                    IPC_LOG_Printf("BUMP_ACTION,START_FAILED,wp=%u,profile=%u\r\n",
+                                   (unsigned int)target_idx,
+                                   (unsigned int)point_map[target_idx].action_cmd);
                     navi_bump_fault_exit();
                 }
             }
@@ -440,13 +488,6 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             }
             else if (upcoming_type == WP_TYPE_STOP && distance < (DISTANCE_THRESHOLD * 8.0f)) {
                 action_fsm.state = FSM_STOP_PARKING;
-            }
-            else if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
-                     upcoming_type == WP_TYPE_NORMAL &&
-                     navi_isreach_target_point(target_idx)) {
-                action_fsm.state = FSM_COURSE3_ACTION;
-                action_fsm.state_timer_ms = 0U;
-                is_action_busy = 1U;
             }
             else if (upcoming_type == WP_TYPE_NORMAL && distance < (DISTANCE_THRESHOLD * 2.0f)) {
                 action_fsm.state = FSM_IDLE;
@@ -488,11 +529,9 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 
             if (course3_align_searching)
             {
-                float phase = (float)(action_fsm.state_timer_ms % COURSE3_SEARCH_PERIOD_MS) /
-                              (float)COURSE3_SEARCH_PERIOD_MS;
                 target_velocity = COURSE3_SEARCH_SPEED;
                 target_angle = navi_limit_angle180(course3_align_map_yaw +
-                               COURSE3_SEARCH_SWEEP_DEG * sinf(2.0f * 3.1415926f * phase));
+                               Course3Search_TargetOffsetDeg(action_fsm.state_timer_ms));
             }
             else if (Course3Align_IsComplete(&course3_align_samples))
             {
@@ -904,21 +943,15 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             }
             break;
 
-        // ------------------ 颠簸路段动作 ------------------
         case FSM_BUMP_DETECT:
         {
-            BumpyActionResult_t bump_result;
-
+            BumpyActionResult_t result = Bumpy_Action_Process_5ms();
             is_action_busy = 1U;
-            action_fsm.is_airborne_expect = 0U;
-            bump_result = Bumpy_Action_Process_5ms();
-
-            if (bump_result == BUMP_ACTION_RESULT_ENTER_CROSSING) {
+            if (result == BUMP_ACTION_RESULT_ENTER_CROSSING) {
                 action_fsm.state = FSM_BUMP_CROSSING;
                 action_fsm.state_timer_ms = 0U;
-            }
-            else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
-                     bump_result == BUMP_ACTION_RESULT_IDLE) {
+            } else if (result == BUMP_ACTION_RESULT_FAULT ||
+                       result == BUMP_ACTION_RESULT_IDLE) {
                 navi_bump_fault_exit();
             }
             break;
@@ -926,18 +959,13 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 
         case FSM_BUMP_CROSSING:
         {
-            BumpyActionResult_t bump_result;
-
+            BumpyActionResult_t result = Bumpy_Action_Process_5ms();
             is_action_busy = 1U;
-            action_fsm.is_airborne_expect = 0U;
-            bump_result = Bumpy_Action_Process_5ms();
-
-            if (bump_result == BUMP_ACTION_RESULT_ENTER_RECOVER) {
+            if (result == BUMP_ACTION_RESULT_ENTER_RECOVER) {
                 action_fsm.state = FSM_BUMP_RECOVER;
                 action_fsm.state_timer_ms = 0U;
-            }
-            else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
-                     bump_result == BUMP_ACTION_RESULT_IDLE) {
+            } else if (result == BUMP_ACTION_RESULT_FAULT ||
+                       result == BUMP_ACTION_RESULT_IDLE) {
                 navi_bump_fault_exit();
             }
             break;
@@ -945,13 +973,9 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 
         case FSM_BUMP_RECOVER:
         {
-            BumpyActionResult_t bump_result;
-
+            BumpyActionResult_t result = Bumpy_Action_Process_5ms();
             is_action_busy = 1U;
-            action_fsm.is_airborne_expect = 0U;
-            bump_result = Bumpy_Action_Process_5ms();
-
-            if (bump_result == BUMP_ACTION_RESULT_DONE) {
+            if (result == BUMP_ACTION_RESULT_DONE) {
                 action_done_pending = 1U;
                 action_done_idx = target_idx;
                 if (action_seq.current_ptr < action_seq.total_count &&
@@ -962,9 +986,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0U;
                 action_fsm.is_airborne_expect = 0U;
                 is_action_busy = 0U;
-            }
-            else if (bump_result == BUMP_ACTION_RESULT_FAULT ||
-                     bump_result == BUMP_ACTION_RESULT_IDLE) {
+            } else if (result == BUMP_ACTION_RESULT_FAULT ||
+                       result == BUMP_ACTION_RESULT_IDLE) {
                 navi_bump_fault_exit();
             }
             break;
@@ -1056,20 +1079,6 @@ void Navi_Action_Remote_Jump_Tick(void)
 // ==============================================================================
 void Navi_Action_Manager(uint16_t  curr_idx) {
     if (remote_jump_active) return;
-
-    /* 普通科目三点不占用有限的特殊动作序列，但同样进入 Action 设置方向环参数。 */
-    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
-        curr_idx < navi_ctrl.point_total_count &&
-        point_map[curr_idx].type == WP_TYPE_NORMAL)
-    {
-        float real_distance = 0.0f;
-        float dummy_azimuth = 0.0f;
-        if (navi_calcnavinfo(curr_idx, &dummy_azimuth, &real_distance))
-        {
-            navi_action_fsm_update(curr_idx, real_distance);
-        }
-        return;
-    }
 
     if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count) return;
 
