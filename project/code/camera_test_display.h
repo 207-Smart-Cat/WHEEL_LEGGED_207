@@ -9,5 +9,6 @@ void CameraTestDisplay_AdjustExposure(int16 delta);
 void CameraTestDisplay_DrawLaneBoundaries(void);
 void CameraTestDisplay_DrawCenterLines(void);
 void CameraTestDisplay_DrawStatusText(void);
+void CameraTestDisplay_DrawCourse3FsmOverlay(void);
 
 #endif

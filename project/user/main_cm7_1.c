@@ -70,6 +70,8 @@ int main(void)
     {
         static uint8_t ipc_coreb_update_div = 0;
 
+        CameraAssist_ProcessFrame();
+        IPC_Update_Vision_Command_CoreB(0U, camera_assist_status.lane_valid, camera_assist_status.frame_count, camera_assist_status.lane_error_px, camera_assist_status.vision_angle_offset_deg);
         screen_display_process();
         NavStore_Task();
         wifi_process_loop();
