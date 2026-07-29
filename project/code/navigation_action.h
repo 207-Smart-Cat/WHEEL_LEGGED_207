@@ -11,10 +11,17 @@
 #define MAX_ACTION_NUM  50    // 最多缓存 50 个特殊动作点
 
 // 跳跃动作模式选择：
-// 0U = 跳跃点只转一圈测试，不执行跳跃
-// 1U = 跳跃点执行一次完整跳跃
-// 2U = 跳跃点执行三级跳
-#define NAVI_JUMP_ACTION_MODE  2U
+#define NAVI_JUMP_ACTION_DISABLED  0U
+#define NAVI_JUMP_ACTION_SINGLE    1U
+#define NAVI_JUMP_ACTION_TRIPLE    2U
+
+#define NAVI_JUMP_ACTION_MODE      NAVI_JUMP_ACTION_TRIPLE
+
+#if (NAVI_JUMP_ACTION_MODE != NAVI_JUMP_ACTION_DISABLED) && \
+    (NAVI_JUMP_ACTION_MODE != NAVI_JUMP_ACTION_SINGLE) && \
+    (NAVI_JUMP_ACTION_MODE != NAVI_JUMP_ACTION_TRIPLE)
+#error "Invalid NAVI_JUMP_ACTION_MODE"
+#endif
 
 #define NAVI_TRIPLE_JUMP_AFTER_MODE  NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY
 #define NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY  0U
@@ -41,6 +48,10 @@
 // RUNUP 阶段只接管速度和航向，不接管舵机，让常规 leg_control 产生前倾助跑。
 // 进入 PREPARE/TAKEOFF 后再接管舵机，避免普通腿控覆盖压腿和爆发输出。
 #define NAVI_JUMP_RUNUP_SPEED      350.0f
+#define NAVI_JUMP_SECOND_APPROACH_M       (0.18f)
+#define NAVI_JUMP_SECOND_APPROACH_SPEED   (250.0f)
+#define NAVI_JUMP_THIRD_APPROACH_M        (0.18f)
+#define NAVI_JUMP_THIRD_APPROACH_SPEED    (250.0f)
 
 typedef enum
 {
@@ -92,6 +103,7 @@ typedef enum {
     ,FSM_BUMP_DETECT
     ,FSM_BUMP_CROSSING
     ,FSM_BUMP_RECOVER
+    ,FSM_JUMP_NEXT_APPROACH  // 第二、第三跳：按净前向距离接近下一起跳位置
 } ActionState_e;
 
 // ========================== 数据结构定义 ==========================

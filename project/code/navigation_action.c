@@ -37,10 +37,11 @@ static int8_t mine_rotate_dir = 1;
 static float mine_rotate_target_deg = MINE_ROTATE_TARGET_DEG;
 static uint8_t action_done_pending = 0;
 static uint16_t action_done_idx = 0;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
+#if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
 static uint8_t jump_sequence_done_count = 0;
-static float jump_course_back_yaw = 0.0f;
 #endif
+static float jump_course_back_yaw = 0.0f;
+static NaviJumpTrigger_t jump_active_trigger = NAVI_JUMP_TRIGGER_WAYPOINT;
 static float jump_hold_control_yaw = 0.0f;
 static float jump_hold_nav_yaw = 0.0f;
 static float jump_motion_count = 0.0f;
@@ -82,6 +83,7 @@ uint8_t navigation_jump_is_active(void)
             action_fsm.state == FSM_JUMP_TAKEOFF ||
             action_fsm.state == FSM_JUMP_AIRBORNE ||
             action_fsm.state == FSM_JUMP_LANDING ||
+            action_fsm.state == FSM_JUMP_NEXT_APPROACH ||
             action_fsm.state == FSM_JUMP_RAMP_DOWN ||
             action_fsm.state == FSM_JUMP_TURN_BACK ||
             action_fsm.state == FSM_JUMP_RAMP_UP ||
@@ -221,6 +223,26 @@ static void navi_bump_fault_exit(uint16_t target_idx)
 
 #define NAVI_TRIPLE_JUMP_TOTAL_COUNT      (3U)
 
+typedef struct
+{
+    float distance_m;
+    float speed;
+} NaviJumpFollowupConfig_t;
+
+#if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
+static const NaviJumpFollowupConfig_t k_jump_followup_config[2] =
+{
+    {
+        NAVI_JUMP_SECOND_APPROACH_M,
+        NAVI_JUMP_SECOND_APPROACH_SPEED
+    },
+    {
+        NAVI_JUMP_THIRD_APPROACH_M,
+        NAVI_JUMP_THIRD_APPROACH_SPEED
+    }
+};
+#endif
+
 #if (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY) && \
     (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE)
 #error "Invalid NAVI_TRIPLE_JUMP_AFTER_MODE"
@@ -260,6 +282,28 @@ static void navi_jump_motion_update_runup(void)
 
     jump_motion_count = (forward_displacement > 0.0f) ?
                         forward_displacement : 0.0f;
+}
+
+static const NaviJumpFollowupConfig_t *navi_jump_get_followup_config(void)
+{
+#if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
+    uint8_t index;
+
+    if (jump_sequence_done_count == 0U)
+    {
+        return NULL;
+    }
+
+    index = jump_sequence_done_count - 1U;
+    if (index >= 2U)
+    {
+        return NULL;
+    }
+
+    return &k_jump_followup_config[index];
+#else
+    return NULL;
+#endif
 }
 
 static void navi_jump_touch_window_reset(void)
@@ -326,6 +370,11 @@ uint8_t Navi_Action_Remote_Jump_Active(void)
     return remote_jump_active;
 }
 
+static uint8_t navi_jump_is_remote_trigger(void)
+{
+    return (jump_active_trigger == NAVI_JUMP_TRIGGER_REMOTE) ? 1U : 0U;
+}
+
 void Navi_Action_Request_Remote_Jump(void)
 {
     remote_jump_request = 1U;
@@ -347,15 +396,16 @@ uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger,
     }
 
     remote_jump_active = (trigger == NAVI_JUMP_TRIGGER_REMOTE) ? 1U : 0U;
+    jump_active_trigger = trigger;
     is_action_busy = 1U;
     action_fsm.state = FSM_JUMP_EXPLORE;
     action_fsm.state_timer_ms = 0U;
     action_fsm.is_airborne_expect = 0U;
 
-#if (NAVI_JUMP_ACTION_MODE == 2U)
+#if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
     jump_sequence_done_count = 0U;
-    jump_course_back_yaw = 0.0f;
 #endif
+    jump_course_back_yaw = 0.0f;
     jump_hold_control_yaw = navi_limit_angle180(control_yaw);
     jump_hold_nav_yaw = navi_limit_angle180(nav_yaw);
     navi_jump_motion_reset();
@@ -405,6 +455,7 @@ void Navi_Action_Process_Remote_Jump_Request_5ms(void)
 
 static void navi_action_remote_jump_clear(void)
 {
+    target_velocity = 0.0f;
     remote_jump_active = 0;
     is_action_busy = 0;
     action_fsm.state = FSM_IDLE;
@@ -414,6 +465,34 @@ static void navi_action_remote_jump_clear(void)
     jump_engine_suspend = 0;
     jump_stop = 0;
     jump_position = 0;
+}
+
+static void navi_jump_finish(uint16_t target_idx)
+{
+    target_velocity = 0.0f;
+    target_angle = jump_hold_control_yaw;
+
+    navi_jump_pose_update_end();
+
+    action_fsm.state = FSM_IDLE;
+    action_fsm.state_timer_ms = 0U;
+    action_fsm.is_airborne_expect = 0U;
+    is_action_busy = 0U;
+    jump_engine_suspend = 0U;
+    jump_position = 0;
+    jump_stop = 0;
+
+    if (!navi_jump_is_remote_trigger())
+    {
+        action_done_pending = 1U;
+        action_done_idx = target_idx;
+
+        if (action_seq.current_ptr < action_seq.total_count &&
+            action_seq.list[action_seq.current_ptr].wp_index == target_idx)
+        {
+            action_seq.current_ptr++;
+        }
+    }
 }
 
 // ============================================================================
@@ -436,10 +515,11 @@ void navi_parse_global_path(void) {
     course3_display_state = COURSE3_DISPLAY_IDLE;
     course3_display_done_pending_clear = 0U;
     remote_jump_request = 0U;
-#if (NAVI_JUMP_ACTION_MODE == 2U)
+    jump_active_trigger = NAVI_JUMP_TRIGGER_WAYPOINT;
+#if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
     jump_sequence_done_count = 0;
-    jump_course_back_yaw = 0.0f;
 #endif
+    jump_course_back_yaw = 0.0f;
     jump_hold_control_yaw = 0.0f;
     jump_hold_nav_yaw = 0.0f;
     navi_jump_motion_reset();
@@ -509,15 +589,15 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             }
             else if (upcoming_type == WP_TYPE_JUMP && distance < (DISTANCE_THRESHOLD * 3.0f)) {                        // 跳跃动作
                 point_map[target_idx].action_cmd = NAVI_JUMP_ACTION_MODE;
-#if (NAVI_JUMP_ACTION_MODE == 0U)
+#if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_DISABLED)
                 action_fsm.state = FSM_MINE_APPROACH;
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
-#elif (NAVI_JUMP_ACTION_MODE == 1U)
+#elif (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_SINGLE)
                 (void)Navi_Jump_Start(NAVI_JUMP_TRIGGER_WAYPOINT,
                                       target_angle,
                                       point_map[target_idx].yaw);
-#elif (NAVI_JUMP_ACTION_MODE == 2U)
+#elif (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
                 (void)Navi_Jump_Start(NAVI_JUMP_TRIGGER_WAYPOINT,
                                       target_angle,
                                       point_map[target_idx].yaw);
@@ -805,6 +885,37 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             }
             break;
 
+        case FSM_JUMP_NEXT_APPROACH:
+        {
+            const NaviJumpFollowupConfig_t *config;
+
+            is_action_busy = 1U;
+            action_fsm.is_airborne_expect = 0U;
+            jump_stop = 0;
+            jump_position = 0;
+            jump_engine_suspend = 0U;
+
+            config = navi_jump_get_followup_config();
+            if (config == NULL)
+            {
+                navi_jump_finish(target_idx);
+                break;
+            }
+
+            target_velocity = config->speed;
+            target_angle = jump_hold_control_yaw;
+            navi_jump_motion_update_runup();
+
+            if (jump_motion_count >= config->distance_m)
+            {
+                navi_jump_pose_update_begin();
+                action_fsm.state = FSM_JUMP_PREPARE;
+                action_fsm.state_timer_ms = 0U;
+                is_action_busy = 1U;
+            }
+            break;
+        }
+
         case FSM_JUMP_PREPARE:
             is_action_busy = 1;
             action_fsm.is_airborne_expect = 0;
@@ -876,52 +987,40 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             if (action_fsm.state_timer_ms >= NAVI_JUMP_RECOVER_MS) {
                 navi_jump_pose_add_fixed_step();
                 navi_jump_pose_update_end();
-#if (NAVI_JUMP_ACTION_MODE == 2U)
+#if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
                 jump_sequence_done_count++;
-                if (jump_sequence_done_count < NAVI_TRIPLE_JUMP_TOTAL_COUNT) {
+                if (jump_sequence_done_count < NAVI_TRIPLE_JUMP_TOTAL_COUNT)
+                {
                     navi_jump_motion_reset();
                     navi_jump_touch_window_reset();
-                    jump_touch_inhibit_after_landing = 1;
-                    action_fsm.state = FSM_JUMP_EXPLORE;
-                    action_fsm.state_timer_ms = 0;
-                    is_action_busy = 1;
-                    action_fsm.is_airborne_expect = 0;
-                    jump_engine_suspend = 0;
+                    jump_touch_inhibit_after_landing = 0U;
+                    action_fsm.state = FSM_JUMP_NEXT_APPROACH;
+                    action_fsm.state_timer_ms = 0U;
+                    action_fsm.is_airborne_expect = 0U;
+                    is_action_busy = 1U;
+                    jump_engine_suspend = 0U;
                     jump_position = 0;
                     jump_stop = 0;
-                    target_velocity = NAVI_JUMP_EXPLORE_SPEED;
+                    target_velocity = 0.0f;
                     target_angle = jump_hold_control_yaw;
                     break;
                 }
 #if (NAVI_TRIPLE_JUMP_AFTER_MODE == NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE)
-                jump_course_back_yaw = navi_limit_angle180(jump_hold_control_yaw + 180.0f);
-                action_fsm.state = FSM_JUMP_RAMP_DOWN;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-                action_fsm.is_airborne_expect = 0;
-                jump_engine_suspend = 0;
-                jump_position = 0;
-                jump_stop = 0;
-                break;
-#endif
-#endif
-#if (NAVI_JUMP_ACTION_MODE != 2U) || (NAVI_TRIPLE_JUMP_AFTER_MODE != NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE)
-                if (!remote_jump_active) {
-                    action_done_pending = 1;
-                    action_done_idx = target_idx;
-                    if (action_seq.current_ptr < action_seq.total_count &&
-                        action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
-                        action_seq.current_ptr++;
-                    }
+                if (!navi_jump_is_remote_trigger())
+                {
+                    jump_course_back_yaw = navi_limit_angle180(jump_hold_control_yaw + 180.0f);
+                    action_fsm.state = FSM_JUMP_RAMP_DOWN;
+                    action_fsm.state_timer_ms = 0U;
+                    action_fsm.is_airborne_expect = 0U;
+                    is_action_busy = 1U;
+                    jump_engine_suspend = 0U;
+                    jump_position = 0;
+                    jump_stop = 0;
+                    break;
                 }
-                action_fsm.state = FSM_IDLE;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 0;
-                action_fsm.is_airborne_expect = 0;
-                jump_engine_suspend = 0;
-                jump_position = 0;
-                jump_stop = 0;
 #endif
+#endif
+                navi_jump_finish(target_idx);
             }
             break;
 
