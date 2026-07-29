@@ -1,6 +1,7 @@
 #ifndef CAMERA_ASSIST_H
 #define CAMERA_ASSIST_H
 
+#include "camera_align.h"
 #include "zf_common_typedef.h"
 #include "zf_device_mt9v03x.h"
 

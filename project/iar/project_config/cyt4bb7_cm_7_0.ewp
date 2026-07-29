@@ -1209,6 +1209,12 @@
             <name>$PROJ_DIR$\..\..\code\navigation_data_handling.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\camera_align.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\camera_align.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\navigation_tracking.c</name>
         </file>
         <file>

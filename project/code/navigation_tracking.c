@@ -24,6 +24,7 @@
 #include "runtime_status.h"
 #include "navigation_smooth_logic.h"
 #include "vehicle_supervisor.h"
+#include "camera_align.h"
 
 //====================================================全局变量定义=======================================================
 Navi_Controller_t navi_ctrl;
@@ -50,16 +51,6 @@ uint16_t record_point_count = 0;
 static Navi_WayPoint_t static_point_map[NAVI_POINT_MAX]; 
 static uint16_t static_point_count = 0;
 
-typedef struct
-{
-    uint8_t approach_active;
-    uint8_t active;
-    uint16_t start_idx;
-    uint16_t end_idx;
-    float dynamic_target_angle;
-} NaviBridgeControl_t;
-
-static NaviBridgeControl_t navi_bridge_ctrl;
 static uint8_t navi_record_origin_cal_pending = 0U;
 static uint8_t navi_start_cal_pending = 0U;
 
@@ -82,11 +73,8 @@ static float navi_update_tracking_velocity(float distance, float stop_threshold,
 static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd);
 static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points);
 static uint8_t navi_record_bridge_state(uint8_t *bridge_open);
-static void navi_record_sync_bridge_height(void);
 static uint8_t navi_bridge_validate_route(void);
 static void navi_bridge_reset(uint8_t restore_low_height);
-static uint8_t navi_bridge_enter(uint16_t start_idx);
-static uint8_t navi_bridge_update_dynamic_target(void);
 static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
                                                 float *azimuth,
                                                 float *turn_error);
@@ -172,7 +160,6 @@ static void navi_record_undo_last(void)
         navi_ctrl.origin_set_flag = 0;
     }
     navi_record_update_status();
-    navi_record_sync_bridge_height();
     IPC_Nav_Record_Mark_Dirty();
     IPC_LOG_Printf("\r\n>>> [NAVI_RECORD] undo last point, remain %d <<<\r\n", record_point_count);
 }
@@ -213,29 +200,9 @@ static uint8_t navi_record_bridge_state(uint8_t *bridge_open)
     return 1U;
 }
 
-static void navi_record_sync_bridge_height(void)
-{
-    uint8_t bridge_open = 0U;
-
-    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3)
-    {
-        return;
-    }
-
-    if (navi_record_bridge_state(&bridge_open))
-    {
-        Height_PID_Switch(bridge_open != 0U);
-    }
-    else
-    {
-        pid_low_init();
-        IPC_LOG_Printf("\r\n[NAVI_BRIDGE] invalid bridge marker sequence in record map.\r\n");
-    }
-}
-
 static void navi_bridge_reset(uint8_t restore_low_height)
 {
-    memset(&navi_bridge_ctrl, 0, sizeof(navi_bridge_ctrl));
+    camera_align_reset();
     if (restore_low_height)
     {
         pid_low_init();
@@ -298,96 +265,6 @@ static uint8_t navi_bridge_validate_route(void)
         return 0U;
     }
 
-    return 1U;
-}
-
-static uint8_t navi_bridge_enter(uint16_t start_idx)
-{
-    uint16_t end_idx = (uint16_t)(start_idx + 1U);
-
-    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3 ||
-        end_idx >= navi_ctrl.point_total_count ||
-        point_map[start_idx].type != WP_TYPE_BRIDGE ||
-        point_map[start_idx].action_cmd != NAVI_BRIDGE_ACTION_START ||
-        point_map[end_idx].type != WP_TYPE_BRIDGE ||
-        point_map[end_idx].action_cmd != NAVI_BRIDGE_ACTION_END)
-    {
-        return 0U;
-    }
-
-    navi_bridge_ctrl.approach_active = 0U;
-    navi_bridge_ctrl.active = 1U;
-    navi_bridge_ctrl.start_idx = start_idx;
-    navi_bridge_ctrl.end_idx = end_idx;
-
-    Height_PID_Switch(true);
-    target_velocity = NAVI_BRIDGE_TARGET_SPEED;
-    navi_ctrl.point_current_idx = end_idx;
-    navi_speed_profile_reset();
-
-    if (!navi_bridge_update_dynamic_target())
-    {
-        navi_bridge_reset(1U);
-        return 0U;
-    }
-
-    IPC_LOG_Printf("\r\n[NAVI_BRIDGE] enter %d -> %d, speed=%d, target angle=%s%d.%02d.\r\n",
-                   start_idx, end_idx, (int)NAVI_BRIDGE_TARGET_SPEED,
-                   F_ARG(navi_bridge_ctrl.dynamic_target_angle));
-    return 1U;
-}
-
-static uint8_t navi_bridge_update_dynamic_target(void)
-{
-    float segment_x;
-    float segment_y;
-    float segment_length_sq;
-    float segment_length;
-    float projection;
-    float lookahead_ratio;
-    float lookahead_x;
-    float lookahead_y;
-    float desired_azimuth;
-    float turn_error;
-    Navi_WayPoint_t *start;
-    Navi_WayPoint_t *end;
-
-    if (!navi_bridge_ctrl.active ||
-        navi_bridge_ctrl.start_idx >= navi_ctrl.point_total_count ||
-        navi_bridge_ctrl.end_idx >= navi_ctrl.point_total_count ||
-        !robot_pose.is_valid)
-    {
-        return 0U;
-    }
-
-    start = &point_map[navi_bridge_ctrl.start_idx];
-    end = &point_map[navi_bridge_ctrl.end_idx];
-    segment_x = end->x - start->x;
-    segment_y = end->y - start->y;
-    segment_length_sq = segment_x * segment_x + segment_y * segment_y;
-    if (segment_length_sq < 0.0001f)
-    {
-        return 0U;
-    }
-
-    segment_length = sqrtf(segment_length_sq);
-    projection = ((robot_pose.x - start->x) * segment_x +
-                  (robot_pose.y - start->y) * segment_y) / segment_length_sq;
-    projection = constrain_float(projection, 0.0f, 1.0f);
-    lookahead_ratio = projection + NAVI_BRIDGE_LOOKAHEAD_DISTANCE / segment_length;
-    lookahead_ratio = constrain_float(lookahead_ratio, 0.0f, 1.0f);
-    lookahead_x = start->x + segment_x * lookahead_ratio;
-    lookahead_y = start->y + segment_y * lookahead_ratio;
-
-    desired_azimuth = navi_get_two_points_azimuth(robot_pose.x, robot_pose.y,
-                                                  lookahead_x, lookahead_y);
-    turn_error = navi_limit_angle180(desired_azimuth - robot_pose.yaw);
-    turn_error = constrain_float(turn_error,
-                                 -NAVI_BRIDGE_MAX_TURN_ERROR_DEG,
-                                 NAVI_BRIDGE_MAX_TURN_ERROR_DEG);
-    navi_bridge_ctrl.dynamic_target_angle =
-        navi_limit_angle180(IMU_data.filter_result.yaw - turn_error);
-    target_angle = navi_bridge_ctrl.dynamic_target_angle;
     return 1U;
 }
 
@@ -736,7 +613,6 @@ void navi_auto_record_task(void) {
             if (!navi_record_bridge_state(&bridge_open))
             {
                 navi_ctrl.trigger_record = 0;
-                pid_low_init();
                 IPC_LOG_Printf("\r\n>>> [打点失败] 单边桥航点序列无效，请清空或撤销后重试 <<<\r\n");
                 return;
             }
@@ -760,7 +636,6 @@ void navi_auto_record_task(void) {
         record_point_map[idx].valid = 1;
         record_point_count++;
         navi_record_update_status();
-        navi_record_sync_bridge_height();
         IPC_Nav_Record_Mark_Dirty();
 
         IPC_LOG_Printf(" >>> [手动打点] 记录点[%03d]: X=%s%d.%02d, Y=%s%d.%02d | 类型:%s | 动作指令:%d <<<\r\n",
@@ -908,10 +783,6 @@ void task_navigation_control(void) {
         if (navi_ctrl.navi_mode_driver == 0) {     
             if (last_mode_driver != 0) {
                 IPC_LOG_Printf(">>> [状态] 系统已切入 停车与地图选择模式 <<<\r\n");
-                if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
-                {
-                    navi_bridge_reset(1U);
-                }
             }
 
         }
@@ -966,10 +837,6 @@ void task_navigation_control(void) {
             }
         }
         else if (navi_ctrl.navi_mode_driver == 2) {
-            if (last_mode_driver != 2)
-            {
-                navi_record_sync_bridge_height();
-            }
             // Driver=2 专注打点模式。只有 map=1 时开始准备打点
             if (navi_ctrl.navi_mode_map == 1 && last_mode_map != 1) {
                 IPC_LOG_Printf(" [状态变更] 进入手动打点录制模式，后台随时待命...\r\n");
@@ -1069,44 +936,43 @@ void task_navigation_control(void) {
                 (void)navi_course3_apply_line_lookahead(curr_idx, &azimuth, &print_turn_angle);
             }
 
-            if (navi_bridge_ctrl.active)
+            if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
+                point_map[curr_idx].type == WP_TYPE_BRIDGE)
             {
-                if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3 ||
-                    curr_idx != navi_bridge_ctrl.end_idx ||
-                    point_map[curr_idx].type != WP_TYPE_BRIDGE ||
-                    point_map[curr_idx].action_cmd != NAVI_BRIDGE_ACTION_END)
+                if (point_map[curr_idx].action_cmd == NAVI_BRIDGE_ACTION_START &&
+                    reached_current)
                 {
-                    target_velocity = 0.0f;
-                    vofa_mode_driver = 0.0f;
-                    navi_ctrl.navi_mode_driver = 0;
-                    navi_bridge_reset(1U);
-                    IPC_LOG_Printf("\r\n[NAVI_BRIDGE] bridge state does not match current target.\r\n");
+                    if (!camera_align())
+                    {
+                        navi_speed_profile_reset();
+                        break;
+                    }
+
+                    Height_PID_Switch(true);
+                    Turn_Reset();
+                    navi_speed_profile_reset();
+                    IPC_LOG_Printf("\r\n[NAVI_BRIDGE] camera align done at start point %d.\r\n", curr_idx);
+                    if (navi_switch_nexttargetpoint())
+                    {
+                        uint16_t next_idx = navi_ctrl.point_current_idx;
+                        IPC_LOG_Printf(" [NAVI_BRIDGE] next bridge target X=%s%d.%02d, Y=%s%d.%02d | Type:%s\r\n",
+                                       F_ARG(point_map[next_idx].x), F_ARG(point_map[next_idx].y),
+                                       get_enum_name(point_map[next_idx].type));
+                    }
                     break;
                 }
 
-                if (!nav_info_valid || !navi_bridge_update_dynamic_target())
+                if (point_map[curr_idx].action_cmd == NAVI_BRIDGE_ACTION_END &&
+                    reached_current)
                 {
-                    target_velocity = 0.0f;
-                    vofa_mode_driver = 0.0f;
-                    navi_ctrl.navi_mode_driver = 0;
-                    navi_bridge_reset(1U);
-                    IPC_LOG_Printf("\r\n[NAVI_BRIDGE] dynamic lookahead update failed.\r\n");
-                    break;
-                }
-                target_velocity = NAVI_BRIDGE_TARGET_SPEED;
-
-                if (reached_current)
-                {
-                    uint16_t bridge_end_idx = curr_idx;
-                    navi_bridge_reset(1U);
+                    pid_low_init();
                     Turn_Reset();
                     navi_speed_profile_reset();
                     target_velocity = 0.0f;
                     target_angle = IMU_data.filter_result.yaw;
+                    IPC_LOG_Printf("\r\n[NAVI_BRIDGE] end point %d reached, restore normal leg height.\r\n", curr_idx);
 
-                    IPC_LOG_Printf("\r\n[NAVI_BRIDGE] end point %d reached within %.2f m.\r\n",
-                                   bridge_end_idx, (double)DISTANCE_THRESHOLD);
-                    if (bridge_end_idx >= (total_points - 1U))
+                    if (curr_idx >= (total_points - 1U))
                     {
                         vofa_mode_driver = 0.0f;
                         navi_ctrl.navi_mode_driver = 0;
@@ -1115,64 +981,9 @@ void task_navigation_control(void) {
                     {
                         navi_switch_nexttargetpoint();
                     }
-                }
-                break;
-            }
-
-            if (navi_bridge_ctrl.approach_active &&
-                (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3 ||
-                 curr_idx != navi_bridge_ctrl.start_idx ||
-                 point_map[curr_idx].type != WP_TYPE_BRIDGE ||
-                 point_map[curr_idx].action_cmd != NAVI_BRIDGE_ACTION_START))
-            {
-                target_velocity = 0.0f;
-                vofa_mode_driver = 0.0f;
-                navi_ctrl.navi_mode_driver = 0;
-                navi_bridge_reset(1U);
-                IPC_LOG_Printf("\r\n[NAVI_BRIDGE] approach state does not match current target.\r\n");
-                break;
-            }
-
-            if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
-                point_map[curr_idx].type == WP_TYPE_BRIDGE &&
-                point_map[curr_idx].action_cmd == NAVI_BRIDGE_ACTION_START)
-            {
-                if (reached_current)
-                {
-                    if (!navi_bridge_enter(curr_idx))
-                    {
-                        target_velocity = 0.0f;
-                        vofa_mode_driver = 0.0f;
-                        navi_ctrl.navi_mode_driver = 0;
-                        navi_bridge_reset(1U);
-                        IPC_LOG_Printf("\r\n[NAVI_BRIDGE] failed to enter bridge segment at point %d.\r\n", curr_idx);
-                    }
-                    break;
-                }
-
-                if (navi_bridge_ctrl.approach_active ||
-                    (nav_info_valid && distance <= NAVI_BRIDGE_APPROACH_DISTANCE))
-                {
-                    if (!navi_bridge_ctrl.approach_active)
-                    {
-                        navi_bridge_ctrl.approach_active = 1U;
-                        navi_bridge_ctrl.active = 0U;
-                        navi_bridge_ctrl.start_idx = curr_idx;
-                        navi_bridge_ctrl.end_idx = (uint16_t)(curr_idx + 1U);
-                        Height_PID_Switch(true);
-                        Turn_Reset();
-                        navi_speed_profile_reset();
-                        IPC_LOG_Printf("\r\n[NAVI_BRIDGE] approach point %d inside %.2f m, speed=%d.\r\n",
-                                       curr_idx, (double)NAVI_BRIDGE_APPROACH_DISTANCE,
-                                       (int)NAVI_BRIDGE_APPROACH_SPEED);
-                    }
-
-                    target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - print_turn_angle);
-                    target_velocity = nav_info_valid ? NAVI_BRIDGE_APPROACH_SPEED : 0.0f;
                     break;
                 }
             }
-
             if (smooth_speed_hold_ticks > 0U)
             {
                 smooth_speed_hold_ticks--;
@@ -1339,10 +1150,6 @@ void task_navigation_control(void) {
 
                 memset(record_point_map, 0, sizeof(record_point_map));
                 memset(point_map, 0, sizeof(point_map));
-                if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
-                {
-                    navi_bridge_reset(1U);
-                }
                 navi_record_update_status();
                 IPC_Nav_Record_Mark_Dirty();
                 vofa_mode_map = 1.0f;
