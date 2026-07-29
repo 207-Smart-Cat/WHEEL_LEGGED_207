@@ -39,5 +39,9 @@ float leg_sensor_filter(float new_val, bool is_first_run);
 float max(float a, float b);
 float min(float a, float b);
 void Turn_Reset(void);
+void Control_Direction_PID_Set(float kp,
+                               float ki,
+                               float kd,
+                               uint8_t reset_integral);
 
 #endif /* CODE_ENGINE_H_ */

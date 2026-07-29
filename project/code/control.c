@@ -711,6 +711,26 @@ void Turn_Reset(void)
     g_turn_yaw_integral = 0.0f;
 }
 
+void Control_Direction_PID_Set(float kp,
+                               float ki,
+                               float kd,
+                               uint8_t reset_integral)
+{
+    Direction_p = kp;
+    Direction_i = ki;
+    Direction_d = kd;
+
+    PidChange(&motor_direction,
+              Direction_p,
+              Direction_i,
+              Direction_d);
+
+    if (reset_integral)
+    {
+        Turn_Reset();
+    }
+}
+
 static float vision_wrap_angle(float angle)
 {
     while (angle > 180.0f) angle -= 360.0f;

@@ -15,43 +15,13 @@
 #define NAVI_JUMP_ACTION_SINGLE    1U
 #define NAVI_JUMP_ACTION_TRIPLE    2U
 
-#define NAVI_JUMP_ACTION_MODE      NAVI_JUMP_ACTION_TRIPLE
+#define NAVI_JUMP_ACTION_MODE      NAVI_JUMP_ACTION_SINGLE
 
 #if (NAVI_JUMP_ACTION_MODE != NAVI_JUMP_ACTION_DISABLED) && \
     (NAVI_JUMP_ACTION_MODE != NAVI_JUMP_ACTION_SINGLE) && \
     (NAVI_JUMP_ACTION_MODE != NAVI_JUMP_ACTION_TRIPLE)
 #error "Invalid NAVI_JUMP_ACTION_MODE"
 #endif
-
-#define NAVI_TRIPLE_JUMP_AFTER_MODE  NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY
-#define NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY  0U
-#define NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE  1U
-
-#define NAVI_TRIPLE_JUMP_RAMP_DOWN_MS    (1500U)
-#define NAVI_TRIPLE_JUMP_TURN_BACK_MS    (1300U)
-#define NAVI_TRIPLE_JUMP_RAMP_UP_MS      (1700U)
-#define NAVI_TRIPLE_JUMP_STAIR_DOWN_MS   (1400U)
-#define NAVI_TRIPLE_JUMP_RAMP_SPEED      NAVI_JUMP_RUNUP_SPEED
-#define NAVI_TRIPLE_JUMP_STAIR_SPEED     250.0f
-
-// 跳跃动作期间的坐标更新方式：
-// 1U = 使用当前自动位姿更新，空中阶段由现有 EKF/里程逻辑处理
-// 2U = 暂停自动位姿更新，每完成一次跳跃后按固定前向距离补偿坐标
-#define NAVI_JUMP_POSE_UPDATE_MODE  1U
-
-// 固定坐标补偿参数，仅 NAVI_JUMP_POSE_UPDATE_MODE == 2U 时生效。
-// frame=1，表示车体坐标系：forward_m 为前向，right_m 为右向。
-#define NAVI_JUMP_FIXED_FORWARD_M  0.30f
-#define NAVI_JUMP_FIXED_RIGHT_M    0.00f
-
-// 跳跃前助跑参数：
-// RUNUP 阶段只接管速度和航向，不接管舵机，让常规 leg_control 产生前倾助跑。
-// 进入 PREPARE/TAKEOFF 后再接管舵机，避免普通腿控覆盖压腿和爆发输出。
-#define NAVI_JUMP_RUNUP_SPEED      350.0f
-#define NAVI_JUMP_SECOND_APPROACH_M       (0.00f)
-#define NAVI_JUMP_SECOND_APPROACH_SPEED   (250.0f)
-#define NAVI_JUMP_THIRD_APPROACH_M        (0.00f)
-#define NAVI_JUMP_THIRD_APPROACH_SPEED    (250.0f)
 
 typedef enum
 {
@@ -71,7 +41,7 @@ typedef enum {
     
     // --- 跳跃动作状态 ---
     FSM_JUMP_EXPLORE,         // 探索期：低速前进，寻找台阶边缘
-    FSM_JUMP_EDGE_TOUCH,      // 保留原枚举值；触边停车与距离清零已合并到 EXPLORE
+    FSM_JUMP_EDGE_TOUCH,      // 触边停稳：速度清零后再建立准确的后退距离起点
     FSM_JUMP_BACKOFF,         // 后退期：从台阶边缘后退到安全助跑距离
     FSM_JUMP_RUNUP,           // 助跑期：保持常规腿控，建立前向速度
     FSM_JUMP_PREPARE,         // 准备期：压腿蓄力

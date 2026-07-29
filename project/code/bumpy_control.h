@@ -408,6 +408,14 @@ void Bumpy_Project_Get_Debug_Snapshot(BumpyDebugData_t *out);
  */
 typedef enum
 {
+    BUMP_ACTION_PROFILE_BASIC = 0,
+    BUMP_ACTION_PROFILE_ADAPTIVE,
+    BUMP_ACTION_PROFILE_STATIC_LEG,
+    BUMP_ACTION_PROFILE_FORCE_THROUGH
+} BumpyActionProfileId_t;
+
+typedef enum
+{
     BUMP_ACTION_RESULT_IDLE = 0,       /* 当前没有活动动作。 */
     BUMP_ACTION_RESULT_RUNNING,        /* 当前阶段仍在执行。 */
     BUMP_ACTION_RESULT_ENTER_CROSSING, /* confirmed entry; switch outer FSM */
@@ -420,6 +428,7 @@ void Bumpy_Action_Reset(void);
 uint8_t Bumpy_Action_Start(uint16_t profile_id);
 BumpyActionResult_t Bumpy_Action_Process_5ms(void); /* 导航动作 5 ms 调度入口。 */
 void Bumpy_Action_Log_Task(void);             /* 主循环打印 Action 日志。 */
+uint8_t Bumpy_Action_Force_Through_Active(void);
 uint8_t Bumpy_Action_Is_Active(void);
 BumpyExitReason_t Bumpy_Action_Get_Exit_Reason(void);
 uint8_t Bumpy_Action_Get_Leg_Override(float *leg_x_cmd_m,
