@@ -39,5 +39,12 @@ float leg_sensor_filter(float new_val, bool is_first_run);
 float max(float a, float b);
 float min(float a, float b);
 void Turn_Reset(void);
+uint8 Vision_Align_Cal_Get_State(void);
+uint8 Vision_Align_Cal_Get_Stable_Count(void);
+uint8 Vision_Align_Cal_Get_Sample_Count(void);
+uint8 Vision_Align_Cal_Get_Left_Sample_Count(void);
+uint8 Vision_Align_Cal_Get_Right_Sample_Count(void);
+uint8 Vision_Align_Cal_Result_Valid(void);
+float Vision_Align_Cal_Get_Result_Yaw(void);
 
 #endif /* CODE_ENGINE_H_ */

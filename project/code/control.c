@@ -10,6 +10,7 @@
 #include "vehicle_supervisor.h"
 #include "vision_control.h"
 #include "navigation_action.h"
+#include "vision_align_calibration.h"
 
 #define BALANCE_CONTROL_RUN_LEG_CONTROL 1
 #define VISION_FRAME_TIMEOUT_TICKS 150U  // balance loop runs at 1 ms.
@@ -57,6 +58,7 @@ static float g_turn_yaw_integral = 0.0f;
 static uint8_t g_vision_last_enabled = 0U;
 static uint32_t g_vision_last_frame_seq = 0U;
 static uint8_t g_vision_stale_ticks = 0U;
+static VisionAlignCal_t g_vision_align_cal;
 extern IMU_t IMU_data;            // IMU数据
 float roll;              // 倾斜角度
 int engine_change = 600; // 发动机变化量
@@ -714,9 +716,46 @@ static float vision_wrap_angle(float angle)
     return angle;
 }
 
+uint8 Vision_Align_Cal_Get_State(void)
+{
+    return (uint8)VisionAlignCal_GetState(&g_vision_align_cal);
+}
+
+uint8 Vision_Align_Cal_Get_Stable_Count(void)
+{
+    return VisionAlignCal_GetStableCount(&g_vision_align_cal);
+}
+
+uint8 Vision_Align_Cal_Get_Sample_Count(void)
+{
+    return VisionAlignCal_GetSampleCount(&g_vision_align_cal);
+}
+
+uint8 Vision_Align_Cal_Get_Left_Sample_Count(void)
+{
+    return VisionAlignCal_GetLeftSampleCount(&g_vision_align_cal);
+}
+
+uint8 Vision_Align_Cal_Get_Right_Sample_Count(void)
+{
+    return VisionAlignCal_GetRightSampleCount(&g_vision_align_cal);
+}
+
+uint8 Vision_Align_Cal_Result_Valid(void)
+{
+    return VisionAlignCal_ResultValid(&g_vision_align_cal);
+}
+
+float Vision_Align_Cal_Get_Result_Yaw(void)
+{
+    return VisionAlignCal_GetResultYaw(&g_vision_align_cal);
+}
+
 static void vision_mode_apply(void)
 {
-    uint8_t enabled = (core_b_cmd.vision_enabled || Navi_Action_Vision_Align_Active()) ? 1U : 0U;
+    uint8_t page_enabled = core_b_cmd.vision_enabled ? 1U : 0U;
+    uint8_t action_enabled = Navi_Action_Vision_Align_Active() ? 1U : 0U;
+    uint8_t enabled = (page_enabled || action_enabled) ? 1U : 0U;
     uint8_t valid = core_b_cmd.vision_valid;
 
     if (!enabled)
@@ -724,6 +763,7 @@ static void vision_mode_apply(void)
         if (g_vision_last_enabled) Turn_Reset();
         g_vision_last_enabled = 0U;
         g_vision_stale_ticks = 0U;
+        VisionAlignCal_Reset(&g_vision_align_cal);
         return;
     }
 
@@ -742,6 +782,35 @@ static void vision_mode_apply(void)
         Turn_Reset();
     }
     g_vision_last_enabled = 1U;
+
+    if (page_enabled)
+    {
+        if (g_vision_stale_ticks > VISION_FRAME_TIMEOUT_TICKS)
+        {
+            VisionAlignCal_Reset(&g_vision_align_cal);
+            target_velocity = 0.0f;
+            target_angle = IMU_data.filter_result.yaw;
+            Turn_Reset();
+            return;
+        }
+
+        VisionAlignCal_Update(&g_vision_align_cal,
+                              1U,
+                              valid,
+                              core_b_cmd.vision_frame_seq,
+                              core_b_cmd.vision_lane_error_px,
+                              IMU_data.filter_result.yaw);
+
+        if (VisionAlignCal_ResultValid(&g_vision_align_cal))
+        {
+            target_velocity = 0.0f;
+            target_angle = VisionAlignCal_GetResultYaw(&g_vision_align_cal);
+            return;
+        }
+
+        target_velocity = 50.0f;
+    }
+
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)
     {
         target_angle = vision_wrap_angle(IMU_data.filter_result.yaw + core_b_cmd.vision_angle_offset_deg);
@@ -1287,6 +1356,4 @@ float min(float a, float b)
 {
     return (a < b) ? a : b;
 }
-
-
 

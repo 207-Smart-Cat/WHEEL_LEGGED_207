@@ -1233,6 +1233,12 @@
             <name>$PROJ_DIR$\..\..\code\camera_align.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\vision_align_calibration.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\vision_align_calibration.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\navigation_tracking.c</name>
         </file>
         <file>

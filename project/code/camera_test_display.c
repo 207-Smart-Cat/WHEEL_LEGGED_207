@@ -3,6 +3,7 @@
 #include "camera_assist.h"
 #include "ipc_shared_data.h"
 #include "course3_display_state.h"
+#include "vision_align_calibration.h"
 #include "zf_common_font.h"
 #include "zf_device_ips200.h"
 #include "zf_device_mt9v03x.h"
@@ -22,6 +23,7 @@
 static uint32 camera_test_last_frame;
 
 static void camera_test_show_info(uint16 y, const char *text);
+static const char *camera_test_vision_cal_state_text(uint8 state);
 
 void CameraTestDisplay_DrawLaneBoundaries(void)
 {
@@ -95,9 +97,12 @@ void CameraTestDisplay_DrawStatusText(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
     sprintf(line, "Yaw:%7.2f T:%7.2f", core_a_status.yaw, core_a_status.target_angle_status);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
-    sprintf(line, "TurnPWM:%7.1f", core_a_status.pid_out_turn);
+    sprintf(line, "Cal:%s       ", camera_test_vision_cal_state_text(core_a_status.vision_align_cal_state));
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
-    sprintf(line, "Rows:%3u %s", status->valid_rows, status->lane_valid ? "ACTIVE" : "SEARCH");
+    sprintf(line, "St:%02u/30 L:%u/10 R:%u/10",
+            core_a_status.vision_align_stable_count,
+            core_a_status.vision_align_left_sample_count,
+            core_a_status.vision_align_right_sample_count);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
 }
 
@@ -105,7 +110,7 @@ void CameraTestDisplay_DrawCourse3FsmOverlay(void)
 {
     const char *text = Course3DisplayState_Text(core_a_status.course3_display_state);
 
-    if (text == 0)
+    if (text == 0 || !core_a_status.course3_exec_active)
     {
         return;
     }
@@ -120,6 +125,19 @@ void CameraTestDisplay_DrawCourse3FsmOverlay(void)
 static void camera_test_show_info(uint16 y, const char *text)
 {
     ips200_show_string(8, y, text);
+}
+
+static const char *camera_test_vision_cal_state_text(uint8 state)
+{
+    switch (state)
+    {
+        case VISION_ALIGN_CAL_IDLE:        return "IDLE";
+        case VISION_ALIGN_CAL_ALIGNING:    return "ALIGNING";
+        case VISION_ALIGN_CAL_STABLE_WAIT: return "STABLE_WAIT";
+        case VISION_ALIGN_CAL_SAMPLING:    return "SAMPLING";
+        case VISION_ALIGN_CAL_DONE:        return "DONE";
+        default:                           return "UNKNOWN";
+    }
 }
 
 static void camera_test_draw_layout(void)
@@ -215,17 +233,22 @@ void CameraTestDisplay_Render(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y, line);
     sprintf(line, "Lane : %s       ", status->lane_valid ? "VALID" : "SEARCHING");
     camera_test_show_info(CAMERA_TEST_INFO_Y + 20U, line);
-    sprintf(line, "Center: %3d px     ", status->lane_center_x);
+    sprintf(line, "ErrPx : %3d C:%3d", status->lane_error_px, status->lane_center_x);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 40U, line);
-    sprintf(line, "ErrPx : %3d       ", status->lane_error_px);
-    camera_test_show_info(CAMERA_TEST_INFO_Y + 60U, line);
-    sprintf(line, "MapDeg:%6.2f     ", status->vision_angle_raw_deg);
-    camera_test_show_info(CAMERA_TEST_INFO_Y + 80U, line);
     sprintf(line, "VisDeg:%6.2f     ", status->vision_angle_offset_deg);
-    camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
+    camera_test_show_info(CAMERA_TEST_INFO_Y + 60U, line);
     sprintf(line, "Yaw:%7.2f T:%7.2f", core_a_status.yaw, core_a_status.target_angle_status);
+    camera_test_show_info(CAMERA_TEST_INFO_Y + 80U, line);
+    sprintf(line, "Cal:%s       ", camera_test_vision_cal_state_text(core_a_status.vision_align_cal_state));
+    camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
+    sprintf(line, "St:%02u/30 L:%u/10 R:%u/10",
+            core_a_status.vision_align_stable_count,
+            core_a_status.vision_align_left_sample_count,
+            core_a_status.vision_align_right_sample_count);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
-    sprintf(line, "TurnPWM:%7.1f", core_a_status.pid_out_turn);
+    sprintf(line, "Result:%7.2f %s",
+            core_a_status.vision_align_result_yaw,
+            core_a_status.vision_align_result_valid ? "OK" : "--");
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
     sprintf(line, "Rows:%3u %s", status->valid_rows, status->lane_valid ? "ACTIVE" : "SEARCH");
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
