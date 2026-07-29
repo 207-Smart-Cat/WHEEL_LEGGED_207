@@ -55,6 +55,17 @@ static float yaw_history_cos[YAW_HISTORY_LEN] = {0};
 static uint16_t yaw_hist_idx = 0;
 static uint8_t yaw_hist_filled = 0; // 标记窗口是否已经填满过
 
+typedef struct {
+    float sum_sin;
+    float sum_cos;
+    uint16_t sample_count;
+    uint8_t active;
+    uint8_t done;
+    Navi_Yaw_Calibration_Context_t context;
+} NaviYawCalibrationState_t;
+
+static NaviYawCalibrationState_t yaw_calibration;
+
 // 在文件上方的全局变量区添加：
 #if USE_WIFI_TUNE
     // 删除了废弃的 nav_q_x 和 nav_q_y，加入了 w 相关的调参变量
@@ -146,6 +157,8 @@ void Navi_Remove_Gravity(float *p_ax, float *p_ay, float *p_az) {
 
 void navi_data_init(void) {          
 
+    memset(&yaw_calibration, 0, sizeof(yaw_calibration));
+
     navi_ekf_config();                                       //EKF滤波函数参数配置
 
     low_pass_filter_init(&lpf_v_left,0.8);
@@ -156,6 +169,86 @@ void navi_data_init(void) {
     
     low_pass_filter_init(&lpf_w, 0.2);
 
+}
+
+void Navi_Yaw_Calibration_Start(Navi_Yaw_Calibration_Context_t context)
+{
+    if (context == NAVI_YAW_CAL_CONTEXT_NONE)
+    {
+        return;
+    }
+
+    memset(&yaw_calibration, 0, sizeof(yaw_calibration));
+    yaw_calibration.context = context;
+    yaw_calibration.active = 1U;
+}
+
+void Navi_Yaw_Calibration_Tick(void)
+{
+    const uint16_t target_samples =
+        (uint16_t)(NAVI_YAW_CALIBRATION_DURATION_MS / NAVI_YAW_CALIBRATION_TICK_MS);
+    float yaw_rad;
+
+    if (!yaw_calibration.active)
+    {
+        return;
+    }
+
+    yaw_rad = ANGLE_TO_RAD(IMU_data.filter_result.yaw);
+    yaw_calibration.sum_sin += sinf(yaw_rad);
+    yaw_calibration.sum_cos += cosf(yaw_rad);
+    yaw_calibration.sample_count++;
+
+    if (yaw_calibration.sample_count >= target_samples)
+    {
+#if NAVI_USE_LOCAL_FRAME
+        initial_yaw_offset = RAD_TO_ANGLE(atan2f(yaw_calibration.sum_sin,
+                                                yaw_calibration.sum_cos));
+#endif
+        yaw_calibration.active = 0U;
+        yaw_calibration.done = 1U;
+    }
+}
+
+void Navi_Yaw_Calibration_Cancel(void)
+{
+    memset(&yaw_calibration, 0, sizeof(yaw_calibration));
+}
+
+uint8_t Navi_Yaw_Calibration_Is_Active(void)
+{
+    return yaw_calibration.active;
+}
+
+uint8_t Navi_Yaw_Calibration_Consume_Done(Navi_Yaw_Calibration_Context_t context)
+{
+    if (!yaw_calibration.done || yaw_calibration.context != context)
+    {
+        return 0U;
+    }
+
+    yaw_calibration.done = 0U;
+    yaw_calibration.context = NAVI_YAW_CAL_CONTEXT_NONE;
+    return 1U;
+}
+
+uint16_t Navi_Yaw_Calibration_Get_Remaining_Ms(void)
+{
+    const uint16_t target_samples =
+        (uint16_t)(NAVI_YAW_CALIBRATION_DURATION_MS / NAVI_YAW_CALIBRATION_TICK_MS);
+
+    if (!yaw_calibration.active || yaw_calibration.sample_count >= target_samples)
+    {
+        return 0U;
+    }
+
+    return (uint16_t)((target_samples - yaw_calibration.sample_count) *
+                      NAVI_YAW_CALIBRATION_TICK_MS);
+}
+
+Navi_Yaw_Calibration_Context_t Navi_Yaw_Calibration_Get_Context(void)
+{
+    return yaw_calibration.context;
 }
 
 
@@ -743,5 +836,4 @@ void Navi_Manual_Add_Pose(float val1, float val2, uint8_t frame) {
         robot_pose.y += val2;
     }
 }
-
 

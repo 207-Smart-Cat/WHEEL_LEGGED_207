@@ -24,7 +24,7 @@ Source: `project/code/param.c`
 | `Air_roll_p_init` | `3.0f` | Air roll control P |
 | `Air_roll_i_init` | `0.03f` | Air roll control I |
 | `Air_roll_d_init` | `0.0015f` | Air roll control D |
-| `Direction_p_init` | `14.93f` | Yaw/direction control P |
+| `Direction_p_init` | `15.00f` | Yaw/direction control P |
 | `Direction_i_init` | `0.012f` | Yaw/direction control I |
 | `Direction_d_init` | `0.875f` | Yaw/direction control D |
 | `Leg_Kp_init` | `0.0f` | Leg-height PID P |
@@ -214,3 +214,8 @@ Sources: `project/code/jump_control.c`, `project/code/navigation_action.h`, `pro
 | `NAVI_TRIPLE_JUMP_RAMP_UP_MS` | `1700U` | Triple jump ramp-up duration |
 | `NAVI_TRIPLE_JUMP_STAIR_DOWN_MS` | `1400U` | Triple jump stair-down duration |
 | `NAVI_TRIPLE_JUMP_STAIR_SPEED` | `250.0f` | Triple jump stair speed |
+
+# 导航定向与科目三前瞻
+
+- 首次记录HOME点和每次打点导航发车前，车辆必须保持静止；程序会重新采集2秒IMU yaw并用圆均值建立本次参考方向。倒计时期间目标速度强制为0。
+- 科目三普通航点段使用线段投影加0.40 m前瞻点计算目标方向。航点距离、10 cm到达判定及原速度规划保持不变。

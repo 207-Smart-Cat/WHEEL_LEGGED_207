@@ -332,9 +332,6 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 #error "Invalid NAVI_JUMP_ACTION_MODE"
 #endif
             }
-            else if (upcoming_type == WP_TYPE_BRIDGE && distance < (DISTANCE_THRESHOLD * 8.0f)) {
-                action_fsm.state = FSM_BRIDGE_APPROACH;
-            }
             else if (upcoming_type == WP_TYPE_CONE_CONE && distance < (DISTANCE_THRESHOLD * 8.0f)) {
                 action_fsm.state = FSM_CONE_APPROACH;
             }

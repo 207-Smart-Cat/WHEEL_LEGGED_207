@@ -20,6 +20,7 @@ uint8 IPS200_flag = 0;      // 屏幕显示flag（PIT中断置位）
 uint8 current_page = 0;     // Monitor 子页面索引 (0/1/2)
 uint8 force_ui_refresh = 1;
 static uint8_t ui_battery_low_active = 0;
+static uint8_t ui_yaw_calibration_overlay_active = 0;
 
 // Four-key setup UI. Active low with internal pull-up.
 #define UI_KEY_UP_PIN       P20_0
@@ -32,6 +33,9 @@ static uint8_t ui_battery_low_active = 0;
 #define UI_EMERGENCY_COMBO_TICKS (60) // 60 * 50ms = 3s
 #define UI_PARAM_ROWS       (7)
 #define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
+
+static void ui_send_param_update(ParamID_e id, float value);
+static void ui_stop_manual_test(void);
 
 typedef enum {
     UI_KEY_UP = 0,
@@ -310,6 +314,8 @@ static const uint16_t UI_TEXT_T_MODE_MANUAL[] = {0x624B, 0x52A8, 0x8C03, 0x8BD5,
 static const uint16_t UI_TEXT_T_MODE_1[] = {0x79D1, 0x76EE, 0x4E00, 0x0000};
 static const uint16_t UI_TEXT_T_MODE_2[] = {0x79D1, 0x76EE, 0x4E8C, 0x0000};
 static const uint16_t UI_TEXT_T_MODE_3[] = {0x79D1, 0x76EE, 0x4E09, 0x0000};
+static const uint16_t UI_TEXT_T_TEST_BRIDGE[] = {0x5355, 0x8FB9, 0x6865, 0x6A21, 0x5F0F, 0x0000};
+static const uint16_t UI_TEXT_T_APPLIED[] = {0x5DF2, 0x5E94, 0x7528, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_COLLECT[] = {0x6253, 0x70B9, 0x91C7, 0x96C6, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_EXECUTE[] = {0x6253, 0x70B9, 0x6267, 0x884C, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_PREVIEW[] = {0x6253, 0x70B9, 0x9884, 0x89C8, 0x0000};
@@ -350,6 +356,8 @@ static const uint16_t UI_TEXT_T_TYPE_NORMAL[] = {0x666E, 0x901A, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_MINE[] = {0x6392, 0x96F7, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_CONE[] = {0x7ED5, 0x6876, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BRIDGE[] = {0x5355, 0x8FB9, 0x6865, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_BRIDGE_START[] = {0x5355, 0x8FB9, 0x6865, 0x5F00, 0x59CB, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_BRIDGE_END[] = {0x5355, 0x8FB9, 0x6865, 0x7ED3, 0x675F, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_JUMP[] = {0x53F0, 0x9636, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_STOP[] = {0x7EC8, 0x70B9, 0x0000};
 static const uint16_t UI_TEXT_T_RESERVED[] = {0x9884, 0x7559, 0x63A5, 0x53E3, 0x0000};
@@ -827,6 +835,8 @@ static ui_screen_t ui_screen = UI_SCREEN_HOME;
 static uint8_t ui_home_index = 0;
 static uint8_t ui_mode_index = 0;
 static uint8_t ui_mode_action_index = 0;
+static uint8_t ui_manual_test_applied = 0;
+static float ui_manual_test_entry_angle = 0.0f;
 static ui_group_action_t ui_group_action = UI_GROUP_ACTION_COLLECT;
 static uint8_t ui_group_index = 0;
 static uint8_t ui_group_top = 0;
@@ -939,6 +949,10 @@ static const uint16_t *const k_mode_action_texts[] = {
     UI_TEXT_T_POINT_EXECUTE,
     UI_TEXT_T_POINT_PREVIEW,
     UI_TEXT_T_POINT_MANAGE
+};
+
+static const uint16_t *const k_manual_test_texts[] = {
+    UI_TEXT_T_TEST_BRIDGE
 };
 
 static const uint16_t *const k_record_type_texts[] = {
@@ -1171,6 +1185,14 @@ static uint8_t ui_handle_emergency_combo(void)
 }
 static void ui_set_screen(ui_screen_t screen)
 {
+    if (ui_screen == UI_SCREEN_MODE_ACTION &&
+        screen != UI_SCREEN_MODE_ACTION &&
+        Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_MANUAL &&
+        ui_manual_test_applied)
+    {
+        ui_stop_manual_test();
+    }
+
 #if defined(CY_CORE_CM7_1)
     if (screen == UI_SCREEN_VISION)
     {
@@ -1311,6 +1333,28 @@ static void ui_send_param_update(ParamID_e id, float value)
     }
 }
 
+static void ui_apply_manual_bridge_test(void)
+{
+    IPC_Pull_Status_To_CoreB();
+    ui_manual_test_entry_angle = core_a_status.yaw;
+
+    ui_send_param_update(P_NAVI_MODE_DRIVER, 0.0f);
+    ui_send_param_update(P_SPEED_P, 0.012f);
+    ui_send_param_update(P_Y_CURRENT, 0.030f);
+    ui_send_param_update(P_DIR_P, 15.0f);
+    ui_send_param_update(P_TARGET_VELOCITY, 233.0f);
+    ui_send_param_update(P_TARGET_ANGLE, ui_manual_test_entry_angle);
+    IPC_Set_Manual_Test_Mode(MANUAL_TEST_MODE_BRIDGE);
+    ui_manual_test_applied = 1U;
+}
+
+static void ui_stop_manual_test(void)
+{
+    IPC_Set_Manual_Test_Mode(MANUAL_TEST_MODE_NONE);
+    ui_send_param_update(P_TARGET_VELOCITY, 0.0f);
+    ui_manual_test_applied = 0U;
+}
+
 static uint8_t ui_mode_allows_mine_type(void)
 {
     return (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_2) ? 1U : 0U;
@@ -1343,6 +1387,22 @@ static const uint16_t *ui_waypoint_type_text(uint8 type)
         case WP_TYPE_NORMAL:
         default:                 return UI_TEXT_T_TYPE_NORMAL;
     }
+}
+
+static const uint16_t *ui_waypoint_detail_text(uint8 type, uint16 action_cmd)
+{
+    if ((WayPoint_Type)type == WP_TYPE_BRIDGE)
+    {
+        if (action_cmd == NAVI_BRIDGE_ACTION_START)
+        {
+            return UI_TEXT_T_TYPE_BRIDGE_START;
+        }
+        if (action_cmd == NAVI_BRIDGE_ACTION_END)
+        {
+            return UI_TEXT_T_TYPE_BRIDGE_END;
+        }
+    }
+    return ui_waypoint_type_text(type);
 }
 
 static const uint16_t *ui_storage_state_text(uint8 state)
@@ -1476,12 +1536,32 @@ static void ui_draw_mode(void)
 
 static void ui_draw_mode_action(void)
 {
+    char line[24];
     uint8_t mode = Runtime_Get_Vehicle_Mode();
     if (mode >= ARRAY_SIZE(k_mode_texts)) mode = 0;
 
     ui_draw_title_text(UI_TEXT_T_TITLE_MODE);
     ui_show_text(8, 34, UI_TEXT_T_CURRENT);
     ui_show_text(64, 34, k_mode_texts[mode]);
+
+    if (mode == VEHICLE_MODE_MANUAL)
+    {
+        ui_draw_text_list_at(70, k_manual_test_texts, ARRAY_SIZE(k_manual_test_texts),
+                             ui_mode_action_index, 0, ARRAY_SIZE(k_manual_test_texts));
+        ips200_show_string(24, 118, "Speed P : 0.012");
+        ips200_show_string(24, 142, "Height Y: 0.030");
+        ips200_show_string(24, 166, "Dir P   : 15.0");
+        ips200_show_string(24, 190, "Target V: 233.0");
+        sprintf(line, "Target A: %-6.1f", ui_manual_test_entry_angle);
+        ips200_show_string(24, 214, line);
+        if (ui_manual_test_applied)
+        {
+            ui_show_text(24, 242, UI_TEXT_T_APPLIED);
+        }
+        ui_draw_footer_text(UI_TEXT_T_HINT_SELECT);
+        return;
+    }
+
     ui_draw_text_list_at(70, k_mode_action_texts, ARRAY_SIZE(k_mode_action_texts), ui_mode_action_index, 0, ARRAY_SIZE(k_mode_action_texts));
     ui_draw_footer_text(UI_TEXT_T_HINT_GROUP);
 }
@@ -1607,7 +1687,7 @@ static void ui_draw_record_preview(void)
 
         sprintf(line, "%03d", (int)(index + 1U));
         ui_show_string_safe(8, y, line);
-        ui_show_text(42, y, ui_waypoint_type_text(point.type));
+        ui_show_text(42, y, ui_waypoint_detail_text(point.type, point.action_cmd));
         sprintf(line, "X:% .2f Y:% .2f Yaw:% .1f", point.x, point.y, point.yaw);
         ui_show_string_safe(8, (uint16)(y + 20U), line);
     }
@@ -1636,7 +1716,7 @@ static void ui_draw_record_manage(void)
         sprintf(line, ":%03d", (int)count);
         ui_show_string_safe(72, 100, line);
         ui_show_text(8, 128, UI_TEXT_T_POINT_TYPE);
-        ui_show_text(88, 128, ui_waypoint_type_text(point.type));
+        ui_show_text(88, 128, ui_waypoint_detail_text(point.type, point.action_cmd));
     }
     else
     {
@@ -2057,6 +2137,7 @@ static void ui_handle_mode(ui_key_event_t events[UI_KEY_COUNT])
     {
         Runtime_Set_Vehicle_Mode(ui_mode_index);
         ui_mode_action_index = 0;
+        ui_manual_test_applied = 0;
         ui_record_type_index = 0;
         ui_set_screen(UI_SCREEN_MODE_ACTION);
     }
@@ -2068,6 +2149,25 @@ static void ui_handle_mode(ui_key_event_t events[UI_KEY_COUNT])
 
 static void ui_handle_mode_action(ui_key_event_t events[UI_KEY_COUNT])
 {
+    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_MANUAL)
+    {
+        if (events[UI_KEY_UP] || events[UI_KEY_DOWN])
+        {
+            ui_mode_action_index = 0;
+            ui_set_screen(UI_SCREEN_MODE_ACTION);
+        }
+        else if (events[UI_KEY_OK])
+        {
+            ui_apply_manual_bridge_test();
+            ui_set_screen(UI_SCREEN_MODE_ACTION);
+        }
+        else if (events[UI_KEY_BACK])
+        {
+            ui_set_screen(UI_SCREEN_MODE_SELECT);
+        }
+        return;
+    }
+
     if (events[UI_KEY_UP])
     {
         ui_mode_action_index = (ui_mode_action_index == 0) ? (ARRAY_SIZE(k_mode_action_texts) - 1) : (ui_mode_action_index - 1);
@@ -2826,6 +2926,31 @@ static void ui_draw_battery_low(void)
     ips200_show_string(24, 178, "UI locked below 11V");
     ips200_set_color(RGB565_WHITE, RGB565_BLACK);
 }
+
+static void ui_draw_yaw_calibration(void)
+{
+    char line[32];
+    uint16 remaining_ms = core_a_status.navi_yaw_cal_remaining_ms;
+
+    ips200_set_color(RGB565_WHITE, RGB565_BLACK);
+    ips200_show_string(48, 62, "YAW CALIBRATION");
+    ips200_draw_line(20, 88, 219, 88, RGB565_SKYBLUE);
+    if (core_a_status.navi_yaw_cal_context == NAVI_YAW_CAL_CONTEXT_RECORD_HOME)
+    {
+        ips200_show_string(64, 116, "HOME POINT");
+    }
+    else
+    {
+        ips200_show_string(44, 116, "NAVIGATION START");
+    }
+    ips200_show_string(40, 158, "KEEP VEHICLE STILL");
+    sprintf(line, "Remaining: %u.%01us",
+            (unsigned int)(remaining_ms / 1000U),
+            (unsigned int)((remaining_ms % 1000U) / 100U));
+    ips200_show_string(44, 204, line);
+    ips200_draw_line(20, 242, 219, 242, RGB565_SKYBLUE);
+}
+
 void screen_display_process(void)
 {
     if (IPS200_flag)
@@ -2844,6 +2969,25 @@ void screen_display_process(void)
         {
             ui_battery_low_active = 0;
             force_ui_refresh = 1;
+            ips200_clear();
+        }
+
+        if (core_a_status.navi_yaw_cal_active)
+        {
+            if (!ui_yaw_calibration_overlay_active)
+            {
+                ips200_clear();
+                ui_yaw_calibration_overlay_active = 1U;
+            }
+            ui_draw_yaw_calibration();
+            force_ui_refresh = 0U;
+            return;
+        }
+
+        if (ui_yaw_calibration_overlay_active)
+        {
+            ui_yaw_calibration_overlay_active = 0U;
+            force_ui_refresh = 1U;
             ips200_clear();
         }
 

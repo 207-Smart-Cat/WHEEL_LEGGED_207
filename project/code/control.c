@@ -356,14 +356,14 @@ void Height_PID_Switch(bool high_mode)
     {
         y_current = 0.030f;
         Speed_p = 0.012f;
-        Direction_p = 30.0f;
+        Direction_p = 15.0f;
         bridge_high = 1;
     }
     else
     {
         y_current = 0.040f;
         Speed_p = 0.025f;
-        Direction_p = 50.0f;
+        Direction_p = 15.0f;
         bridge_high = 0;
     }
 

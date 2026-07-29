@@ -57,6 +57,15 @@
 
 #define DEFAULT_TRACKING_VELOCITY 300.0f   //默认速度
 
+#define NAVI_BRIDGE_ACTION_START  1U
+#define NAVI_BRIDGE_ACTION_END    2U
+#define NAVI_BRIDGE_APPROACH_DISTANCE 0.50f
+#define NAVI_BRIDGE_APPROACH_SPEED    100.0f
+#define NAVI_BRIDGE_TARGET_SPEED  233.0f
+#define NAVI_BRIDGE_LOOKAHEAD_DISTANCE 0.30f
+#define NAVI_BRIDGE_MAX_TURN_ERROR_DEG 15.0f
+#define NAVI_COURSE3_LINE_LOOKAHEAD_DISTANCE 0.40f
+
 
 //=================================================定义  结构体================================================
 // 航点动作类型

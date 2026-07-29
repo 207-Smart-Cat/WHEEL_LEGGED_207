@@ -76,6 +76,30 @@ void IPC_Request_All_Params_Update(void)
     __enable_irq();
 }
 
+void IPC_Set_Manual_Test_Mode(ManualTestMode_t mode)
+{
+    if (mode > MANUAL_TEST_MODE_BRIDGE)
+    {
+        mode = MANUAL_TEST_MODE_NONE;
+    }
+
+    __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    core_b_cmd.manual_test_mode = (uint8)mode;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    __enable_irq();
+}
+
+ManualTestMode_t IPC_Get_Manual_Test_Mode(void)
+{
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (core_b_cmd.manual_test_mode > (uint8)MANUAL_TEST_MODE_BRIDGE)
+    {
+        return MANUAL_TEST_MODE_NONE;
+    }
+    return (ManualTestMode_t)core_b_cmd.manual_test_mode;
+}
+
 void IPC_Request_Motor_Zero_Calibration(void)
 {
     __disable_irq();

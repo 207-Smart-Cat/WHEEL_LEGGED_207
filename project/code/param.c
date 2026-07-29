@@ -44,7 +44,7 @@ const float Leg_X_Gain_init = 5.0f, Leg_X_Limit_init = 0.020f, Leg_X_Min_Step_in
 const float Jump_Burst_Pwm_init = 1200.0f, Jump_Burst_Ms_init = 130.0f, Jump_Air_Retract_Y_init = 0.03f, Jump_Buffer_Y_init = 0.05f, Jump_Landing_Max_Ms_init = 600.0f;
 
 const float Air_roll_p_init = 3.0f, Air_roll_i_init = 0.03f, Air_roll_d_init = 0.0015f;
-const float Direction_p_init = 50.0f, Direction_i_init = 0.012f, Direction_d_init = 0.875f;
+const float Direction_p_init = 15.0f, Direction_i_init = 0.012f, Direction_d_init = 0.875f;
 
 // Navigation estimator defaults.
 const float Nav_q_v_init = 2.0f, Nav_q_w_init = 0.0099f;

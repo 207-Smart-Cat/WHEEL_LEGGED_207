@@ -76,6 +76,9 @@
 
 #define YAW_HISTORY_LEN 600  // 600 samples at 5ms keeps about 3000ms of yaw history
 
+#define NAVI_YAW_CALIBRATION_DURATION_MS 2000U
+#define NAVI_YAW_CALIBRATION_TICK_MS        5U
+
 
 #define F_S(f) ((f) < 0 ? "-" : "")
 #define F_I(f) (int)((f) < 0 ? -(f) : (f))
@@ -201,6 +204,12 @@ typedef struct {
 
 }Navi_Sensor_Data_t;  
 
+typedef enum {
+    NAVI_YAW_CAL_CONTEXT_NONE = 0,
+    NAVI_YAW_CAL_CONTEXT_RECORD_HOME = 1,
+    NAVI_YAW_CAL_CONTEXT_NAV_START = 2
+} Navi_Yaw_Calibration_Context_t;
+
 //=================================================¶¨Òå  ½á¹¹Ìå================================================
 
 
@@ -230,6 +239,14 @@ void navi_ekf_update(void) ;                       //¿¨¶ûÂüËã·¨Êý¾ÝÔ¤²â+¸üÐÂ+ÆäË
 
 //ÍâÖÃº¯Êý
 void Navi_Data_Set_Origin(uint8_t reset_yaw) ;// ¶ÀÁ¢Ô­µãÉèÖÃ API  ÖÃµ±Ç°Î»ÖÃÎª×ø±êÔ­µã (x=0, y=0)
+
+void Navi_Yaw_Calibration_Start(Navi_Yaw_Calibration_Context_t context);
+void Navi_Yaw_Calibration_Tick(void);
+void Navi_Yaw_Calibration_Cancel(void);
+uint8_t Navi_Yaw_Calibration_Is_Active(void);
+uint8_t Navi_Yaw_Calibration_Consume_Done(Navi_Yaw_Calibration_Context_t context);
+uint16_t Navi_Yaw_Calibration_Get_Remaining_Ms(void);
+Navi_Yaw_Calibration_Context_t Navi_Yaw_Calibration_Get_Context(void);
 
 float navi_limit_angle180(float angle);              //×ª½ÇÏÞ·ùº¯Êý
 uint8_t navi_airborne_detection();                                //ÌÚ¿Õ¼ì²âº¯Êý¡£

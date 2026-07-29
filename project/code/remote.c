@@ -5,7 +5,9 @@
 #include "jump_control.h"
 #include "vehicle_supervisor.h"
 #include "navigation_tracking.h"
+#include "navigation_data_handling.h"
 #include "navigation_action.h"
+#include "ipc_shared_data.h"
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
@@ -15,6 +17,7 @@ extern float target_velocity;
 #define REMOTE_CH6_JUMP_ARM_FRAMES 5
 #define REMOTE_CH4_MID_THRESHOLD 800
 #define REMOTE_CH4_HIGH_THRESHOLD 1400
+#define REMOTE_CH4_BRIDGE_THRESHOLD 600
 // ------------------- 内部结构体定义 -------------------
 // 将数据结构体定义在 .c 文件中，实现对外隐藏（封装）
 typedef struct
@@ -58,6 +61,7 @@ static void Remote_ResetEmergencyTrigger(void);
 static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled);
 static void Remote_ResetJumpTrigger(void);
 static uint8 Remote_Is_Navi_Record_Mode(void);
+static uint8 Remote_Is_Navi_Execute_Mode(void);
 static void Remote_CheckRecordTrigger(uint8 remote_drive_enabled);
 static void Remote_ResetRecordTrigger(void);
 static WayPoint_Type Remote_GetRecordPointType(void);
@@ -242,6 +246,11 @@ static uint8 Remote_Is_Navi_Record_Mode(void)
     return ((uint8)vofa_mode_driver == 2 || navi_ctrl.navi_mode_driver == 2) ? 1 : 0;
 }
 
+static uint8 Remote_Is_Navi_Execute_Mode(void)
+{
+    return ((uint8)vofa_mode_driver == 1 || navi_ctrl.navi_mode_driver == 1) ? 1 : 0;
+}
+
 static void Remote_ResetRecordTrigger(void)
 {
     remote_record_initialized = 0;
@@ -253,6 +262,12 @@ static void Remote_ResetRecordTrigger(void)
 static WayPoint_Type Remote_GetRecordPointType(void)
 {
     uint8 mode = Runtime_Get_Vehicle_Mode();
+
+    if (mode == VEHICLE_MODE_COURSE_3)
+    {
+        return (Remote_GetChannelData(4) >= REMOTE_CH4_BRIDGE_THRESHOLD) ?
+               WP_TYPE_BRIDGE : WP_TYPE_NORMAL;
+    }
 
     if (mode == VEHICLE_MODE_COURSE_2)
     {
@@ -398,8 +413,14 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
 void Remote_control_callback(void)
 {
     float yaw_stick;
+    uint8 navigation_execute_active;
+    uint8 manual_test_active;
+    uint8 target_control_active;
 
     Remote_Update();
+    navigation_execute_active = Remote_Is_Navi_Execute_Mode();
+    manual_test_active = (IPC_Get_Manual_Test_Mode() != MANUAL_TEST_MODE_NONE) ? 1U : 0U;
+    target_control_active = (navigation_execute_active || manual_test_active) ? 1U : 0U;
     if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_REMOTE))
     {
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_OFF);
@@ -410,7 +431,10 @@ void Remote_control_callback(void)
         if (remote_drive_active)
         {
             remote_drive_active = false;
-            target_velocity = 0.0f;
+            if (!target_control_active)
+            {
+                target_velocity = 0.0f;
+            }
         }
         return;
     }
@@ -425,6 +449,24 @@ void Remote_control_callback(void)
             remote_drive_active = false;
             return;
         }
+
+        if (Navi_Yaw_Calibration_Is_Active())
+        {
+            Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
+            target_velocity = 0.0f;
+            remote_drive_active = false;
+            return;
+        }
+
+        if (manual_test_active)
+        {
+            Remote_ResetJumpTrigger();
+            Remote_ResetRecordTrigger();
+            Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
+            remote_drive_active = false;
+            return;
+        }
+
         if (Remote_Is_Navi_Record_Mode())
         {
             Remote_ResetJumpTrigger();
@@ -435,6 +477,14 @@ void Remote_control_callback(void)
             Remote_ResetRecordTrigger();
             Remote_CheckJumpTrigger(remote_drive_enabled);
         }
+
+        if (navigation_execute_active)
+        {
+            Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
+            remote_drive_active = false;
+            return;
+        }
+
         if (remote_drive_enabled)
         {
             Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
@@ -473,7 +523,10 @@ void Remote_control_callback(void)
         if (remote_drive_active)
         {
             remote_drive_active = false;
-            target_velocity = 0.0f;
+            if (!target_control_active)
+            {
+                target_velocity = 0.0f;
+            }
         }
     }
 }

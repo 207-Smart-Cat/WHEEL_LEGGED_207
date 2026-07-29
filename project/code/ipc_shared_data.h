@@ -25,6 +25,11 @@ typedef enum {
 } NavGroupIntent_t;
 
 typedef enum {
+    MANUAL_TEST_MODE_NONE = 0,
+    MANUAL_TEST_MODE_BRIDGE = 1
+} ManualTestMode_t;
+
+typedef enum {
     NAV_STORE_EMPTY = 0,
     NAV_STORE_SAVED = 1,
     NAV_STORE_DAMAGED = 2,
@@ -117,6 +122,7 @@ typedef struct {
     uint8 param_update_flag;
     uint8 wifi_connected;
     uint8 vehicle_mode;
+    uint8 manual_test_mode;
     uint8 runtime_status_valid;
     uint8 motor_zero_request;
     uint8 nav_jump_request;
@@ -178,6 +184,8 @@ uint8 IPC_CoreB_Wifi_Is_Connected(void); // Core 0 专用更新函数
 uint64_t IPC_Get_All_Param_Mask(void);
 void IPC_Request_Param_Update(ParamID_e id, float value);
 void IPC_Request_All_Params_Update(void);
+void IPC_Set_Manual_Test_Mode(ManualTestMode_t mode);
+ManualTestMode_t IPC_Get_Manual_Test_Mode(void);
 void IPC_Request_Motor_Zero_Calibration(void);
 void IPC_Request_Nav_Jump(void);
 void IPC_Set_Nav_Record_Preview_Start(uint16 start);
