@@ -125,6 +125,7 @@ typedef struct
     BumpyMode_t mode;
     uint8_t feature_mask;
     float detect_speed;
+    float pre_enter_speed;
     uint16_t detect_timeout_ms;
     float detect_max_distance_m;
     float crossing_speed;
@@ -204,6 +205,7 @@ static const BumpyActionProfile_t g_bumpy_action_profiles[] =
         .mode = BUMP_MODE_SPEED_YAW,
         .feature_mask = 0U,
         .detect_speed = 220.0f,
+        .pre_enter_speed = 200.0f,
         .detect_timeout_ms = 2500U,
         .detect_max_distance_m = 0.80f,
         .crossing_speed = 320.0f,
@@ -227,6 +229,7 @@ static const BumpyActionProfile_t g_bumpy_action_profiles[] =
         .feature_mask = BUMP_FEATURE_DISTANCE_FALLBACK |
                         BUMP_FEATURE_ADAPTIVE_SPEED,
         .detect_speed = 220.0f,
+        .pre_enter_speed = 200.0f,
         .detect_timeout_ms = 2500U,
         .detect_max_distance_m = 0.80f,
         .crossing_speed = 320.0f,
@@ -251,6 +254,7 @@ static const BumpyActionProfile_t g_bumpy_action_profiles[] =
                         BUMP_FEATURE_ADAPTIVE_SPEED |
                         BUMP_FEATURE_STATIC_LEG,
         .detect_speed = 220.0f,
+        .pre_enter_speed = 200.0f,
         .detect_timeout_ms = 2500U,
         .detect_max_distance_m = 0.80f,
         .crossing_speed = 320.0f,
@@ -368,6 +372,7 @@ static uint8_t bumpy_action_profile_valid(
     if (profile == NULL ||
         (profile->feature_mask & (uint8_t)(~known_features)) != 0U ||
         !bumpy_float_valid(profile->detect_speed) ||
+        !bumpy_float_valid(profile->pre_enter_speed) ||
         !bumpy_float_valid(profile->detect_max_distance_m) ||
         !bumpy_float_valid(profile->crossing_speed) ||
         !bumpy_float_valid(profile->crossing_speed_medium) ||
@@ -381,6 +386,8 @@ static uint8_t bumpy_action_profile_valid(
         !bumpy_float_valid(profile->fixed_forward_m) ||
         !bumpy_float_valid(profile->fixed_right_m) ||
         profile->detect_speed <= 0.0f ||
+        profile->pre_enter_speed <= 0.0f ||
+        profile->pre_enter_speed > profile->detect_speed ||
         profile->detect_timeout_ms == 0U ||
         profile->detect_max_distance_m <= 0.0f ||
         profile->crossing_speed <= 0.0f ||
@@ -2154,16 +2161,23 @@ static BumpyActionResult_t bumpy_action_update_detect_5ms(void)
 {
     const BumpyActionProfile_t *profile;
     BumpyState_t previous_state;
+    float detect_cmd;
     profile = bumpy_action_get_profile(g_bumpy_action.profile_id);
     if (!bumpy_action_profile_valid(profile))
     {
         return bumpy_action_fail_now(BUMP_EXIT_SENSOR_INVALID, 0U);
     }
 
-    target_velocity = profile->detect_speed;
+    detect_cmd = profile->detect_speed;
+    if (g_bumpy_project_runtime.state == BUMP_STATE_ENTER_CONFIRM)
+    {
+        detect_cmd = profile->pre_enter_speed;
+    }
+
+    target_velocity = detect_cmd;
     bumpy_set_yaw_command_with_vision_priority(
         g_bumpy_action.hold_yaw_deg);
-    bumpy_action_fill_input(profile, profile->detect_speed);
+    bumpy_action_fill_input(profile, detect_cmd);
     if (g_bumpy_project_input.emergency_stop)
     {
         return bumpy_action_fail_now(BUMP_EXIT_EMERGENCY, 0U);

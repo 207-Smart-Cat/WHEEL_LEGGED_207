@@ -48,9 +48,9 @@
 // RUNUP 阶段只接管速度和航向，不接管舵机，让常规 leg_control 产生前倾助跑。
 // 进入 PREPARE/TAKEOFF 后再接管舵机，避免普通腿控覆盖压腿和爆发输出。
 #define NAVI_JUMP_RUNUP_SPEED      350.0f
-#define NAVI_JUMP_SECOND_APPROACH_M       (0.10f)
+#define NAVI_JUMP_SECOND_APPROACH_M       (0.00f)
 #define NAVI_JUMP_SECOND_APPROACH_SPEED   (250.0f)
-#define NAVI_JUMP_THIRD_APPROACH_M        (0.10f)
+#define NAVI_JUMP_THIRD_APPROACH_M        (0.00f)
 #define NAVI_JUMP_THIRD_APPROACH_SPEED    (250.0f)
 
 typedef enum
@@ -105,6 +105,7 @@ typedef enum {
     ,FSM_BUMP_RECOVER
     ,FSM_JUMP_NEXT_APPROACH  // 第二、第三跳：按净前向距离接近下一起跳位置
     ,FSM_BUMP_TEST_POST_DRIVE // 遥控颠簸测试完成后继续定距行驶
+    ,FSM_BUMP_PRE_ENTER       // 弱颠簸候选确认期间轻度减速
 } ActionState_e;
 
 // ========================== 数据结构定义 ==========================

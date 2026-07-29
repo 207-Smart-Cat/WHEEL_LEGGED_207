@@ -184,13 +184,25 @@ float Navi_Action_Get_Course3_Target_Distance(void)
     return Navi_Action_Course3_Execution_Active() ? sqrtf(error_x * error_x + error_y * error_y) : 0.0f;
 }
 
-static void navi_bump_fault_exit(uint16_t target_idx)
+static uint8_t navi_bump_is_hard_stop_reason(BumpyExitReason_t reason)
+{
+    return (reason == BUMP_EXIT_EMERGENCY ||
+            reason == BUMP_EXIT_SENSOR_INVALID) ? 1U : 0U;
+}
+
+/*
+ * 完赛优先：BUMP局部动作失败时释放当前节点并允许导航继续。
+ * 急停和位姿无效仍由车辆监督层保持停车，本函数不会解除故障。
+ */
+static void navi_bump_skip_and_complete(uint16_t target_idx,
+                                        BumpyExitReason_t reason)
 {
     target_velocity = 0.0f;
     if (!core_b_cmd.vision_enabled)
     {
         target_angle = (float)IMU_data.filter_result.yaw;
     }
+    Bumpy_Action_Reset();
     action_done_pending = 1U;
     action_done_idx = target_idx;
     if (action_seq.current_ptr < action_seq.total_count &&
@@ -202,6 +214,10 @@ static void navi_bump_fault_exit(uint16_t target_idx)
     action_fsm.state_timer_ms = 0U;
     action_fsm.is_airborne_expect = 0U;
     is_action_busy = 0U;
+    IPC_LOG_Printf("BUMP_ACTION,SKIP_COMPLETE,wp=%u,reason=%u,hard=%u\r\n",
+                   (unsigned int)target_idx,
+                   (unsigned int)reason,
+                   (unsigned int)navi_bump_is_hard_stop_reason(reason));
 }
 
 #define NAVI_JUMP_AIRBORNE_SPEED      NAVI_JUMP_RUNUP_SPEED
@@ -226,11 +242,11 @@ static void navi_bump_fault_exit(uint16_t target_idx)
 #define NAVI_JUMP_RETRACT_MIN_MS               (80U)
 #define NAVI_JUMP_RETRACT_TOTAL_MS             (NAVI_JUMP_RETRACT_MOVE_MS + NAVI_JUMP_RETRACT_HOLD_MS)
 #define NAVI_JUMP_EXE_BUFFER_X                 (0.000f)
-#define NAVI_JUMP_EXE_BUFFER_Y                 (0.025f)
+#define NAVI_JUMP_EXE_BUFFER_Y                 (0.030f)
 #define NAVI_JUMP_RECOVER_PWM         (420)
 #define NAVI_JUMP_PREPARE_RAMP_MS     (260U)
 #define NAVI_JUMP_PREPARE_MS          (260U)
-#define NAVI_JUMP_BURST_MS            (120U)
+#define NAVI_JUMP_BURST_MS            (220U)
 #define NAVI_JUMP_RECOVER_MS          (100U)
 #define NAVI_JUMP_LANDING_MAX_MS      (150U)
 #define NAVI_JUMP_LAND_ACCEL_G        (1.0f)
@@ -832,7 +848,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     IPC_LOG_Printf("BUMP_ACTION,START_FAILED,wp=%u,profile=%u\r\n",
                                    (unsigned int)target_idx,
                                    (unsigned int)point_map[target_idx].action_cmd);
-                    navi_bump_fault_exit(target_idx);
+                    navi_bump_skip_and_complete(target_idx,
+                                                BUMP_EXIT_DISABLED);
                 }
             }
             else if (upcoming_type == WP_TYPE_BRIDGE && distance < (DISTANCE_THRESHOLD * 8.0f)) {
@@ -1361,8 +1378,40 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     navi_action_remote_bump_clear(
                         1U, Bumpy_Action_Get_Exit_Reason());
                 } else {
-                    navi_bump_fault_exit(target_idx);
+                    navi_bump_skip_and_complete(
+                        target_idx, Bumpy_Action_Get_Exit_Reason());
                 }
+            } else if (Bumpy_Project_Get_State() ==
+                       BUMP_STATE_ENTER_CONFIRM) {
+                action_fsm.state = FSM_BUMP_PRE_ENTER;
+                action_fsm.state_timer_ms = 0U;
+                IPC_LOG_Printf("BUMP_ACTION,PRE_ENTER,speed=200\r\n");
+            }
+            break;
+        }
+
+        case FSM_BUMP_PRE_ENTER:
+        {
+            BumpyActionResult_t result = Bumpy_Action_Process_5ms();
+            is_action_busy = 1U;
+            action_fsm.is_airborne_expect = 0U;
+            if (result == BUMP_ACTION_RESULT_ENTER_CROSSING) {
+                action_fsm.state = FSM_BUMP_CROSSING;
+                action_fsm.state_timer_ms = 0U;
+            } else if (result == BUMP_ACTION_RESULT_FAULT ||
+                       result == BUMP_ACTION_RESULT_IDLE) {
+                if (remote_bump_active) {
+                    navi_action_remote_bump_clear(
+                        1U, Bumpy_Action_Get_Exit_Reason());
+                } else {
+                    navi_bump_skip_and_complete(
+                        target_idx, Bumpy_Action_Get_Exit_Reason());
+                }
+            } else if (Bumpy_Project_Get_State() !=
+                       BUMP_STATE_ENTER_CONFIRM) {
+                action_fsm.state = FSM_BUMP_DETECT;
+                action_fsm.state_timer_ms = 0U;
+                IPC_LOG_Printf("BUMP_ACTION,PRE_ENTER_CANCEL\r\n");
             }
             break;
         }
@@ -1380,7 +1429,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     navi_action_remote_bump_clear(
                         1U, Bumpy_Action_Get_Exit_Reason());
                 } else {
-                    navi_bump_fault_exit(target_idx);
+                    navi_bump_skip_and_complete(
+                        target_idx, Bumpy_Action_Get_Exit_Reason());
                 }
             }
             break;
@@ -1397,6 +1447,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     remote_bump_post_elapsed_ms = 0U;
                     remote_bump_hold_control_yaw =
                         navi_limit_angle180(target_angle);
+                    remote_bump_hold_nav_yaw =
+                        navi_limit_angle180(robot_pose.yaw);
                     action_fsm.state = FSM_BUMP_TEST_POST_DRIVE;
                     action_fsm.state_timer_ms = 0U;
                     action_fsm.is_airborne_expect = 0U;
@@ -1421,7 +1473,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     navi_action_remote_bump_clear(
                         1U, Bumpy_Action_Get_Exit_Reason());
                 } else {
-                    navi_bump_fault_exit(target_idx);
+                    navi_bump_skip_and_complete(
+                        target_idx, Bumpy_Action_Get_Exit_Reason());
                 }
             }
             break;
