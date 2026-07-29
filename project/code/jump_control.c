@@ -8,8 +8,8 @@
 #define JUMP_BURST_PWM          (1300)                // 爆发起跳阶段舵机脉宽，使腿部快速伸展
 #define JUMP_SERVO_SUM          (1500)                // 左右舵机脉宽总和，用于保持机构同步
 
-#define JUMP_SERVO_MIN_PWM      (270)                 // 舵机最小允许脉宽
-#define JUMP_SERVO_MAX_PWM      (1300)                // 舵机最大允许脉宽
+#define JUMP_SERVO_MIN_PWM      (200)                 // 跳跃专用最小脉宽
+#define JUMP_SERVO_MAX_PWM      (1300)                // 跳跃专用最大脉宽
 #define JUMP_PREPARE_START_PWM  (JUMP_SERVO_SUM / 2)  // 预压开始时的初始脉宽
 
 #define JUMP_AIR_RETRACT_X      (-0.00f)              // 腾空收腿阶段 X 方向补偿量(m)
@@ -84,8 +84,7 @@ void jump_drive_symmetric_pwm(int pwm1)
     pwm1 = jump_limit_pwm1(pwm1);
     pwm2 = JUMP_SERVO_SUM - pwm1;
 
-    engine_left_maintain(pwm1, pwm2);
-    engine_right_maintain(pwm1, pwm2);
+    engine_jump_maintain(pwm1, pwm2);
 }
 
 int jump_calc_prepare_pwm(uint16 elapsed_ms, uint16 prepare_ms)

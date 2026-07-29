@@ -27,6 +27,7 @@ uint32 auu(uint32 c);
 
 //主循环使用
 void engine_maintain(int pwm1,int pwm2);
+void engine_jump_maintain(int pwm1, int pwm2);
 void engine_left_maintain(int pwm1,int pwm2);
 void engine_right_maintain(int pwm1,int pwm2);
 void engine_servo_disable(void);

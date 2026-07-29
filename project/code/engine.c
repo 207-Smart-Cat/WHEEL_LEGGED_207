@@ -1,6 +1,11 @@
 #include "engine.h"
 #include "param.h"
 
+#define ENGINE_NORMAL_LOGICAL_MIN_PWM  (250)
+#define ENGINE_NORMAL_LOGICAL_MAX_PWM  (1230)
+#define ENGINE_JUMP_LOGICAL_MIN_PWM    (200)
+#define ENGINE_JUMP_LOGICAL_MAX_PWM    (1300)
+
 typedef struct
 {
     uint32 pwm_channel;
@@ -87,31 +92,48 @@ uint32 buu(uint32 c)
     return 1500 - c;
 }
 
-uint32 auu(uint32 c)
+static int engine_limit_pwm(int pwm, int min_pwm, int max_pwm)
 {
-    if (c > 1230)
+    if (pwm < min_pwm)
     {
-        return 1230;
+        return min_pwm;
     }
-    if (c < 250)
+    if (pwm > max_pwm)
     {
-        return 250;
+        return max_pwm;
     }
-    return c;
+    return pwm;
 }
 
-static uint32 apply_servo_calibration(int logical_pwm, const servo_channel_cal_t *cal)
+static int engine_limit_normal_pwm(int pwm)
 {
-    int pwm = logical_pwm + cal->trim;
+    return engine_limit_pwm(pwm,
+                            ENGINE_NORMAL_LOGICAL_MIN_PWM,
+                            ENGINE_NORMAL_LOGICAL_MAX_PWM);
+}
 
-    if (pwm < (int)cal->logical_min)
+static int engine_limit_jump_pwm(int pwm)
+{
+    return engine_limit_pwm(pwm,
+                            ENGINE_JUMP_LOGICAL_MIN_PWM,
+                            ENGINE_JUMP_LOGICAL_MAX_PWM);
+}
+
+uint32 auu(uint32 c)
+{
+    if (c > (uint32)ENGINE_NORMAL_LOGICAL_MAX_PWM)
     {
-        pwm = cal->logical_min;
+        return (uint32)ENGINE_NORMAL_LOGICAL_MAX_PWM;
     }
-    if (pwm > (int)cal->logical_max)
-    {
-        pwm = cal->logical_max;
-    }
+    return (uint32)engine_limit_normal_pwm((int)c);
+}
+
+static uint32 apply_servo_calibration(int logical_pwm,
+                                      const servo_channel_cal_t *cal,
+                                      int min_pwm,
+                                      int max_pwm)
+{
+    int pwm = engine_limit_pwm(logical_pwm + cal->trim, min_pwm, max_pwm);
 
     if (cal->reverse)
     {
@@ -130,10 +152,18 @@ void engine_init(int pwm1, int pwm2)
     g_logic_left_2 = pwm2;
     g_logic_right_1 = pwm1;
     g_logic_right_2 = pwm2;
-    g_pwm_out_1 = apply_servo_calibration(pwm2, &k_left_servo_2);
-    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_right_servo_2);
-    g_pwm_out_3 = apply_servo_calibration(pwm1, &k_right_servo_1);
-    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_left_servo_1);
+    g_pwm_out_1 = apply_servo_calibration(pwm2, &k_left_servo_2,
+                                          ENGINE_NORMAL_LOGICAL_MIN_PWM,
+                                          ENGINE_NORMAL_LOGICAL_MAX_PWM);
+    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_right_servo_2,
+                                          ENGINE_NORMAL_LOGICAL_MIN_PWM,
+                                          ENGINE_NORMAL_LOGICAL_MAX_PWM);
+    g_pwm_out_3 = apply_servo_calibration(pwm1, &k_right_servo_1,
+                                          ENGINE_NORMAL_LOGICAL_MIN_PWM,
+                                          ENGINE_NORMAL_LOGICAL_MAX_PWM);
+    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_left_servo_1,
+                                          ENGINE_NORMAL_LOGICAL_MIN_PWM,
+                                          ENGINE_NORMAL_LOGICAL_MAX_PWM);
     g_pwm_out_1 = apply_servo_test_override(g_pwm_out_1, 1);
     g_pwm_out_2 = apply_servo_test_override(g_pwm_out_2, 2);
     g_pwm_out_3 = apply_servo_test_override(g_pwm_out_3, 3);
@@ -174,36 +204,69 @@ void engine_maintain(int pwm1, int pwm2)
     engine_left_maintain(pwm1, pwm2);
     engine_right_maintain(pwm1, pwm2);
 }
-void engine_left_maintain(int pwm1, int pwm2)
-{
-    pwm1 = (int)auu((uint32)pwm1);
-    pwm2 = (int)auu((uint32)pwm2);
 
+static void engine_left_write_limited(int pwm1, int pwm2,
+                                      int min_pwm, int max_pwm)
+{
+    pwm1 = engine_limit_pwm(pwm1, min_pwm, max_pwm);
+    pwm2 = engine_limit_pwm(pwm2, min_pwm, max_pwm);
     g_logic_left_1 = pwm1;
     g_logic_left_2 = pwm2;
-    g_pwm_out_1 = apply_servo_calibration(pwm2, &k_left_servo_2);
-    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_left_servo_1);
+    g_pwm_out_1 = apply_servo_calibration(pwm2, &k_left_servo_2,
+                                          min_pwm, max_pwm);
+    g_pwm_out_4 = apply_servo_calibration(pwm1, &k_left_servo_1,
+                                          min_pwm, max_pwm);
     g_pwm_out_1 = apply_servo_test_override(g_pwm_out_1, 1);
     g_pwm_out_4 = apply_servo_test_override(g_pwm_out_4, 4);
-
     pwm_set_duty(PWM_1, g_pwm_out_1);
     pwm_set_duty(PWM_4, g_pwm_out_4);
 }
 
-void engine_right_maintain(int pwm1, int pwm2)
+static void engine_right_write_limited(int pwm1, int pwm2,
+                                       int min_pwm, int max_pwm)
 {
-    pwm1 = (int)auu((uint32)pwm1);
-    pwm2 = (int)auu((uint32)pwm2);
-
+    pwm1 = engine_limit_pwm(pwm1, min_pwm, max_pwm);
+    pwm2 = engine_limit_pwm(pwm2, min_pwm, max_pwm);
     g_logic_right_1 = pwm1;
     g_logic_right_2 = pwm2;
-    g_pwm_out_3 = apply_servo_calibration(pwm1, &k_right_servo_1);
-    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_right_servo_2);
+    g_pwm_out_3 = apply_servo_calibration(pwm1, &k_right_servo_1,
+                                          min_pwm, max_pwm);
+    g_pwm_out_2 = apply_servo_calibration(pwm2, &k_right_servo_2,
+                                          min_pwm, max_pwm);
     g_pwm_out_3 = apply_servo_test_override(g_pwm_out_3, 3);
     g_pwm_out_2 = apply_servo_test_override(g_pwm_out_2, 2);
-
     pwm_set_duty(PWM_3, g_pwm_out_3);
     pwm_set_duty(PWM_2, g_pwm_out_2);
+}
+
+void engine_jump_maintain(int pwm1, int pwm2)
+{
+    pwm1 = engine_limit_jump_pwm(pwm1);
+    pwm2 = engine_limit_jump_pwm(pwm2);
+    engine_left_write_limited(pwm1, pwm2,
+                              ENGINE_JUMP_LOGICAL_MIN_PWM,
+                              ENGINE_JUMP_LOGICAL_MAX_PWM);
+    engine_right_write_limited(pwm1, pwm2,
+                               ENGINE_JUMP_LOGICAL_MIN_PWM,
+                               ENGINE_JUMP_LOGICAL_MAX_PWM);
+}
+
+void engine_left_maintain(int pwm1, int pwm2)
+{
+    pwm1 = engine_limit_normal_pwm(pwm1);
+    pwm2 = engine_limit_normal_pwm(pwm2);
+    engine_left_write_limited(pwm1, pwm2,
+                              ENGINE_NORMAL_LOGICAL_MIN_PWM,
+                              ENGINE_NORMAL_LOGICAL_MAX_PWM);
+}
+
+void engine_right_maintain(int pwm1, int pwm2)
+{
+    pwm1 = engine_limit_normal_pwm(pwm1);
+    pwm2 = engine_limit_normal_pwm(pwm2);
+    engine_right_write_limited(pwm1, pwm2,
+                               ENGINE_NORMAL_LOGICAL_MIN_PWM,
+                               ENGINE_NORMAL_LOGICAL_MAX_PWM);
 }
 
 void engine_jump(void)
