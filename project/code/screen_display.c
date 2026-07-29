@@ -67,6 +67,8 @@ typedef enum {
     UI_SCREEN_MODULES,
     UI_SCREEN_SYSTEM,
     UI_SCREEN_COURSE3_EXEC,
+    // 给 BUMP 增加独立屏幕显示状态
+    // UI_SCREEN_BUMP,
 #if defined(CY_CORE_CM7_1)
     UI_SCREEN_VISION,
 #endif
@@ -1516,6 +1518,14 @@ static void ui_draw_mode(void)
     ui_draw_footer_text(UI_TEXT_T_HINT_SET);
 }
 
+// 给 BUMP 增加独立屏幕显示状态
+// static void ui_draw_bump(void)
+// {
+//     ui_draw_title_text(UI_TEXT_T_TITLE_MODE);
+//     ips200_show_string(8, 34, "BUMP ACTION");
+//     ips200_show_string(8, 270, "BACK: Home");
+// }
+
 static void ui_draw_mode_action(void)
 {
     uint8_t mode = Runtime_Get_Vehicle_Mode();
@@ -2762,6 +2772,8 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         case UI_SCREEN_MODULES:     ui_handle_modules(events); break;
         case UI_SCREEN_SYSTEM:      ui_handle_system(events); break;
         case UI_SCREEN_COURSE3_EXEC: if (events[UI_KEY_BACK]) ui_set_screen(UI_SCREEN_HOME); break;
+        // 给 BUMP 增加独立屏幕显示状态
+        // case UI_SCREEN_BUMP: if (events[UI_KEY_BACK]) ui_set_screen(UI_SCREEN_HOME); break;
 #if defined(CY_CORE_CM7_1)
         case UI_SCREEN_VISION:      ui_handle_vision(events); break;
 #endif
@@ -2833,6 +2845,10 @@ static void ui_render(void)
         case UI_SCREEN_COURSE3_EXEC:
             ui_draw_course3_exec();
             break;
+        // 给 BUMP 增加独立屏幕显示状态
+        // case UI_SCREEN_BUMP:
+        //     ui_draw_bump();
+        //     break;
 #if defined(CY_CORE_CM7_1)
         case UI_SCREEN_VISION:
             ui_draw_vision();

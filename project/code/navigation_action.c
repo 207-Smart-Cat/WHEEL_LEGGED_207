@@ -169,12 +169,20 @@ float Navi_Action_Get_Course3_Target_Distance(void)
     return Navi_Action_Course3_Execution_Active() ? sqrtf(error_x * error_x + error_y * error_y) : 0.0f;
 }
 
-static void navi_bump_fault_exit(void)
+static void navi_bump_fault_exit(uint16_t target_idx)
 {
     target_velocity = 0.0f;
-    target_angle = (float)IMU_data.filter_result.yaw;
-    vofa_mode_driver = 0.0f;
-    navi_ctrl.navi_mode_driver = 0U;
+    if (!core_b_cmd.vision_enabled)
+    {
+        target_angle = (float)IMU_data.filter_result.yaw;
+    }
+    action_done_pending = 1U;
+    action_done_idx = target_idx;
+    if (action_seq.current_ptr < action_seq.total_count &&
+        action_seq.list[action_seq.current_ptr].wp_index == target_idx)
+    {
+        action_seq.current_ptr++;
+    }
     action_fsm.state = FSM_IDLE;
     action_fsm.state_timer_ms = 0U;
     action_fsm.is_airborne_expect = 0U;
@@ -493,7 +501,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     IPC_LOG_Printf("BUMP_ACTION,START_FAILED,wp=%u,profile=%u\r\n",
                                    (unsigned int)target_idx,
                                    (unsigned int)point_map[target_idx].action_cmd);
-                    navi_bump_fault_exit();
+                    navi_bump_fault_exit(target_idx);
                 }
             }
             else if (upcoming_type == WP_TYPE_BRIDGE && distance < (DISTANCE_THRESHOLD * 8.0f)) {
@@ -963,7 +971,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0U;
             } else if (result == BUMP_ACTION_RESULT_FAULT ||
                        result == BUMP_ACTION_RESULT_IDLE) {
-                navi_bump_fault_exit();
+                navi_bump_fault_exit(target_idx);
             }
             break;
         }
@@ -977,7 +985,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0U;
             } else if (result == BUMP_ACTION_RESULT_FAULT ||
                        result == BUMP_ACTION_RESULT_IDLE) {
-                navi_bump_fault_exit();
+                navi_bump_fault_exit(target_idx);
             }
             break;
         }
@@ -999,7 +1007,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 is_action_busy = 0U;
             } else if (result == BUMP_ACTION_RESULT_FAULT ||
                        result == BUMP_ACTION_RESULT_IDLE) {
-                navi_bump_fault_exit();
+                navi_bump_fault_exit(target_idx);
             }
             break;
         }

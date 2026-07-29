@@ -261,6 +261,7 @@ static WayPoint_Type Remote_GetRecordPointType(void)
         if (ch4 > REMOTE_CH4_HIGH_THRESHOLD)
         {
             return WP_TYPE_JUMP;
+            // return WP_TYPE_BUMP; // 颠簸路段打点：与上一行二选一，切换注释即可
         }
         if (ch4 > REMOTE_CH4_MID_THRESHOLD)
         {
@@ -283,6 +284,7 @@ static WayPoint_Type Remote_GetRecordPointType(void)
             return WP_TYPE_BRIDGE;
         }
         return WP_TYPE_JUMP;
+        // return WP_TYPE_BUMP; // 颠簸路段打点：与上一行二选一，切换注释即可
     }
 
     return WP_TYPE_NORMAL;

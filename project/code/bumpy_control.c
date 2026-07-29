@@ -299,6 +299,14 @@ static const BumpyActionProfile_t g_bumpy_action_profiles[] =
 
 static BumpyActionContext_t g_bumpy_action;
 
+static void bumpy_set_yaw_command_with_vision_priority(float yaw_cmd_deg)
+{
+    if (!core_b_cmd.vision_enabled)
+    {
+        target_angle = yaw_cmd_deg;
+    }
+}
+
 /*============================================================
  * 3. 基础数学、校验与计时工具
  *============================================================*/
@@ -1585,7 +1593,8 @@ void Bumpy_Project_Process_5ms(void)
     }
     if (g_bumpy_project_output.yaw_override_valid)
     {
-        target_angle = g_bumpy_project_output.yaw_cmd_deg;
+        bumpy_set_yaw_command_with_vision_priority(
+            g_bumpy_project_output.yaw_cmd_deg);
     }
 #endif
 
@@ -1938,7 +1947,8 @@ static BumpyActionResult_t bumpy_action_fail_now(
     g_bumpy_action.exit_reason = reason;
     g_bumpy_action.finish_allowed = 0U;
     target_velocity = 0.0f;
-    target_angle = (float)IMU_data.filter_result.yaw;
+    bumpy_set_yaw_command_with_vision_priority(
+        (float)IMU_data.filter_result.yaw);
     bumpy_action_clear_leg_override();
     bumpy_action_pose_end();
     g_bumpy_action.phase = BUMP_ACTION_PHASE_IDLE;
@@ -1964,7 +1974,8 @@ static void bumpy_action_enter_recover(BumpyExitReason_t reason,
     target_velocity =
         (g_bumpy_action.finish_allowed && profile != NULL) ?
         profile->recover_speed : 0.0f;
-    target_angle = g_bumpy_action.hold_yaw_deg;
+    bumpy_set_yaw_command_with_vision_priority(
+        g_bumpy_action.hold_yaw_deg);
 }
 
 static uint8_t bumpy_action_speed_candidate(void)
@@ -2134,7 +2145,8 @@ uint8_t Bumpy_Action_Start(uint16_t profile_id)
         g_bumpy_action.log_pending_mask |= BUMPY_ACTION_LOG_PROFILE_FALLBACK;
     }
     target_velocity = profile->detect_speed;
-    target_angle = g_bumpy_action.hold_yaw_deg;
+    bumpy_set_yaw_command_with_vision_priority(
+        g_bumpy_action.hold_yaw_deg);
     return 1U;
 }
 
@@ -2149,7 +2161,8 @@ static BumpyActionResult_t bumpy_action_update_detect_5ms(void)
     }
 
     target_velocity = profile->detect_speed;
-    target_angle = g_bumpy_action.hold_yaw_deg;
+    bumpy_set_yaw_command_with_vision_priority(
+        g_bumpy_action.hold_yaw_deg);
     bumpy_action_fill_input(profile, profile->detect_speed);
     if (g_bumpy_project_input.emergency_stop)
     {
@@ -2231,7 +2244,8 @@ static BumpyActionResult_t bumpy_action_update_crossing_5ms(void)
 
     speed_cmd = bumpy_action_update_speed(profile);
     target_velocity = speed_cmd;
-    target_angle = g_bumpy_action.hold_yaw_deg;
+    bumpy_set_yaw_command_with_vision_priority(
+        g_bumpy_action.hold_yaw_deg);
     bumpy_action_fill_input(profile, speed_cmd);
     if (g_bumpy_project_input.emergency_stop)
     {
@@ -2353,7 +2367,8 @@ static BumpyActionResult_t bumpy_action_update_recover_5ms(void)
 
     target_velocity = g_bumpy_action.finish_allowed ?
                       profile->recover_speed : 0.0f;
-    target_angle = g_bumpy_action.hold_yaw_deg;
+    bumpy_set_yaw_command_with_vision_priority(
+        g_bumpy_action.hold_yaw_deg);
     g_bumpy_action.recover_elapsed_ms = bumpy_timer_add(
         g_bumpy_action.recover_elapsed_ms,
         g_bumpy_project_config.nominal_dt_ms);
@@ -2387,7 +2402,8 @@ static BumpyActionResult_t bumpy_action_update_recover_5ms(void)
         return BUMP_ACTION_RESULT_DONE;
     }
 
-    target_angle = (float)IMU_data.filter_result.yaw;
+    bumpy_set_yaw_command_with_vision_priority(
+        (float)IMU_data.filter_result.yaw);
     bumpy_action_pose_end();
     g_bumpy_action.phase = BUMP_ACTION_PHASE_IDLE;
     g_bumpy_action.started = 0U;
