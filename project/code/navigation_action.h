@@ -48,9 +48,9 @@
 // RUNUP 阶段只接管速度和航向，不接管舵机，让常规 leg_control 产生前倾助跑。
 // 进入 PREPARE/TAKEOFF 后再接管舵机，避免普通腿控覆盖压腿和爆发输出。
 #define NAVI_JUMP_RUNUP_SPEED      350.0f
-#define NAVI_JUMP_SECOND_APPROACH_M       (0.18f)
+#define NAVI_JUMP_SECOND_APPROACH_M       (0.10f)
 #define NAVI_JUMP_SECOND_APPROACH_SPEED   (250.0f)
-#define NAVI_JUMP_THIRD_APPROACH_M        (0.18f)
+#define NAVI_JUMP_THIRD_APPROACH_M        (0.10f)
 #define NAVI_JUMP_THIRD_APPROACH_SPEED    (250.0f)
 
 typedef enum
