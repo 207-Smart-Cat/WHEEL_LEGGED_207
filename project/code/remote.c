@@ -380,6 +380,7 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
             // (void)jump_start();
 
             /* ==================== NEW CH6 NAVIGATION JUMP PATH ==================== */
+            Runtime_Set_Module_Enabled(RUNTIME_MODULE_NAVIGATION, 1U);
             (void)Navi_Action_Start_Remote_Jump();
             /* ==================== END NEW CH6 NAVIGATION JUMP PATH ==================== */
             remote_jump_armed = 0;

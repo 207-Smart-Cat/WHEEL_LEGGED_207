@@ -88,18 +88,17 @@ void jump_drive_symmetric_pwm(int pwm1)
     engine_right_maintain(pwm1, pwm2);
 }
 
-int jump_calc_prepare_pwm(uint16 elapsed_ms)
+int jump_calc_prepare_pwm(uint16 elapsed_ms, uint16 prepare_ms)
 {
-    uint16 half_prepare_ms = (uint16)(JUMP_PREPARE_MS / 2U);
     float progress;
     float pwm;
 
-    if (half_prepare_ms == 0U || elapsed_ms >= half_prepare_ms)
+    if (prepare_ms == 0U || elapsed_ms >= prepare_ms)
     {
         return JUMP_PREPARE_PWM;
     }
 
-    progress = (float)elapsed_ms / (float)half_prepare_ms;
+    progress = (float)elapsed_ms / (float)prepare_ms;
     pwm = (float)JUMP_PREPARE_START_PWM + ((float)JUMP_PREPARE_PWM - (float)JUMP_PREPARE_START_PWM) * progress;
 
     if (pwm >= 0.0f)
@@ -173,7 +172,8 @@ void jump_process_control(float *current_x, float *current_y)
     switch (jump_state)
     {
         case JUMP_PREPARE:
-            jump_drive_symmetric_pwm(jump_calc_prepare_pwm(jump_state_elapsed_ms));
+            jump_drive_symmetric_pwm(
+                jump_calc_prepare_pwm(jump_state_elapsed_ms, JUMP_PREPARE_MS));
             if (jump_state_elapsed_ms >= JUMP_PREPARE_MS)
             {
                 jump_set_state(JUMP_BURST);

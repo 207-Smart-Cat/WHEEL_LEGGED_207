@@ -42,6 +42,12 @@
 // 进入 PREPARE/TAKEOFF 后再接管舵机，避免普通腿控覆盖压腿和爆发输出。
 #define NAVI_JUMP_RUNUP_SPEED      350.0f
 
+typedef enum
+{
+    NAVI_JUMP_TRIGGER_WAYPOINT = 0,
+    NAVI_JUMP_TRIGGER_REMOTE
+} NaviJumpTrigger_t;
+
 // ========================== 动作状态机枚举 ==========================
 typedef enum {
     FSM_IDLE = 0,             // 空闲/提前预测
@@ -54,7 +60,7 @@ typedef enum {
     
     // --- 跳跃动作状态 ---
     FSM_JUMP_EXPLORE,         // 探索期：低速前进，寻找台阶边缘
-    FSM_JUMP_EDGE_TOUCH,      // 触边确认期：清零距离计数，准备后退
+    FSM_JUMP_EDGE_TOUCH,      // 保留原枚举值；触边停车与距离清零已合并到 EXPLORE
     FSM_JUMP_BACKOFF,         // 后退期：从台阶边缘后退到安全助跑距离
     FSM_JUMP_RUNUP,           // 助跑期：保持常规腿控，建立前向速度
     FSM_JUMP_PREPARE,         // 准备期：压腿蓄力
@@ -116,8 +122,9 @@ extern uint8_t is_action_busy;
 
 uint8_t navigation_jump_is_active(void);
 uint8_t Navi_Action_Servo_Takeover_Active(void);
+uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger, float hold_yaw);
 uint8_t Navi_Action_Start_Remote_Jump(void);
-void Navi_Action_Remote_Jump_Tick(void);
+void Navi_Jump_Task_5ms(void);
 uint8_t Navi_Action_Remote_Jump_Active(void);
 uint8_t Navi_Action_Vision_Align_Active(void);
 uint8_t Navi_Action_Get_Course3_Display_State(void);

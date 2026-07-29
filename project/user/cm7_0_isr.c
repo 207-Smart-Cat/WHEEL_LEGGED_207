@@ -76,9 +76,6 @@ void pit0_ch12_isr() // 遥控器控制，重要（10ms）
         /* ================== END SCREEN JUMP NAV ODOM ENABLE ================== */
         (void)Navi_Action_Start_Remote_Jump();
     }
-    /* ==================== NEW CH6 NAVI JUMP TICK ==================== */
-    Navi_Action_Remote_Jump_Tick();
-    /* ==================== END NEW CH6 NAVI JUMP TICK ==================== */
     pit_isr_flag_clear(PIT_CH12);
 }
 
@@ -105,7 +102,7 @@ void pit0_ch14_isr() // 跳跃动作状态机 1ms
     pit_isr_flag_clear(PIT_CH14);
 }
 
-void pit0_ch15_isr() // Navigation EKF positioning, 10ms
+void pit0_ch15_isr() // Navigation EKF positioning and jump action, 5ms
 {
     static uint8_t nav_origin_ready = 0;
 
@@ -126,6 +123,7 @@ void pit0_ch15_isr() // Navigation EKF positioning, 10ms
         nav_origin_ready = 1;
     }
     navi_ekf_update();
+    Navi_Jump_Task_5ms();
     task_navigation_control();
     pit_isr_flag_clear(PIT_CH15);
 }

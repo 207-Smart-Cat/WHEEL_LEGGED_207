@@ -36,7 +36,7 @@ extern volatile uint16 jump_dbg_elapsed_ms;
 extern volatile uint8 jump_dbg_trigger_block_reason;
 extern volatile uint32 jump_dbg_trigger_count;
 
-int jump_calc_prepare_pwm(uint16 elapsed_ms);
+int jump_calc_prepare_pwm(uint16 elapsed_ms, uint16 prepare_ms);
 void jump_drive_symmetric_pwm(int pwm1);
 void jump_drive_symmetric_xy(float x, float y);
 uint8 jump_start(void);

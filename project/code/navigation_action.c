@@ -44,6 +44,7 @@ static float jump_course_back_yaw = 0.0f;
 static float jump_sequence_hold_yaw = 0.0f;
 static float jump_motion_count = 0.0f;
 static float jump_motion_last_x = 0.0f;
+static float jump_motion_last_y = 0.0f;
 static NaviJumpTouchLogic_t jump_touch_logic = {0};
 static uint8_t jump_touch_inhibit_after_landing = 0;
 static uint8_t remote_jump_active = 0;
@@ -73,7 +74,6 @@ static uint8_t jump_pose_update_active = 0;
 uint8_t navigation_jump_is_active(void)
 {
     return (action_fsm.state == FSM_JUMP_EXPLORE ||
-            action_fsm.state == FSM_JUMP_EDGE_TOUCH ||
             action_fsm.state == FSM_JUMP_BACKOFF ||
             action_fsm.state == FSM_JUMP_RUNUP ||
             action_fsm.state == FSM_JUMP_PREPARE ||
@@ -181,7 +181,6 @@ static void navi_bump_fault_exit(void)
     is_action_busy = 0U;
 }
 
-#define NAVI_JUMP_FORWARD_SPEED       NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_AIRBORNE_SPEED      NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_LANDING_SPEED       NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_EXPLORE_SPEED       (120.0f)
@@ -190,9 +189,13 @@ static void navi_bump_fault_exit(void)
 #define NAVI_JUMP_TOUCH_HIGH_SPEED    (50)
 #define NAVI_JUMP_TOUCH_HIGH_SAMPLES  (2U)
 #define NAVI_JUMP_TOUCH_LOW_CONFIRM   (2U)
-#define NAVI_JUMP_TOUCH_INHIBIT_AFTER_LANDING_MS (1000U)
-#define NAVI_JUMP_BACKOFF_X_TARGET    (0.35f)
-#define NAVI_JUMP_RUNUP_X_TARGET      (0.20f)
+#define NAVI_JUMP_TOUCH_INHIBIT_MIN_MS       (200U)
+#define NAVI_JUMP_TOUCH_INHIBIT_FORWARD_M    (0.05f)
+#define NAVI_JUMP_BACKOFF_TARGET_M           (0.60f)
+#define NAVI_JUMP_RUNUP_RESERVE_M            (0.30f)
+#define NAVI_JUMP_RUNUP_TARGET_M              (NAVI_JUMP_BACKOFF_TARGET_M - NAVI_JUMP_RUNUP_RESERVE_M)
+#define NAVI_JUMP_PREPARE_SPEED               (0.0f)
+#define NAVI_JUMP_TAKEOFF_SPEED               NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_BURST_PWM           (1300)
 #define NAVI_JUMP_AIR_RETRACT_X       (-0.00f)
 #define NAVI_JUMP_AIR_RETRACT_Y       (0.015f)
@@ -221,22 +224,38 @@ static void navi_jump_motion_reset(void)
 {
     jump_motion_count = 0.0f;
     jump_motion_last_x = robot_pose.x;
+    jump_motion_last_y = robot_pose.y;
 }
 
-static void navi_jump_motion_update(void)
-{
-    jump_motion_count += fabsf(robot_pose.x - jump_motion_last_x);
-    jump_motion_last_x = robot_pose.x;
-}
-
-static void navi_jump_motion_update_forward_x(void)
+static float navi_jump_get_forward_step(void)
 {
     float dx = robot_pose.x - jump_motion_last_x;
+    float dy = robot_pose.y - jump_motion_last_y;
+    float yaw_rad = (float)ANGLE_TO_RAD(jump_sequence_hold_yaw);
+    float forward_step = dx * cosf(yaw_rad) + dy * sinf(yaw_rad);
 
-    if (dx > 0.0f) {
-        jump_motion_count += dx;
-    }
     jump_motion_last_x = robot_pose.x;
+    jump_motion_last_y = robot_pose.y;
+
+    return forward_step;
+}
+
+static void navi_jump_motion_update_backoff(void)
+{
+    float forward_step = navi_jump_get_forward_step();
+
+    if (forward_step < 0.0f) {
+        jump_motion_count += -forward_step;
+    }
+}
+
+static void navi_jump_motion_update_runup(void)
+{
+    float forward_step = navi_jump_get_forward_step();
+
+    if (forward_step > 0.0f) {
+        jump_motion_count += forward_step;
+    }
 }
 
 static void navi_jump_touch_window_reset(void)
@@ -303,35 +322,46 @@ uint8_t Navi_Action_Remote_Jump_Active(void)
     return remote_jump_active;
 }
 
-uint8_t Navi_Action_Start_Remote_Jump(void)
+uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger, float hold_yaw)
 {
-    if (remote_jump_active || is_action_busy || navigation_jump_is_active() || jump_is_active())
+    if (trigger != NAVI_JUMP_TRIGGER_WAYPOINT &&
+        trigger != NAVI_JUMP_TRIGGER_REMOTE)
     {
-        return 0;
+        return 0U;
     }
 
-    remote_jump_active = 1;
-    is_action_busy = 1;
+    if (remote_jump_active || is_action_busy || navigation_jump_is_active() || jump_is_active())
+    {
+        return 0U;
+    }
+
+    remote_jump_active = (trigger == NAVI_JUMP_TRIGGER_REMOTE) ? 1U : 0U;
+    is_action_busy = 1U;
     action_fsm.state = FSM_JUMP_EXPLORE;
-    action_fsm.state_timer_ms = 0;
-    action_fsm.is_airborne_expect = 0;
+    action_fsm.state_timer_ms = 0U;
+    action_fsm.is_airborne_expect = 0U;
 
 #if (NAVI_JUMP_ACTION_MODE == 2U)
-    jump_sequence_done_count = 0;
+    jump_sequence_done_count = 0U;
     jump_course_back_yaw = 0.0f;
 #endif
-    jump_sequence_hold_yaw = navi_limit_angle180(target_angle);
+    jump_sequence_hold_yaw = navi_limit_angle180(hold_yaw);
     navi_jump_motion_reset();
     navi_jump_touch_inhibit_reset();
     navi_jump_pose_update_end();
 
     jump_stop = 0;
     jump_position = 0;
-    jump_engine_suspend = 0;
+    jump_engine_suspend = 0U;
     target_velocity = NAVI_JUMP_EXPLORE_SPEED;
     target_angle = jump_sequence_hold_yaw;
 
-    return 1;
+    return 1U;
+}
+
+uint8_t Navi_Action_Start_Remote_Jump(void)
+{
+    return Navi_Jump_Start(NAVI_JUMP_TRIGGER_REMOTE, target_angle);
 }
 
 static void navi_action_remote_jump_clear(void)
@@ -443,25 +473,11 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;
 #elif (NAVI_JUMP_ACTION_MODE == 1U)
-                jump_sequence_hold_yaw = navi_limit_angle180(point_map[target_idx].yaw);
-                navi_jump_motion_reset();
-                navi_jump_touch_inhibit_reset();
-                action_fsm.state = FSM_JUMP_EXPLORE;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-                target_velocity = NAVI_JUMP_EXPLORE_SPEED;
-                target_angle = jump_sequence_hold_yaw;
+                (void)Navi_Jump_Start(NAVI_JUMP_TRIGGER_WAYPOINT,
+                                      point_map[target_idx].yaw);
 #elif (NAVI_JUMP_ACTION_MODE == 2U)
-                jump_sequence_done_count = 0;
-                jump_course_back_yaw = 0.0f;
-                jump_sequence_hold_yaw = navi_limit_angle180(point_map[target_idx].yaw);
-                navi_jump_motion_reset();
-                navi_jump_touch_inhibit_reset();
-                action_fsm.state = FSM_JUMP_EXPLORE;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
-                target_velocity = NAVI_JUMP_EXPLORE_SPEED;
-                target_angle = jump_sequence_hold_yaw;
+                (void)Navi_Jump_Start(NAVI_JUMP_TRIGGER_WAYPOINT,
+                                      point_map[target_idx].yaw);
 #else
 #error "Invalid NAVI_JUMP_ACTION_MODE"
 #endif
@@ -689,32 +705,25 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             if (jump_touch_inhibit_after_landing)
             {
                 navi_jump_touch_window_reset();
-                if (action_fsm.state_timer_ms >= NAVI_JUMP_TOUCH_INHIBIT_AFTER_LANDING_MS)
+                navi_jump_motion_update_runup();
+                if (action_fsm.state_timer_ms >= NAVI_JUMP_TOUCH_INHIBIT_MIN_MS &&
+                    jump_motion_count >= NAVI_JUMP_TOUCH_INHIBIT_FORWARD_M)
                 {
-                    jump_touch_inhibit_after_landing = 0;
+                    jump_touch_inhibit_after_landing = 0U;
+                    navi_jump_motion_reset();
                 }
                 break;
             }
 
             if (navi_jump_touch_update())
             {
-                action_fsm.state = FSM_JUMP_EDGE_TOUCH;
-                action_fsm.state_timer_ms = 0;
-                is_action_busy = 1;
+                target_velocity = 0.0f;
+                target_angle = jump_sequence_hold_yaw;
+                navi_jump_motion_reset();
+                action_fsm.state = FSM_JUMP_BACKOFF;
+                action_fsm.state_timer_ms = 0U;
+                is_action_busy = 1U;
             }
-            break;
-
-        case FSM_JUMP_EDGE_TOUCH:
-            is_action_busy = 1;
-            action_fsm.is_airborne_expect = 0;
-            jump_stop = 0;
-            jump_position = 0;
-            jump_engine_suspend = 0;
-            target_velocity = 0.0f;
-            target_angle = jump_sequence_hold_yaw;
-            navi_jump_motion_reset();
-            action_fsm.state = FSM_JUMP_BACKOFF;
-            action_fsm.state_timer_ms = 0;
             break;
 
         case FSM_JUMP_BACKOFF:
@@ -725,9 +734,9 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_BACKOFF_SPEED;
             target_angle = jump_sequence_hold_yaw;
-            navi_jump_motion_update();
+            navi_jump_motion_update_backoff();
 
-            if (jump_motion_count >= NAVI_JUMP_BACKOFF_X_TARGET) {
+            if (jump_motion_count >= NAVI_JUMP_BACKOFF_TARGET_M) {
                 navi_jump_motion_reset();
                 action_fsm.state = FSM_JUMP_RUNUP;
                 action_fsm.state_timer_ms = 0;
@@ -743,9 +752,9 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             jump_engine_suspend = 0;
             target_velocity = NAVI_JUMP_RUNUP_SPEED;
             target_angle = jump_sequence_hold_yaw;
-            navi_jump_motion_update_forward_x();
+            navi_jump_motion_update_runup();
 
-            if (jump_motion_count >= NAVI_JUMP_RUNUP_X_TARGET) {
+            if (jump_motion_count >= NAVI_JUMP_RUNUP_TARGET_M) {
                 navi_jump_pose_update_begin();
                 action_fsm.state = FSM_JUMP_PREPARE;
                 action_fsm.state_timer_ms = 0;
@@ -759,9 +768,11 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             jump_stop = 0;
             jump_position = 0;
             jump_engine_suspend = 0;
-            target_velocity = NAVI_JUMP_FORWARD_SPEED;
+            target_velocity = NAVI_JUMP_PREPARE_SPEED;
             target_angle = jump_sequence_hold_yaw;
-            jump_drive_symmetric_pwm(jump_calc_prepare_pwm((uint16)action_fsm.state_timer_ms));
+            jump_drive_symmetric_pwm(
+                jump_calc_prepare_pwm((uint16)action_fsm.state_timer_ms,
+                                      (uint16)NAVI_JUMP_PREPARE_MS));
 
             if (action_fsm.state_timer_ms >= NAVI_JUMP_PREPARE_MS) {
                 action_fsm.state = FSM_JUMP_TAKEOFF;
@@ -774,7 +785,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             is_action_busy = 1;
             action_fsm.is_airborne_expect = 0;
             jump_engine_suspend = 0;
-            target_velocity = NAVI_JUMP_FORWARD_SPEED;
+            target_velocity = NAVI_JUMP_TAKEOFF_SPEED;
             target_angle = jump_sequence_hold_yaw;
             jump_drive_symmetric_pwm(NAVI_JUMP_BURST_PWM);
 
@@ -1048,7 +1059,7 @@ uint8_t Navi_Action_Consume_Done(uint16_t curr_idx)
 // ============================================================================
 // ==================== REMOTE CH6 NAVIGATION JUMP BRIDGE =====================
 // ============================================================================
-void Navi_Action_Remote_Jump_Tick(void)
+void Navi_Jump_Task_5ms(void)
 {
     if (!remote_jump_active)
     {
