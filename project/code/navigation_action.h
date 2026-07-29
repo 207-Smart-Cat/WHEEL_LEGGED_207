@@ -115,6 +115,7 @@ uint8_t Navi_Action_Start_Remote_Jump(void);
 void Navi_Action_Remote_Jump_Tick(void);
 uint8_t Navi_Action_Remote_Jump_Active(void);
 uint8_t Navi_Action_Vision_Align_Active(void);
+uint8_t Navi_Action_Bridge_Vision_Cal_Active(void);
 uint8_t Navi_Action_Get_Course3_Display_State(void);
 uint8_t Navi_Action_Course3_Execution_Active(void);
 uint8_t Navi_Action_Get_Course3_Target_Type(void);

@@ -16,7 +16,7 @@ static void stable_wait_requires_full_window(void)
 
     VisionAlignCal_Reset(&cal);
 
-    for (uint8 i = 0U; i < 29U; i++)
+    for (uint8 i = 0U; i < (VISION_ALIGN_STABLE_WINDOW_FRAMES - 1U); i++)
     {
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, 29, 10.0f);
         assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_STABLE_WAIT);
@@ -27,12 +27,12 @@ static void stable_wait_requires_full_window(void)
     assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_STABLE_WAIT);
     assert(VisionAlignCal_GetStableCount(&cal) == 0U);
 
-    for (uint8 i = 0U; i < 30U; i++)
+    for (uint8 i = 0U; i < VISION_ALIGN_STABLE_WINDOW_FRAMES; i++)
     {
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, -30, 10.0f);
     }
     assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_SAMPLING);
-    assert(VisionAlignCal_GetStableCount(&cal) == 30U);
+    assert(VisionAlignCal_GetStableCount(&cal) == VISION_ALIGN_STABLE_WINDOW_FRAMES);
 }
 
 static void sampling_uses_center_window_and_wrap_safe_average(void)
@@ -41,7 +41,7 @@ static void sampling_uses_center_window_and_wrap_safe_average(void)
     uint32 frame = 1U;
 
     VisionAlignCal_Reset(&cal);
-    for (uint8 i = 0U; i < 30U; i++)
+    for (uint8 i = 0U; i < VISION_ALIGN_STABLE_WINDOW_FRAMES; i++)
     {
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, 12, 170.0f);
     }
@@ -49,7 +49,7 @@ static void sampling_uses_center_window_and_wrap_safe_average(void)
     VisionAlignCal_Update(&cal, 1U, 1U, frame++, 8, 178.0f);
     assert(VisionAlignCal_GetSampleCount(&cal) == 0U);
 
-    for (uint8 i = 0U; i < 10U; i++)
+    for (uint8 i = 0U; i < VISION_ALIGN_SIDE_SAMPLE_TARGET; i++)
     {
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, -3, 179.0f);
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, 3, -179.0f);
@@ -66,29 +66,29 @@ static void sampling_requires_five_samples_on_each_side(void)
     uint32 frame = 1U;
 
     VisionAlignCal_Reset(&cal);
-    for (uint8 i = 0U; i < 30U; i++)
+    for (uint8 i = 0U; i < VISION_ALIGN_STABLE_WINDOW_FRAMES; i++)
     {
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, 10, 30.0f);
     }
 
-    for (uint8 i = 0U; i < 20U; i++)
+    for (uint8 i = 0U; i < VISION_ALIGN_SAMPLE_COUNT_TARGET; i++)
     {
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, -2, 40.0f);
     }
     assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_SAMPLING);
-    assert(VisionAlignCal_GetSampleCount(&cal) == 10U);
+    assert(VisionAlignCal_GetSampleCount(&cal) == VISION_ALIGN_SIDE_SAMPLE_TARGET);
     assert(VisionAlignCal_ResultValid(&cal) == 0U);
 
-    for (uint8 i = 0U; i < 9U; i++)
+    for (uint8 i = 0U; i < (VISION_ALIGN_SIDE_SAMPLE_TARGET - 1U); i++)
     {
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, 2, 50.0f);
     }
     assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_SAMPLING);
-    assert(VisionAlignCal_GetSampleCount(&cal) == 19U);
+    assert(VisionAlignCal_GetSampleCount(&cal) == (VISION_ALIGN_SAMPLE_COUNT_TARGET - 1U));
 
     VisionAlignCal_Update(&cal, 1U, 1U, frame++, 2, 50.0f);
     assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_DONE);
-    assert(VisionAlignCal_GetSampleCount(&cal) == 20U);
+    assert(VisionAlignCal_GetSampleCount(&cal) == VISION_ALIGN_SAMPLE_COUNT_TARGET);
     assert_close(VisionAlignCal_GetResultYaw(&cal), 45.0f);
 }
 

@@ -751,10 +751,18 @@ float Vision_Align_Cal_Get_Result_Yaw(void)
     return VisionAlignCal_GetResultYaw(&g_vision_align_cal);
 }
 
+void Vision_Align_Cal_Reset(void)
+{
+    VisionAlignCal_Reset(&g_vision_align_cal);
+}
+
 static void vision_mode_apply(void)
 {
     uint8_t page_enabled = core_b_cmd.vision_enabled ? 1U : 0U;
     uint8_t action_enabled = Navi_Action_Vision_Align_Active() ? 1U : 0U;
+    uint8_t bridge_cal_enabled = Navi_Action_Bridge_Vision_Cal_Active() ? 1U : 0U;
+    uint8_t manual_cal_enabled = (page_enabled && !action_enabled) ? 1U : 0U;
+    uint8_t cal_enabled = (manual_cal_enabled || bridge_cal_enabled) ? 1U : 0U;
     uint8_t enabled = (page_enabled || action_enabled) ? 1U : 0U;
     uint8_t valid = core_b_cmd.vision_valid;
 
@@ -783,7 +791,7 @@ static void vision_mode_apply(void)
     }
     g_vision_last_enabled = 1U;
 
-    if (page_enabled)
+    if (cal_enabled)
     {
         if (g_vision_stale_ticks > VISION_FRAME_TIMEOUT_TICKS)
         {
@@ -808,7 +816,7 @@ static void vision_mode_apply(void)
             return;
         }
 
-        target_velocity = 50.0f;
+        target_velocity = 150.0f;
     }
 
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)
@@ -1356,4 +1364,3 @@ float min(float a, float b)
 {
     return (a < b) ? a : b;
 }
-

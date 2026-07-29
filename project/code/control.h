@@ -46,5 +46,6 @@ uint8 Vision_Align_Cal_Get_Left_Sample_Count(void);
 uint8 Vision_Align_Cal_Get_Right_Sample_Count(void);
 uint8 Vision_Align_Cal_Result_Valid(void);
 float Vision_Align_Cal_Get_Result_Yaw(void);
+void Vision_Align_Cal_Reset(void);
 
 #endif /* CODE_ENGINE_H_ */

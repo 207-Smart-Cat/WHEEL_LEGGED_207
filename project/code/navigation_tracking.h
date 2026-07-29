@@ -168,6 +168,8 @@ uint8 navi_isreach_target_point(uint16 target_idx)  ;  //  航点到达判断
 
 uint8 navi_switch_nexttargetpoint(void) ;                   // 切换到下一个目标航点
 
+void navi_tracking_speed_profile_reset(void);
+
 const char* get_enum_name(WayPoint_Type type);    // 将航点类型枚举转换为对应的中文字符串
 
 

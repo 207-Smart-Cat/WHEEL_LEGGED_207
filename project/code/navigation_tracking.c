@@ -24,7 +24,6 @@
 #include "runtime_status.h"
 #include "navigation_smooth_logic.h"
 #include "vehicle_supervisor.h"
-#include "camera_align.h"
 
 //====================================================全局变量定义=======================================================
 Navi_Controller_t navi_ctrl;
@@ -202,7 +201,6 @@ static uint8_t navi_record_bridge_state(uint8_t *bridge_open)
 
 static void navi_bridge_reset(uint8_t restore_low_height)
 {
-    camera_align_reset();
     if (restore_low_height)
     {
         pid_low_init();
@@ -335,6 +333,11 @@ static void navi_speed_profile_reset(void)
 {
     PidInit(&navi_speed_pid);
     navi_speed_last_output = 0.0f;
+}
+
+void navi_tracking_speed_profile_reset(void)
+{
+    navi_speed_profile_reset();
 }
 
 static float navi_get_reach_threshold(uint16_t target_idx)
@@ -936,54 +939,6 @@ void task_navigation_control(void) {
                 (void)navi_course3_apply_line_lookahead(curr_idx, &azimuth, &print_turn_angle);
             }
 
-            if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
-                point_map[curr_idx].type == WP_TYPE_BRIDGE)
-            {
-                if (point_map[curr_idx].action_cmd == NAVI_BRIDGE_ACTION_START &&
-                    reached_current)
-                {
-                    if (!camera_align())
-                    {
-                        navi_speed_profile_reset();
-                        break;
-                    }
-
-                    Height_PID_Switch(true);
-                    Turn_Reset();
-                    navi_speed_profile_reset();
-                    IPC_LOG_Printf("\r\n[NAVI_BRIDGE] camera align done at start point %d.\r\n", curr_idx);
-                    if (navi_switch_nexttargetpoint())
-                    {
-                        uint16_t next_idx = navi_ctrl.point_current_idx;
-                        IPC_LOG_Printf(" [NAVI_BRIDGE] next bridge target X=%s%d.%02d, Y=%s%d.%02d | Type:%s\r\n",
-                                       F_ARG(point_map[next_idx].x), F_ARG(point_map[next_idx].y),
-                                       get_enum_name(point_map[next_idx].type));
-                    }
-                    break;
-                }
-
-                if (point_map[curr_idx].action_cmd == NAVI_BRIDGE_ACTION_END &&
-                    reached_current)
-                {
-                    pid_low_init();
-                    Turn_Reset();
-                    navi_speed_profile_reset();
-                    target_velocity = 0.0f;
-                    target_angle = IMU_data.filter_result.yaw;
-                    IPC_LOG_Printf("\r\n[NAVI_BRIDGE] end point %d reached, restore normal leg height.\r\n", curr_idx);
-
-                    if (curr_idx >= (total_points - 1U))
-                    {
-                        vofa_mode_driver = 0.0f;
-                        navi_ctrl.navi_mode_driver = 0;
-                    }
-                    else
-                    {
-                        navi_switch_nexttargetpoint();
-                    }
-                    break;
-                }
-            }
             if (smooth_speed_hold_ticks > 0U)
             {
                 smooth_speed_hold_ticks--;
