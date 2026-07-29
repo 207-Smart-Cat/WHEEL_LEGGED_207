@@ -49,6 +49,7 @@ static float jump_motion_start_y = 0.0f;
 static NaviJumpTouchLogic_t jump_touch_logic = {0};
 static uint8_t jump_touch_inhibit_after_landing = 0;
 static uint8_t remote_jump_active = 0;
+static volatile uint8_t remote_jump_request = 0U;
 static Course3AlignSamples_t course3_align_samples;
 static uint32_t course3_align_last_frame = 0;
 static float course3_align_map_yaw = 0.0f;
@@ -325,6 +326,11 @@ uint8_t Navi_Action_Remote_Jump_Active(void)
     return remote_jump_active;
 }
 
+void Navi_Action_Request_Remote_Jump(void)
+{
+    remote_jump_request = 1U;
+}
+
 uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger,
                         float control_yaw,
                         float nav_yaw)
@@ -372,6 +378,31 @@ uint8_t Navi_Action_Start_Remote_Jump(void)
                            robot_pose.yaw);
 }
 
+void Navi_Action_Process_Remote_Jump_Request_5ms(void)
+{
+    if (!remote_jump_request)
+    {
+        return;
+    }
+
+    remote_jump_request = 0U;
+
+    if (Vehicle_Is_Emergency_Stop())
+    {
+        return;
+    }
+
+    if (Navi_Action_Remote_Jump_Active() ||
+        navigation_jump_is_active() ||
+        jump_is_active() ||
+        is_action_busy)
+    {
+        return;
+    }
+
+    (void)Navi_Action_Start_Remote_Jump();
+}
+
 static void navi_action_remote_jump_clear(void)
 {
     remote_jump_active = 0;
@@ -404,6 +435,7 @@ void navi_parse_global_path(void) {
     action_done_idx = 0;
     course3_display_state = COURSE3_DISPLAY_IDLE;
     course3_display_done_pending_clear = 0U;
+    remote_jump_request = 0U;
 #if (NAVI_JUMP_ACTION_MODE == 2U)
     jump_sequence_done_count = 0;
     jump_course_back_yaw = 0.0f;

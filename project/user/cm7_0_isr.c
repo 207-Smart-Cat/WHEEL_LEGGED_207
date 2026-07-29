@@ -74,7 +74,7 @@ void pit0_ch12_isr() // Ò£¿ØÆ÷¿ØÖÆ£¬ÖØÒª£¨10ms£©
         /* ==================== SCREEN JUMP NAV ODOM ENABLE ==================== */
         Runtime_Set_Module_Enabled(RUNTIME_MODULE_NAVIGATION, 1);
         /* ================== END SCREEN JUMP NAV ODOM ENABLE ================== */
-        (void)Navi_Action_Start_Remote_Jump();
+        Navi_Action_Request_Remote_Jump();
     }
     pit_isr_flag_clear(PIT_CH12);
 }
@@ -123,6 +123,7 @@ void pit0_ch15_isr() // Navigation EKF positioning and jump action, 5ms
         nav_origin_ready = 1;
     }
     navi_ekf_update();
+    Navi_Action_Process_Remote_Jump_Request_5ms();
     Navi_Jump_Task_5ms();
     task_navigation_control();
     pit_isr_flag_clear(PIT_CH15);

@@ -125,6 +125,8 @@ uint8_t Navi_Action_Servo_Takeover_Active(void);
 uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger,
                         float control_yaw,
                         float nav_yaw);
+void Navi_Action_Request_Remote_Jump(void);
+void Navi_Action_Process_Remote_Jump_Request_5ms(void);
 uint8_t Navi_Action_Start_Remote_Jump(void);
 void Navi_Jump_Task_5ms(void);
 uint8_t Navi_Action_Remote_Jump_Active(void);
