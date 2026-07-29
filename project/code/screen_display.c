@@ -1341,7 +1341,9 @@ static void ui_apply_manual_bridge_test(void)
     ui_send_param_update(P_NAVI_MODE_DRIVER, 0.0f);
     ui_send_param_update(P_SPEED_P, 0.012f);
     ui_send_param_update(P_Y_CURRENT, 0.030f);
-    ui_send_param_update(P_DIR_P, 15.0f);
+    ui_send_param_update(P_DIR_P, 50.0f);
+    ui_send_param_update(P_DIR_I, 0.012f);
+    ui_send_param_update(P_DIR_D, 0.875f);
     ui_send_param_update(P_TARGET_VELOCITY, 233.0f);
     ui_send_param_update(P_TARGET_ANGLE, ui_manual_test_entry_angle);
     IPC_Set_Manual_Test_Mode(MANUAL_TEST_MODE_BRIDGE);
@@ -1352,6 +1354,11 @@ static void ui_stop_manual_test(void)
 {
     IPC_Set_Manual_Test_Mode(MANUAL_TEST_MODE_NONE);
     ui_send_param_update(P_TARGET_VELOCITY, 0.0f);
+    ui_send_param_update(P_SPEED_P, 0.025f);
+    ui_send_param_update(P_Y_CURRENT, 0.040f);
+    ui_send_param_update(P_DIR_P, 15.0f);
+    ui_send_param_update(P_DIR_I, 0.010f);
+    ui_send_param_update(P_DIR_D, 2.330f);
     ui_manual_test_applied = 0U;
 }
 

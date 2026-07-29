@@ -356,7 +356,9 @@ void Height_PID_Switch(bool high_mode)
     {
         y_current = 0.030f;
         Speed_p = 0.012f;
-        Direction_p = 15.0f;
+        Direction_p = 50.0f;
+        Direction_i = 0.012f;
+        Direction_d = 0.875f;
         bridge_high = 1;
     }
     else
@@ -364,6 +366,8 @@ void Height_PID_Switch(bool high_mode)
         y_current = 0.040f;
         Speed_p = 0.025f;
         Direction_p = 15.0f;
+        Direction_i = 0.010f;
+        Direction_d = 2.330f;
         bridge_high = 0;
     }
 

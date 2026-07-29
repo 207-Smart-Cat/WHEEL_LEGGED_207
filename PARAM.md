@@ -25,8 +25,9 @@ Source: `project/code/param.c`
 | `Air_roll_i_init` | `0.03f` | Air roll control I |
 | `Air_roll_d_init` | `0.0015f` | Air roll control D |
 | `Direction_p_init` | `15.00f` | Yaw/direction control P |
-| `Direction_i_init` | `0.012f` | Yaw/direction control I |
-| `Direction_d_init` | `0.875f` | Yaw/direction control D |
+| `Direction_i_init` | `0.010f` | Low-profile yaw/direction control I |
+| `Direction_d_init` | `2.330f` | Low-profile yaw/direction control D |
+| Bridge high-profile direction PID | `50.0 / 0.012 / 0.875` | Original high-profile P/I/D; low-profile exit restores `15.0 / 0.010 / 2.330` |
 | `Leg_Kp_init` | `0.0f` | Leg-height PID P |
 | `Leg_Ki_init` | `0.0f` | Leg-height PID I |
 | `Leg_Kd_init` | `0.0f` | Leg-height PID D |
