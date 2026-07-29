@@ -24,6 +24,7 @@
 #include "runtime_status.h"
 #include "navigation_smooth_logic.h"
 #include "vehicle_supervisor.h"
+#include "course3_bridge_logic.h"
 
 //====================================================全局变量定义=======================================================
 Navi_Controller_t navi_ctrl;
@@ -71,8 +72,8 @@ static float navi_calc_turn_speed_limit(float turn_error_deg);
 static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid);
 static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd);
 static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points);
-static uint8_t navi_record_bridge_state(uint8_t *bridge_open);
-static uint8_t navi_bridge_validate_route(void);
+static uint8_t navi_record_segment_state(WayPoint_Type *open_type);
+static uint8_t navi_segment_validate_route(void);
 static void navi_bridge_reset(uint8_t restore_low_height);
 static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
                                                 float *azimuth,
@@ -163,40 +164,59 @@ static void navi_record_undo_last(void)
     IPC_LOG_Printf("\r\n>>> [NAVI_RECORD] undo last point, remain %d <<<\r\n", record_point_count);
 }
 
-static uint8_t navi_record_bridge_state(uint8_t *bridge_open)
+static uint8_t navi_record_segment_state(WayPoint_Type *open_type)
 {
-    uint8_t open = 0U;
+    WayPoint_Type open = WP_TYPE_NORMAL;
     uint16_t i;
 
-    if (bridge_open == NULL)
+    if (open_type == NULL)
     {
         return 0U;
     }
 
     for (i = 0U; i < record_point_count; i++)
     {
-        if (!record_point_map[i].valid || record_point_map[i].type != WP_TYPE_BRIDGE)
+        WayPoint_Type type = record_point_map[i].type;
+
+        if (!record_point_map[i].valid || !Course3Segment_IsPairedType((uint8)type))
         {
             continue;
         }
 
-        if (!open && record_point_map[i].action_cmd == NAVI_BRIDGE_ACTION_START)
+        if (open == WP_TYPE_NORMAL && record_point_map[i].action_cmd == NAVI_SEGMENT_ACTION_START)
         {
-            open = 1U;
+            open = type;
         }
-        else if (open && record_point_map[i].action_cmd == NAVI_BRIDGE_ACTION_END)
+        else if (open == type && record_point_map[i].action_cmd == NAVI_SEGMENT_ACTION_END)
         {
-            open = 0U;
+            open = WP_TYPE_NORMAL;
         }
         else
         {
-            *bridge_open = 0U;
+            *open_type = WP_TYPE_NORMAL;
             return 0U;
         }
     }
 
-    *bridge_open = open;
+    *open_type = open;
     return 1U;
+}
+
+uint8 Navi_Record_Get_Last_Action(void)
+{
+    return (record_point_count > 0U) ?
+           (uint8)record_point_map[record_point_count - 1U].action_cmd : 0U;
+}
+
+uint8 Navi_Record_Get_Open_Segment_Type(void)
+{
+    WayPoint_Type open_type = WP_TYPE_NORMAL;
+
+    if (!navi_record_segment_state(&open_type) || open_type == WP_TYPE_NORMAL)
+    {
+        return 0xFFU;
+    }
+    return (uint8)open_type;
 }
 
 static void navi_bridge_reset(uint8_t restore_low_height)
@@ -207,9 +227,9 @@ static void navi_bridge_reset(uint8_t restore_low_height)
     }
 }
 
-static uint8_t navi_bridge_validate_route(void)
+static uint8_t navi_segment_validate_route(void)
 {
-    uint8_t expect_start = 1U;
+    WayPoint_Type open_type = WP_TYPE_NORMAL;
     uint16_t start_idx = 0U;
     uint16_t i;
 
@@ -220,46 +240,55 @@ static uint8_t navi_bridge_validate_route(void)
 
     for (i = 0U; i < navi_ctrl.point_total_count; i++)
     {
-        if (!point_map[i].valid || point_map[i].type != WP_TYPE_BRIDGE)
+        WayPoint_Type type = point_map[i].type;
+
+        if (!point_map[i].valid || !Course3Segment_IsPairedType((uint8)type))
         {
-            if (!expect_start)
+            if (open_type != WP_TYPE_NORMAL)
             {
-                IPC_LOG_Printf("\r\n[NAVI_BRIDGE] point %d interrupts an open bridge segment.\r\n", i);
+                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] point %d interrupts open %s segment.\r\n",
+                               i, get_enum_name(open_type));
                 return 0U;
             }
             continue;
         }
 
-        if (expect_start)
+        if (open_type == WP_TYPE_NORMAL)
         {
-            if (point_map[i].action_cmd != NAVI_BRIDGE_ACTION_START)
+            if (point_map[i].action_cmd != NAVI_SEGMENT_ACTION_START)
             {
-                IPC_LOG_Printf("\r\n[NAVI_BRIDGE] point %d is not a valid bridge start.\r\n", i);
+                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] point %d (%s) is not a valid start.\r\n",
+                               i, get_enum_name(type));
                 return 0U;
             }
             start_idx = i;
-            expect_start = 0U;
+            open_type = type;
         }
         else
         {
-            if (point_map[i].action_cmd != NAVI_BRIDGE_ACTION_END || i != (uint16_t)(start_idx + 1U))
+            if (type != open_type ||
+                point_map[i].action_cmd != NAVI_SEGMENT_ACTION_END ||
+                i != (uint16_t)(start_idx + 1U))
             {
-                IPC_LOG_Printf("\r\n[NAVI_BRIDGE] point %d is not the paired bridge end.\r\n", i);
+                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] point %d is not the paired %s end.\r\n",
+                               i, get_enum_name(open_type));
                 return 0U;
             }
             if (navi_get_two_points_distance(point_map[start_idx].x, point_map[start_idx].y,
                                              point_map[i].x, point_map[i].y) < 0.01f)
             {
-                IPC_LOG_Printf("\r\n[NAVI_BRIDGE] bridge points %d and %d overlap.\r\n", start_idx, i);
+                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] %s points %d and %d overlap.\r\n",
+                               get_enum_name(open_type), start_idx, i);
                 return 0U;
             }
-            expect_start = 1U;
+            open_type = WP_TYPE_NORMAL;
         }
     }
 
-    if (!expect_start)
+    if (open_type != WP_TYPE_NORMAL)
     {
-        IPC_LOG_Printf("\r\n[NAVI_BRIDGE] bridge start point %d has no end point.\r\n", start_idx);
+        IPC_LOG_Printf("\r\n[NAVI_SEGMENT] %s start point %d has no end point.\r\n",
+                       get_enum_name(open_type), start_idx);
         return 0U;
     }
 
@@ -382,7 +411,7 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
            (point_map[idx].type == WP_TYPE_NORMAL ||
             point_map[idx].type == WP_TYPE_HOME ||
             (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
-             point_map[idx].type == WP_TYPE_BRIDGE)))
+             Course3Segment_IsPairedType((uint8)point_map[idx].type))))
     {
         double dx = point_map[idx + 1U].x - point_map[idx].x;
         double dy = point_map[idx + 1U].y - point_map[idx].y;
@@ -490,9 +519,10 @@ void navi_path_optimize(void) {
     if (count < 2) return;
     for (uint8_t i = 0; i < count - 1; i++) {
         float dist = navi_get_two_points_distance(point_map[i].x , point_map[i].y,  point_map[i+1].x , point_map[i+1].y);
-        uint8_t bridge_segment =
-            (point_map[i].type == WP_TYPE_BRIDGE || point_map[i + 1U].type == WP_TYPE_BRIDGE) ? 1U : 0U;
-        if (!bridge_segment && dist > INTERPOLATION_STEP && navi_ctrl.point_total_count < NAVI_POINT_MAX) {
+        uint8_t paired_segment =
+            (Course3Segment_IsPairedType((uint8)point_map[i].type) ||
+             Course3Segment_IsPairedType((uint8)point_map[i + 1U].type)) ? 1U : 0U;
+        if (!paired_segment && dist > INTERPOLATION_STEP && navi_ctrl.point_total_count < NAVI_POINT_MAX) {
             for (uint8_t j = navi_ctrl.point_total_count; j > i + 1; j--) {
                 point_map[j] = point_map[j-1];
             }
@@ -612,22 +642,33 @@ void navi_auto_record_task(void) {
 
         if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
         {
-            uint8_t bridge_open = 0U;
-            if (!navi_record_bridge_state(&bridge_open))
+            WayPoint_Type open_type = WP_TYPE_NORMAL;
+            if (!navi_record_segment_state(&open_type))
             {
                 navi_ctrl.trigger_record = 0;
-                IPC_LOG_Printf("\r\n>>> [打点失败] 单边桥航点序列无效，请清空或撤销后重试 <<<\r\n");
+                IPC_LOG_Printf("\r\n>>> [打点失败] 成对路段航点序列无效，请清空或撤销后重试 <<<\r\n");
                 return;
             }
-            if (bridge_open && record_type != WP_TYPE_BRIDGE)
+            if (open_type != WP_TYPE_NORMAL && record_type != open_type)
             {
                 navi_ctrl.trigger_record = 0;
-                IPC_LOG_Printf("\r\n>>> [打点失败] 请先记录单边桥结束点 <<<\r\n");
+                IPC_LOG_Printf("\r\n>>> [打点失败] 请先记录%s结束点 <<<\r\n", get_enum_name(open_type));
                 return;
             }
-            if (record_type == WP_TYPE_BRIDGE)
+            if (Course3Segment_IsPairedType((uint8)record_type))
             {
-                action_cmd = bridge_open ? NAVI_BRIDGE_ACTION_END : NAVI_BRIDGE_ACTION_START;
+                action_cmd = (open_type == record_type) ?
+                             NAVI_SEGMENT_ACTION_END : NAVI_SEGMENT_ACTION_START;
+                if (action_cmd == NAVI_SEGMENT_ACTION_END && record_point_count > 0U &&
+                    navi_get_two_points_distance(record_point_map[record_point_count - 1U].x,
+                                                 record_point_map[record_point_count - 1U].y,
+                                                 robot_pose.x,
+                                                 robot_pose.y) < 0.01f)
+                {
+                    navi_ctrl.trigger_record = 0U;
+                    IPC_LOG_Printf("\r\n>>> [NAVI_RECORD] segment start/end distance must be at least 1 cm <<<\r\n");
+                    return;
+                }
             }
         }
 
@@ -785,6 +826,7 @@ void task_navigation_control(void) {
         // --- 驱动模式切换处理 ---
         if (navi_ctrl.navi_mode_driver == 0) {     
             if (last_mode_driver != 0) {
+                Navi_Action_Reset_New_Course3_Segments();
                 IPC_LOG_Printf(">>> [状态] 系统已切入 停车与地图选择模式 <<<\r\n");
             }
 
@@ -813,12 +855,12 @@ void task_navigation_control(void) {
                 navi_ctrl.navi_mode_driver = 0U;
                 IPC_LOG_Printf("\r\n[NAVI] Start rejected: route needs at least HOME and one target.\r\n");
             }
-            else if (!navi_bridge_validate_route())
+            else if (!navi_segment_validate_route())
             {
                 target_velocity = 0.0f;
                 vofa_mode_driver = 0.0f;
                 navi_ctrl.navi_mode_driver = 0;
-                IPC_LOG_Printf("\r\n>>> [发车失败] 单边桥航点必须按开始点、结束点成对记录 <<<\r\n");
+                IPC_LOG_Printf("\r\n>>> [发车失败] 单边桥、颠簸和台阶斜坡必须按开始点、结束点成对记录 <<<\r\n");
             }
             else
             {
@@ -873,6 +915,7 @@ void task_navigation_control(void) {
                 vofa_mode_driver = 0.0f;
                 navi_ctrl.navi_mode_driver = 0;
                 navi_bridge_reset(1U);
+                Navi_Action_Reset_New_Course3_Segments();
                 navi_speed_profile_reset();
                 break;
             }
@@ -1338,7 +1381,9 @@ const char* get_enum_name(WayPoint_Type type) {
     switch (type) {
         case WP_TYPE_NORMAL:      return "普通循迹";
         case WP_TYPE_MINE_SWEEP:  return "定点排雷";
-        case WP_TYPE_JUMP:        return "跳跃台阶";
+        case WP_TYPE_JUMP:        return "三级跳";
+        case WP_TYPE_BUMP:        return "颠簸路段";
+        case WP_TYPE_STAIR_RAMP:  return "台阶斜坡";
         case WP_TYPE_STOP:        return "终点返航";
         case WP_TYPE_HOME:        return "原点";
         case WP_TYPE_BRIDGE:      return "单边桥";
@@ -1435,4 +1480,3 @@ static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd) {
 //1.坐标原点重置时间：开机时 IMU 会有几秒钟的收敛期，必须等 IMU 稳定后再将当前位置设置为 (0,0)。
 //
 //2.导航算法必须放在严格定时的 10ms 中断里，并且要放在 balance_control() 之后，因为导航依赖它算出来的 now_velocity（实时线速度）。
-

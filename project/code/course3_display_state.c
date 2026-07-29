@@ -6,6 +6,8 @@
 #define COURSE3_WAYPOINT_NORMAL (0U)
 #define COURSE3_WAYPOINT_BRIDGE (3U)
 #define COURSE3_WAYPOINT_JUMP   (4U)
+#define COURSE3_WAYPOINT_BUMP   (5U)
+#define COURSE3_WAYPOINT_RAMP   (8U)
 #define COURSE3_SEARCH_AMPLITUDE_DEG (15.0f)
 #define COURSE3_SEARCH_AMPLITUDE_RAD (0.2617993878f)
 #define COURSE3_SEARCH_MAX_RATE_RAD_S (0.5f)
@@ -28,7 +30,9 @@ const char *Course3TargetType_Text(uint8_t waypoint_type)
     {
         case COURSE3_WAYPOINT_NORMAL: return "NORMAL";
         case COURSE3_WAYPOINT_BRIDGE: return "BRIDGE";
-        case COURSE3_WAYPOINT_JUMP:   return "STAIR";
+        case COURSE3_WAYPOINT_JUMP:   return "JUMP";
+        case COURSE3_WAYPOINT_BUMP:   return "BUMP";
+        case COURSE3_WAYPOINT_RAMP:   return "RAMP";
         default:                      return 0;
     }
 }
@@ -36,7 +40,8 @@ const char *Course3TargetType_Text(uint8_t waypoint_type)
 uint8_t Course3Waypoint_RequiresAlign(uint8_t waypoint_type)
 {
     return (waypoint_type == COURSE3_WAYPOINT_BRIDGE ||
-            waypoint_type == COURSE3_WAYPOINT_JUMP) ? 1U : 0U;
+            waypoint_type == COURSE3_WAYPOINT_JUMP ||
+            waypoint_type == COURSE3_WAYPOINT_RAMP) ? 1U : 0U;
 }
 
 uint8_t Course3Vision_ShouldEnter(uint8_t vehicle_mode, uint8_t state, uint8_t already_active)

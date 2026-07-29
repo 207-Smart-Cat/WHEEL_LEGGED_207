@@ -93,7 +93,7 @@ typedef struct {
 
 // 特殊动作节点
 typedef struct {
-    uint8_t wp_index;         // 对应 point_map 中的航点索引
+    uint16_t wp_index;        // 对应 point_map 中的航点索引
     WayPoint_Type type;       // 动作类型
 } ActionNode_t;
 
@@ -129,5 +129,6 @@ float Navi_Action_Get_Course3_Target_Distance(void);
 void navi_parse_global_path(void);
 void Navi_Action_Manager(uint16_t curr_idx) ;
 uint8_t Navi_Action_Consume_Done(uint16_t curr_idx);
+void Navi_Action_Reset_New_Course3_Segments(void);
 
 #endif // NAVIGATION_ACTION_H_

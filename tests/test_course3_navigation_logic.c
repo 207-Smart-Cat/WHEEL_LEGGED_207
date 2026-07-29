@@ -8,6 +8,8 @@ int main(void)
     assert(Course3Waypoint_RequiresAlign(WP_TYPE_NORMAL) == 0U);
     assert(Course3Waypoint_RequiresAlign(WP_TYPE_BRIDGE) == 1U);
     assert(Course3Waypoint_RequiresAlign(WP_TYPE_JUMP) == 1U);
+    assert(Course3Waypoint_RequiresAlign(WP_TYPE_BUMP) == 0U);
+    assert(Course3Waypoint_RequiresAlign(WP_TYPE_STAIR_RAMP) == 1U);
     assert(Course3Waypoint_RequiresAlign(WP_TYPE_MINE_SWEEP) == 0U);
     return 0;
 }

@@ -14,7 +14,9 @@ int main(void)
 
     assert(strcmp(Course3TargetType_Text(WP_TYPE_NORMAL), "NORMAL") == 0);
     assert(strcmp(Course3TargetType_Text(WP_TYPE_BRIDGE), "BRIDGE") == 0);
-    assert(strcmp(Course3TargetType_Text(WP_TYPE_JUMP), "STAIR") == 0);
+    assert(strcmp(Course3TargetType_Text(WP_TYPE_JUMP), "JUMP") == 0);
+    assert(strcmp(Course3TargetType_Text(WP_TYPE_BUMP), "BUMP") == 0);
+    assert(strcmp(Course3TargetType_Text(WP_TYPE_STAIR_RAMP), "RAMP") == 0);
     assert(Course3TargetType_Text(WP_TYPE_MINE_SWEEP) == 0);
 
     assert(Course3Vision_ShouldEnter(3U, COURSE3_DISPLAY_TRACK_ALIGN, 0U) == 1U);

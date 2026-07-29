@@ -8,6 +8,7 @@
 #include "navigation_data_handling.h"
 #include "navigation_action.h"
 #include "ipc_shared_data.h"
+#include "course3_bridge_logic.h"
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
@@ -15,9 +16,9 @@ extern float target_velocity;
 #define REMOTE_CH3_EMERGENCY_RECOVER_FRAMES 300
 #define REMOTE_CH6_JUMP_THRESHOLD 1000           // CH6: 192/1792，两档切换，超过该阈值视为高位
 #define REMOTE_CH6_JUMP_ARM_FRAMES 5
+#define REMOTE_CH3_RECORD_ARM_FRAMES 5
 #define REMOTE_CH4_MID_THRESHOLD 800
 #define REMOTE_CH4_HIGH_THRESHOLD 1400
-#define REMOTE_CH4_BRIDGE_THRESHOLD 600
 // ------------------- 内部结构体定义 -------------------
 // 将数据结构体定义在 .c 文件中，实现对外隐藏（封装）
 typedef struct
@@ -44,6 +45,10 @@ static uint8 remote_record_initialized = 0;
 static uint8 remote_record_last_high = 0;
 static uint8 remote_record_stable_count = 0;
 static uint8 remote_record_armed = 0;
+static uint8 remote_normal_record_initialized = 0;
+static uint8 remote_normal_record_last_high = 0;
+static uint8 remote_normal_record_stable_count = 0;
+static uint8 remote_normal_record_armed = 0;
 
 float remote_dbg_connected = 0.0f;
 float remote_dbg_ch1 = REMOTE_SAFE_VALUE_CH1;
@@ -62,6 +67,8 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled);
 static void Remote_ResetJumpTrigger(void);
 static uint8 Remote_Is_Navi_Record_Mode(void);
 static uint8 Remote_Is_Navi_Execute_Mode(void);
+static uint8 Remote_CheckNormalRecordTrigger(uint8 remote_drive_enabled);
+static void Remote_ResetNormalRecordTrigger(void);
 static void Remote_CheckRecordTrigger(uint8 remote_drive_enabled);
 static void Remote_ResetRecordTrigger(void);
 static WayPoint_Type Remote_GetRecordPointType(void);
@@ -95,6 +102,7 @@ void Remote_Init(void)
     Remote_UpdateDebugValues();
     Remote_ResetJumpTrigger();
     Remote_ResetRecordTrigger();
+    Remote_ResetNormalRecordTrigger();
 }
 
 void Remote_Update(void)
@@ -259,15 +267,17 @@ static void Remote_ResetRecordTrigger(void)
     remote_record_armed = 0;
 }
 
+static void Remote_ResetNormalRecordTrigger(void)
+{
+    remote_normal_record_initialized = 0;
+    remote_normal_record_last_high = 0;
+    remote_normal_record_stable_count = 0;
+    remote_normal_record_armed = 0;
+}
+
 static WayPoint_Type Remote_GetRecordPointType(void)
 {
     uint8 mode = Runtime_Get_Vehicle_Mode();
-
-    if (mode == VEHICLE_MODE_COURSE_3)
-    {
-        return (Remote_GetChannelData(4) >= REMOTE_CH4_BRIDGE_THRESHOLD) ?
-               WP_TYPE_BRIDGE : WP_TYPE_NORMAL;
-    }
 
     if (mode == VEHICLE_MODE_COURSE_2)
     {
@@ -283,24 +293,53 @@ static WayPoint_Type Remote_GetRecordPointType(void)
         }
     }
 
-    // Course 3: CH4 low/mid/high records normal/bridge/stair waypoints.
-    // CH6 still triggers the record, and the navigation layer creates HOME first.
+    // Course 3: CH4 selects bridge/bump/stair-ramp; CH6 records the selected special point.
     if (mode == VEHICLE_MODE_COURSE_3)
     {
-        int32_t ch4 = Remote_GetChannelData(4);
-
-        if (ch4 < REMOTE_CH4_MID_THRESHOLD)
-        {
-            return WP_TYPE_NORMAL;
-        }
-        if (ch4 < REMOTE_CH4_HIGH_THRESHOLD)
-        {
-            return WP_TYPE_BRIDGE;
-        }
-        return WP_TYPE_JUMP;
+        return (WayPoint_Type)Course3Remote_SelectSpecialType(Remote_GetChannelData(4));
     }
 
     return WP_TYPE_NORMAL;
+}
+
+static uint8 Remote_CheckNormalRecordTrigger(uint8 remote_drive_enabled)
+{
+    uint8 ch3_high = (Remote_GetChannelData(3) > REMOTE_CH3_EMERGENCY_THRESHOLD) ? 1U : 0U;
+
+    if (!remote_normal_record_initialized)
+    {
+        remote_normal_record_last_high = ch3_high;
+        remote_normal_record_initialized = 1U;
+        return 0U;
+    }
+
+    if (ch3_high == remote_normal_record_last_high)
+    {
+        if (remote_normal_record_stable_count < REMOTE_CH3_RECORD_ARM_FRAMES)
+        {
+            remote_normal_record_stable_count++;
+        }
+        if (remote_normal_record_stable_count >= REMOTE_CH3_RECORD_ARM_FRAMES)
+        {
+            remote_normal_record_armed = 1U;
+        }
+        return 0U;
+    }
+
+    remote_normal_record_last_high = ch3_high;
+    remote_normal_record_stable_count = 0U;
+    if (remote_drive_enabled && remote_normal_record_armed)
+    {
+        wifi_remote_type = WP_TYPE_NORMAL;
+        wifi_in_action = 0.0f;
+        vofa_trigger_record = 2.0f;
+        navi_ctrl.trigger_record = 0U;
+        remote_normal_record_armed = 0U;
+        return 1U;
+    }
+
+    remote_normal_record_armed = 0U;
+    return 0U;
 }
 
 //static WayPoint_Type Remote_GetRecordPointType(void)
@@ -443,6 +482,7 @@ void Remote_control_callback(void)
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_OFF);
         Remote_ResetJumpTrigger();
         Remote_ResetRecordTrigger();
+        Remote_ResetNormalRecordTrigger();
         Remote_ResetEmergencyTrigger();
         jump_set_trigger_block_reason(JUMP_BLOCK_REMOTE_OFF);
         if (remote_drive_active)
@@ -459,7 +499,16 @@ void Remote_control_callback(void)
     if (Remote_GetStatus() == REMOTE_CONNECTED)
     {
         uint8 remote_drive_enabled = (Remote_GetChannelData(5) > 1000) ? 1 : 0;
-        Remote_CheckEmergencyStop();
+        if (Remote_Is_Navi_Record_Mode() &&
+            Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+        {
+            Remote_ResetEmergencyTrigger();
+        }
+        else
+        {
+            Remote_ResetNormalRecordTrigger();
+            Remote_CheckEmergencyStop();
+        }
         if (Vehicle_Is_Emergency_Stop())
         {
             target_velocity = 0.0f;
@@ -479,6 +528,7 @@ void Remote_control_callback(void)
         {
             Remote_ResetJumpTrigger();
             Remote_ResetRecordTrigger();
+            Remote_ResetNormalRecordTrigger();
             Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
             remote_drive_active = false;
             return;
@@ -486,12 +536,22 @@ void Remote_control_callback(void)
 
         if (Remote_Is_Navi_Record_Mode())
         {
+            uint8 normal_recorded = 0U;
             Remote_ResetJumpTrigger();
-            Remote_CheckRecordTrigger(remote_drive_enabled);
+            if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+            {
+                normal_recorded = Remote_CheckNormalRecordTrigger(remote_drive_enabled);
+            }
+            else
+            {
+                Remote_ResetNormalRecordTrigger();
+            }
+            Remote_CheckRecordTrigger((uint8)(remote_drive_enabled && !normal_recorded));
         }
         else
         {
             Remote_ResetRecordTrigger();
+            Remote_ResetNormalRecordTrigger();
             Remote_CheckJumpTrigger(remote_drive_enabled);
         }
 
@@ -535,6 +595,7 @@ void Remote_control_callback(void)
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_LOST);
         Remote_ResetJumpTrigger();
         Remote_ResetRecordTrigger();
+        Remote_ResetNormalRecordTrigger();
         Remote_ResetEmergencyTrigger();
         jump_set_trigger_block_reason(JUMP_BLOCK_REMOTE_LOST);
         if (remote_drive_active)

@@ -99,10 +99,13 @@ void CameraTestDisplay_DrawStatusText(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
     sprintf(line, "Cal:%s       ", camera_test_vision_cal_state_text(core_a_status.vision_align_cal_state));
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
-    sprintf(line, "St:%02u/30 L:%u/10 R:%u/10",
+    sprintf(line, "St:%02u/%u L:%u/%u R:%u/%u",
             core_a_status.vision_align_stable_count,
+            VISION_ALIGN_STABLE_WINDOW_FRAMES,
             core_a_status.vision_align_left_sample_count,
-            core_a_status.vision_align_right_sample_count);
+            VISION_ALIGN_SIDE_SAMPLE_TARGET,
+            core_a_status.vision_align_right_sample_count,
+            VISION_ALIGN_SIDE_SAMPLE_TARGET);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
 }
 
@@ -241,10 +244,13 @@ void CameraTestDisplay_Render(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 80U, line);
     sprintf(line, "Cal:%s       ", camera_test_vision_cal_state_text(core_a_status.vision_align_cal_state));
     camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
-    sprintf(line, "St:%02u/30 L:%u/10 R:%u/10",
+    sprintf(line, "St:%02u/%u L:%u/%u R:%u/%u",
             core_a_status.vision_align_stable_count,
+            VISION_ALIGN_STABLE_WINDOW_FRAMES,
             core_a_status.vision_align_left_sample_count,
-            core_a_status.vision_align_right_sample_count);
+            VISION_ALIGN_SIDE_SAMPLE_TARGET,
+            core_a_status.vision_align_right_sample_count,
+            VISION_ALIGN_SIDE_SAMPLE_TARGET);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
     sprintf(line, "Result:%7.2f %s",
             core_a_status.vision_align_result_yaw,

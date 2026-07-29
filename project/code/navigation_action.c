@@ -12,6 +12,7 @@
 #include "course3_bridge_logic.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 // ==================== 动作状态机实例 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
@@ -66,8 +67,28 @@ static uint8_t bridge_hold_active = 0U;
 static uint8_t course3_bridge_action_active = 0U;
 static uint8_t course3_bridge_action_initialized = 0U;
 static uint8_t course3_bridge_low_restored = 0U;
+static uint16_t course3_bridge_start_idx = 0U;
 static uint16_t course3_bridge_end_idx = 0U;
 static float course3_bridge_target_yaw = 0.0f;
+typedef enum
+{
+    COURSE3_AUX_SEGMENT_NONE = 0,
+    COURSE3_AUX_SEGMENT_BUMP,
+    COURSE3_AUX_SEGMENT_STAIR_RAMP
+} Course3AuxSegmentKind_t;
+
+typedef struct
+{
+    Course3AuxSegmentKind_t kind;
+    uint8_t initialized;
+    uint8_t direction_saved;
+    uint16_t start_idx;
+    uint16_t end_idx;
+    float saved_direction_p;
+    float target_yaw;
+} Course3AuxSegmentControl_t;
+
+static Course3AuxSegmentControl_t course3_aux_segment;
 static uint8_t course3_display_state = COURSE3_DISPLAY_IDLE;
 static uint8_t course3_display_done_pending_clear = 0U;
 
@@ -82,6 +103,8 @@ static uint8_t course3_display_done_pending_clear = 0U;
 #define COURSE3_BRIDGE_HOLD_MS           (1000U)
 #define COURSE3_ACTION_DIRECTION_P        (50.0f)
 #define COURSE3_BRIDGE_DIRECTION_P        (50.0f)
+#define COURSE3_AUX_SEGMENT_SPEED         (300.0f)
+#define COURSE3_AUX_SEGMENT_DIRECTION_P   (50.0f)
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif
@@ -121,9 +144,10 @@ uint8_t Navi_Action_Bridge_Vision_Cal_Active(void)
 
     return (action_fsm.state == FSM_COURSE3_TRACK_ALIGN &&
             idx < navi_ctrl.point_total_count &&
-            Course3Bridge_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
-                                            (uint8)point_map[idx].type,
-                                            point_map[idx].action_cmd)) ? 1U : 0U;
+            Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
+                                             (uint8)point_map[idx].type,
+                                             point_map[idx].action_cmd) &&
+            Course3Segment_RequiresVision((uint8)point_map[idx].type)) ? 1U : 0U;
 }
 
 uint8_t Navi_Action_Get_Course3_Display_State(void)
@@ -144,7 +168,9 @@ uint8_t Navi_Action_Get_Course3_Display_State(void)
     return state;
 }
 
-static uint8_t course3_bridge_find_end_index(uint16_t start_idx, uint16_t *end_idx)
+static uint8_t course3_segment_find_end_index(uint16_t start_idx,
+                                              WayPoint_Type type,
+                                              uint16_t *end_idx)
 {
     uint16_t idx;
 
@@ -155,22 +181,80 @@ static uint8_t course3_bridge_find_end_index(uint16_t start_idx, uint16_t *end_i
 
     for (idx = (uint16_t)(start_idx + 1U); idx < navi_ctrl.point_total_count; idx++)
     {
-        if (point_map[idx].type == WP_TYPE_BRIDGE &&
-            point_map[idx].action_cmd == NAVI_BRIDGE_ACTION_END)
+        if (point_map[idx].type == type &&
+            point_map[idx].action_cmd == NAVI_SEGMENT_ACTION_END)
         {
             *end_idx = idx;
             return 1U;
         }
 
-        if (Course3Bridge_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
-                                            (uint8)point_map[idx].type,
-                                            point_map[idx].action_cmd))
+        if (Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
+                                             (uint8)point_map[idx].type,
+                                             point_map[idx].action_cmd))
         {
             break;
         }
     }
 
     return 0U;
+}
+
+static void course3_aux_restore_direction(void)
+{
+    if (course3_aux_segment.direction_saved)
+    {
+        Direction_p = course3_aux_segment.saved_direction_p;
+        PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
+    }
+    course3_aux_segment.direction_saved = 0U;
+}
+
+void Navi_Action_Reset_New_Course3_Segments(void)
+{
+    uint8_t ramp_calibrating =
+        (action_fsm.state == FSM_COURSE3_TRACK_ALIGN &&
+         navi_ctrl.point_current_idx < navi_ctrl.point_total_count &&
+         point_map[navi_ctrl.point_current_idx].type == WP_TYPE_STAIR_RAMP) ? 1U : 0U;
+
+    if (course3_aux_segment.kind != COURSE3_AUX_SEGMENT_NONE || ramp_calibrating)
+    {
+        target_velocity = 0.0f;
+        action_fsm.state = FSM_IDLE;
+        action_fsm.state_timer_ms = 0U;
+        is_action_busy = 0U;
+        Turn_Reset();
+        navi_tracking_speed_profile_reset();
+        if (ramp_calibrating)
+        {
+            Vision_Align_Cal_Reset();
+        }
+    }
+    course3_aux_restore_direction();
+    memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
+}
+
+static uint8_t course3_aux_begin(WayPoint_Type type,
+                                 uint16_t start_idx,
+                                 uint16_t end_idx,
+                                 float calibrated_yaw)
+{
+    if ((type != WP_TYPE_BUMP && type != WP_TYPE_STAIR_RAMP) ||
+        end_idx >= navi_ctrl.point_total_count || point_map[end_idx].type != type)
+    {
+        return 0U;
+    }
+
+    memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
+    course3_aux_segment.kind = (type == WP_TYPE_BUMP) ?
+                               COURSE3_AUX_SEGMENT_BUMP : COURSE3_AUX_SEGMENT_STAIR_RAMP;
+    course3_aux_segment.start_idx = start_idx;
+    course3_aux_segment.end_idx = end_idx;
+    course3_aux_segment.saved_direction_p = Direction_p;
+    course3_aux_segment.direction_saved = 1U;
+    course3_aux_segment.target_yaw = calibrated_yaw;
+
+    navi_ctrl.point_current_idx = end_idx;
+    return 1U;
 }
 
 uint8_t Navi_Action_Course3_Execution_Active(void)
@@ -198,7 +282,15 @@ float Navi_Action_Get_Course3_Target_Y(void)
 
 float Navi_Action_Get_Course3_Target_Yaw(void)
 {
-    return Navi_Action_Course3_Execution_Active() ? point_map[navi_ctrl.point_current_idx].yaw : 0.0f;
+    if (!Navi_Action_Course3_Execution_Active())
+    {
+        return 0.0f;
+    }
+    if (course3_aux_segment.kind != COURSE3_AUX_SEGMENT_NONE)
+    {
+        return target_angle;
+    }
+    return point_map[navi_ctrl.point_current_idx].yaw;
 }
 
 float Navi_Action_Get_Course3_Error_X(void)
@@ -400,6 +492,7 @@ static void navi_action_remote_jump_clear(void)
 // ==============================================================================
 void navi_parse_global_path(void) {
     uint8_t mode = Runtime_Get_Vehicle_Mode();
+    Navi_Action_Reset_New_Course3_Segments();
     action_seq.total_count = 0;
     action_seq.current_ptr = 0;
     action_fsm.state = FSM_IDLE;
@@ -413,6 +506,7 @@ void navi_parse_global_path(void) {
     course3_bridge_action_active = 0U;
     course3_bridge_action_initialized = 0U;
     course3_bridge_low_restored = 0U;
+    course3_bridge_start_idx = 0U;
     course3_bridge_end_idx = 0U;
     course3_bridge_target_yaw = 0.0f;
 #if (NAVI_JUMP_ACTION_MODE == 2U)
@@ -431,7 +525,7 @@ void navi_parse_global_path(void) {
             (point_map[i].type == WP_TYPE_JUMP && mode != VEHICLE_MODE_COURSE_3) ||
             (mode == VEHICLE_MODE_COURSE_3 &&
              (point_map[i].type == WP_TYPE_JUMP ||
-              Course3Bridge_ShouldQueueAction(mode, (uint8)point_map[i].type, point_map[i].action_cmd))))  {
+              Course3Segment_ShouldQueueAction(mode, (uint8)point_map[i].type, point_map[i].action_cmd))))  {
             if (point_map[i].type == WP_TYPE_JUMP) {
                 point_map[i].action_cmd = NAVI_JUMP_ACTION_MODE;
             }
@@ -466,21 +560,43 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             // 提前预测区：根据即将到达的特殊航点选择动作分支。
             // ==============================================================================
             if (upcoming_type == WP_TYPE_MINE_SWEEP && navi_isreach_target_point(target_idx))  {                        // 排雷动作
-                action_fsm.state = FSM_MINE_APPROACH; 
+                action_fsm.state = FSM_MINE_APPROACH;
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;         // 锁定动作接管
             }
             else if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
+                     upcoming_type == WP_TYPE_BUMP &&
+                     point_map[target_idx].action_cmd == NAVI_SEGMENT_ACTION_START &&
+                     navi_isreach_target_point(target_idx))
+            {
+                uint16_t bump_end_idx = 0U;
+
+                if (!course3_segment_find_end_index(target_idx, WP_TYPE_BUMP, &bump_end_idx) ||
+                    !course3_aux_begin(WP_TYPE_BUMP, target_idx, bump_end_idx, 0.0f))
+                {
+                    target_velocity = 0.0f;
+                    navi_ctrl.navi_mode_driver = 0U;
+                    vofa_mode_driver = 0.0f;
+                    break;
+                }
+                action_fsm.state = FSM_COURSE3_ACTION;
+                action_fsm.state_timer_ms = 0U;
+                is_action_busy = 1U;
+                course3_display_state = COURSE3_DISPLAY_ACTION;
+            }
+            else if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
                      (upcoming_type == WP_TYPE_JUMP ||
-                      Course3Bridge_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
-                                                      (uint8)upcoming_type,
-                                                      point_map[target_idx].action_cmd)) &&
+                      (Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
+                                                       (uint8)upcoming_type,
+                                                       point_map[target_idx].action_cmd) &&
+                       Course3Segment_RequiresVision((uint8)upcoming_type))) &&
                      navi_isreach_target_point(target_idx))
             {
                 Course3Align_Reset(&course3_align_samples);
-                if (Course3Bridge_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
-                                                    (uint8)upcoming_type,
-                                                    point_map[target_idx].action_cmd))
+                if (Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
+                                                     (uint8)upcoming_type,
+                                                     point_map[target_idx].action_cmd) &&
+                    Course3Segment_RequiresVision((uint8)upcoming_type))
                 {
                     Vision_Align_Cal_Reset();
                 }
@@ -542,16 +658,19 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             uint8_t new_frame = (core_b_cmd.vision_frame_seq != course3_align_last_frame) ? 1U : 0U;
             is_action_busy = 1U;
 
-            if (Course3Bridge_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
-                                                (uint8)point_map[target_idx].type,
-                                                point_map[target_idx].action_cmd))
+            if (Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
+                                                 (uint8)point_map[target_idx].type,
+                                                 point_map[target_idx].action_cmd) &&
+                Course3Segment_RequiresVision((uint8)point_map[target_idx].type))
             {
                 target_velocity = COURSE3_VISION_CAL_SPEED;
                 if (Vision_Align_Cal_Result_Valid())
                 {
-                    uint16_t bridge_end_idx = 0U;
+                    WayPoint_Type segment_type = point_map[target_idx].type;
+                    uint16_t segment_end_idx = 0U;
+                    float calibrated_yaw = navi_limit_angle180(Vision_Align_Cal_Get_Result_Yaw());
 
-                    if (!course3_bridge_find_end_index(target_idx, &bridge_end_idx))
+                    if (!course3_segment_find_end_index(target_idx, segment_type, &segment_end_idx))
                     {
                         target_velocity = 0.0f;
                         target_angle = IMU_data.filter_result.yaw;
@@ -562,16 +681,30 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                         break;
                     }
 
-                    course3_bridge_target_yaw = navi_limit_angle180(Vision_Align_Cal_Get_Result_Yaw());
-                    course3_bridge_end_idx = bridge_end_idx;
-                    course3_bridge_action_active = 1U;
-                    course3_bridge_action_initialized = 0U;
-                    course3_bridge_low_restored = 0U;
+                    if (segment_type == WP_TYPE_BRIDGE)
+                    {
+                        course3_bridge_target_yaw = calibrated_yaw;
+                        course3_bridge_start_idx = target_idx;
+                        course3_bridge_end_idx = segment_end_idx;
+                        course3_bridge_action_active = 1U;
+                        course3_bridge_action_initialized = 0U;
+                        course3_bridge_low_restored = 0U;
+                    }
+                    else if (!course3_aux_begin(WP_TYPE_STAIR_RAMP,
+                                                target_idx,
+                                                segment_end_idx,
+                                                calibrated_yaw))
+                    {
+                        target_velocity = 0.0f;
+                        navi_ctrl.navi_mode_driver = 0U;
+                        vofa_mode_driver = 0.0f;
+                        break;
+                    }
                     action_fsm.state = FSM_COURSE3_ACTION;
                     action_fsm.state_timer_ms = 0U;
                     course3_display_state = COURSE3_DISPLAY_ACTION;
                     target_velocity = 0.0f;
-                    target_angle = course3_bridge_target_yaw;
+                    target_angle = calibrated_yaw;
                 }
                 break;
             }
@@ -630,6 +763,77 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 
         case FSM_COURSE3_ACTION:
             /* 普通点、单边桥、台阶共用的科目三 Action 方向环参数。 */
+            if (course3_aux_segment.kind != COURSE3_AUX_SEGMENT_NONE)
+            {
+                float segment_azimuth = 0.0f;
+                float segment_distance = 0.0f;
+
+                is_action_busy = 1U;
+                if (!course3_aux_segment.initialized)
+                {
+                    Direction_p = COURSE3_AUX_SEGMENT_DIRECTION_P;
+                    PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
+                    Turn_Reset();
+                    navi_tracking_speed_profile_reset();
+                    course3_aux_segment.initialized = 1U;
+                    action_fsm.state_timer_ms = 0U;
+                }
+
+                if (!navi_calcnavinfo(course3_aux_segment.end_idx,
+                                      &segment_azimuth,
+                                      &segment_distance))
+                {
+                    target_velocity = 0.0f;
+                    course3_aux_restore_direction();
+                    memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
+                    Turn_Reset();
+                    navi_tracking_speed_profile_reset();
+                    navi_ctrl.navi_mode_driver = 0U;
+                    vofa_mode_driver = 0.0f;
+                    action_fsm.state = FSM_IDLE;
+                    is_action_busy = 0U;
+                    break;
+                }
+
+                if (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP)
+                {
+                    float turn_error = navi_limit_angle180(segment_azimuth - robot_pose.yaw);
+                    target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - turn_error);
+                }
+                else
+                {
+                    target_angle = course3_aux_segment.target_yaw;
+                }
+                target_velocity = COURSE3_AUX_SEGMENT_SPEED;
+                Direction_p = COURSE3_AUX_SEGMENT_DIRECTION_P;
+                PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
+
+                if (segment_distance <= DISTANCE_THRESHOLD)
+                {
+                    uint16_t completed_start_idx = course3_aux_segment.start_idx;
+                    uint16_t completed_end_idx = course3_aux_segment.end_idx;
+
+                    target_velocity = 0.0f;
+                    course3_aux_restore_direction();
+                    memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
+                    Turn_Reset();
+                    navi_tracking_speed_profile_reset();
+                    if (action_seq.current_ptr < action_seq.total_count &&
+                        action_seq.list[action_seq.current_ptr].wp_index == completed_start_idx)
+                    {
+                        action_seq.current_ptr++;
+                    }
+                    action_done_pending = 1U;
+                    action_done_idx = completed_end_idx;
+                    action_fsm.state = FSM_IDLE;
+                    action_fsm.state_timer_ms = 0U;
+                    is_action_busy = 0U;
+                    course3_display_state = COURSE3_DISPLAY_DONE;
+                    course3_display_done_pending_clear = 1U;
+                }
+                break;
+            }
+
             if (!course3_bridge_action_active && point_map[target_idx].type != WP_TYPE_BRIDGE)
             {
                 Direction_p = COURSE3_ACTION_DIRECTION_P;
@@ -669,14 +873,25 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 if (course3_bridge_end_idx < navi_ctrl.point_total_count &&
                     navi_isreach_target_point(course3_bridge_end_idx))
                 {
+                    uint16_t completed_start_idx = course3_bridge_start_idx;
+                    uint16_t completed_end_idx = course3_bridge_end_idx;
+
                     pid_low_init();
                     Turn_Reset();
                     navi_tracking_speed_profile_reset();
                     course3_bridge_low_restored = 1U;
                     course3_bridge_action_active = 0U;
                     course3_bridge_action_initialized = 0U;
-                    action_fsm.state = FSM_COURSE3_DONE;
+                    if (action_seq.current_ptr < action_seq.total_count &&
+                        action_seq.list[action_seq.current_ptr].wp_index == completed_start_idx)
+                    {
+                        action_seq.current_ptr++;
+                    }
+                    action_done_pending = 1U;
+                    action_done_idx = completed_end_idx;
+                    action_fsm.state = FSM_IDLE;
                     action_fsm.state_timer_ms = 0U;
+                    is_action_busy = 0U;
                     course3_display_state = COURSE3_DISPLAY_DONE;
                     course3_display_done_pending_clear = 1U;
                 }

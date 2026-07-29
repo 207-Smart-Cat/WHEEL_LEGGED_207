@@ -57,8 +57,10 @@
 
 #define DEFAULT_TRACKING_VELOCITY 300.0f   //默认速度
 
-#define NAVI_BRIDGE_ACTION_START  1U
-#define NAVI_BRIDGE_ACTION_END    2U
+#define NAVI_SEGMENT_ACTION_START  1U
+#define NAVI_SEGMENT_ACTION_END    2U
+#define NAVI_BRIDGE_ACTION_START   NAVI_SEGMENT_ACTION_START
+#define NAVI_BRIDGE_ACTION_END     NAVI_SEGMENT_ACTION_END
 #define NAVI_COURSE3_LINE_LOOKAHEAD_DISTANCE 0.40f
 
 
@@ -74,11 +76,15 @@ typedef enum {
     
     WP_TYPE_BRIDGE = 3,     // 单边桥 
         
-    WP_TYPE_JUMP = 4,           // 跳跃台阶 
+    WP_TYPE_JUMP = 4,           // 三级跳
+
+    WP_TYPE_BUMP = 5,           // 颠簸路段
 
     WP_TYPE_STOP= 6,           // 终点返航
     
-    WP_TYPE_HOME = 7           // 原点
+    WP_TYPE_HOME = 7,          // 原点
+
+    WP_TYPE_STAIR_RAMP = 8     // 台阶斜坡
 } WayPoint_Type;
 
 
@@ -180,6 +186,8 @@ uint8 navi_calcnavinfo(uint16_t target_idx, float *azimuth, float *distance) ;  
 
 void navi_auto_record_task(void) ;               //航点记录动作
 void navi_record_update_status(void);
+uint8 Navi_Record_Get_Last_Action(void);
+uint8 Navi_Record_Get_Open_Segment_Type(void);
 
 void navi_path_optimize(void);                      //线性插值
 

@@ -322,8 +322,6 @@ static const uint16_t UI_TEXT_T_POINT_COLLECT[] = {0x6253, 0x70B9, 0x91C7, 0x96C
 static const uint16_t UI_TEXT_T_POINT_EXECUTE[] = {0x6253, 0x70B9, 0x6267, 0x884C, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_PREVIEW[] = {0x6253, 0x70B9, 0x9884, 0x89C8, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_MANAGE[] = {0x5220, 0x51CF, 0x6253, 0x70B9, 0x0000};
-static const uint16_t UI_TEXT_T_POINT_NORMAL[] = {0x666E, 0x901A, 0x822A, 0x70B9, 0x0000};
-static const uint16_t UI_TEXT_T_POINT_MINE[] = {0x6392, 0x96F7, 0x65CB, 0x8F6C, 0x70B9, 0x0000};
 static const uint16_t UI_TEXT_T_SELECT_COLLECT_GROUP[] = {0x9009, 0x62E9, 0x91C7, 0x96C6, 0x7EC4, 0x0000};
 static const uint16_t UI_TEXT_T_SELECT_EXECUTE_GROUP[] = {0x9009, 0x62E9, 0x6267, 0x884C, 0x7EC4, 0x0000};
 static const uint16_t UI_TEXT_T_SELECT_PREVIEW_GROUP[] = {0x9009, 0x62E9, 0x9884, 0x89C8, 0x7EC4, 0x0000};
@@ -360,7 +358,15 @@ static const uint16_t UI_TEXT_T_TYPE_CONE[] = {0x7ED5, 0x6876, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BRIDGE[] = {0x5355, 0x8FB9, 0x6865, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BRIDGE_START[] = {0x5355, 0x8FB9, 0x6865, 0x5F00, 0x59CB, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BRIDGE_END[] = {0x5355, 0x8FB9, 0x6865, 0x7ED3, 0x675F, 0x0000};
-static const uint16_t UI_TEXT_T_TYPE_JUMP[] = {0x53F0, 0x9636, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_JUMP[] = {0x4E09, 0x7EA7, 0x8DF3, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_BUMP[] = {0x98A0, 0x7C38, 0x8DEF, 0x6BB5, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_BUMP_START[] = {0x98A0, 0x7C38, 0x5F00, 0x59CB, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_BUMP_END[] = {0x98A0, 0x7C38, 0x7ED3, 0x675F, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_RAMP[] = {0x53F0, 0x9636, 0x659C, 0x5761, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_RAMP_START[] = {0x659C, 0x5761, 0x5F00, 0x59CB, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_RAMP_END[] = {0x659C, 0x5761, 0x7ED3, 0x675F, 0x0000};
+static const uint16_t UI_TEXT_T_CH4_SELECT[] = {0x0043, 0x0048, 0x0034, 0x9009, 0x62E9, 0x0000};
+static const uint16_t UI_TEXT_T_HINT_COURSE3_RECORD[] = {0x0043, 0x0048, 0x0036, 0x7279, 0x6B8A, 0x0020, 0x0043, 0x0048, 0x0033, 0x666E, 0x901A, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_STOP[] = {0x7EC8, 0x70B9, 0x0000};
 static const uint16_t UI_TEXT_T_RESERVED[] = {0x9884, 0x7559, 0x63A5, 0x53E3, 0x0000};
 static const uint16_t UI_TEXT_T_NO_HOOK[] = {0x672A, 0x63A5, 0x5165, 0x63A7, 0x5236, 0x0000};
@@ -959,11 +965,6 @@ static const uint16_t *const k_manual_test_texts[] = {
     UI_TEXT_T_TEST_BRIDGE
 };
 
-static const uint16_t *const k_record_type_texts[] = {
-    UI_TEXT_T_POINT_NORMAL,
-    UI_TEXT_T_POINT_MINE
-};
-
 static const uint16_t *const k_wifi_texts[] = {
     UI_TEXT_T_WIFI_SILENT,
     UI_TEXT_T_WIFI_WAVE,
@@ -1373,9 +1374,18 @@ static WayPoint_Type ui_current_record_type(void)
     return WP_TYPE_NORMAL;
 }
 
-static const uint16_t *ui_current_record_type_text(void)
+static uint8_t ui_is_paired_segment_type(uint8 type)
 {
-    return k_record_type_texts[(ui_current_record_type() == WP_TYPE_MINE_SWEEP) ? 1U : 0U];
+    return (type == WP_TYPE_BRIDGE ||
+            type == WP_TYPE_BUMP ||
+            type == WP_TYPE_STAIR_RAMP) ? 1U : 0U;
+}
+
+static uint8_t ui_course3_special_type_from_ch4(int32 ch4)
+{
+    if (ch4 < 592) return WP_TYPE_BRIDGE;
+    if (ch4 < 1392) return WP_TYPE_BUMP;
+    return WP_TYPE_STAIR_RAMP;
 }
 
 static const uint16_t *ui_waypoint_type_text(uint8 type)
@@ -1387,6 +1397,8 @@ static const uint16_t *ui_waypoint_type_text(uint8 type)
         case WP_TYPE_CONE_CONE:  return UI_TEXT_T_TYPE_CONE;
         case WP_TYPE_BRIDGE:     return UI_TEXT_T_TYPE_BRIDGE;
         case WP_TYPE_JUMP:       return UI_TEXT_T_TYPE_JUMP;
+        case WP_TYPE_BUMP:       return UI_TEXT_T_TYPE_BUMP;
+        case WP_TYPE_STAIR_RAMP: return UI_TEXT_T_TYPE_RAMP;
         case WP_TYPE_STOP:       return UI_TEXT_T_TYPE_STOP;
         case WP_TYPE_NORMAL:
         default:                 return UI_TEXT_T_TYPE_NORMAL;
@@ -1395,15 +1407,19 @@ static const uint16_t *ui_waypoint_type_text(uint8 type)
 
 static const uint16_t *ui_waypoint_detail_text(uint8 type, uint16 action_cmd)
 {
-    if ((WayPoint_Type)type == WP_TYPE_BRIDGE)
+    if (ui_is_paired_segment_type(type))
     {
-        if (action_cmd == NAVI_BRIDGE_ACTION_START)
+        if (action_cmd == NAVI_SEGMENT_ACTION_START)
         {
-            return UI_TEXT_T_TYPE_BRIDGE_START;
+            if ((WayPoint_Type)type == WP_TYPE_BRIDGE) return UI_TEXT_T_TYPE_BRIDGE_START;
+            if ((WayPoint_Type)type == WP_TYPE_BUMP) return UI_TEXT_T_TYPE_BUMP_START;
+            return UI_TEXT_T_TYPE_RAMP_START;
         }
-        if (action_cmd == NAVI_BRIDGE_ACTION_END)
+        if (action_cmd == NAVI_SEGMENT_ACTION_END)
         {
-            return UI_TEXT_T_TYPE_BRIDGE_END;
+            if ((WayPoint_Type)type == WP_TYPE_BRIDGE) return UI_TEXT_T_TYPE_BRIDGE_END;
+            if ((WayPoint_Type)type == WP_TYPE_BUMP) return UI_TEXT_T_TYPE_BUMP_END;
+            return UI_TEXT_T_TYPE_RAMP_END;
         }
     }
     return ui_waypoint_type_text(type);
@@ -1673,13 +1689,40 @@ static void ui_draw_record_collect(void)
     }
     ui_show_string_safe(88, 126, line);
     ui_show_text(8, 156, UI_TEXT_T_POINT_TYPE);
-    ui_show_text(88, 156, ui_current_record_type_text());
+    if (core_a_status.navi_record_count > 0U)
+    {
+        ui_show_text(88, 156,
+                     ui_waypoint_detail_text((uint8)core_a_status.navi_record_last_type,
+                                             core_a_status.navi_record_last_action));
+    }
+    else
+    {
+        ui_show_text(88, 156, UI_TEXT_T_TYPE_NORMAL);
+    }
     sprintf(line, "X:% .3f", core_a_status.navi_record_last_x);
     ui_show_string_safe(8, 190, line);
     sprintf(line, "Y:% .3f", core_a_status.navi_record_last_y);
     ui_show_string_safe(8, 218, line);
 
-    if (ui_mode_allows_mine_type())
+    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+    {
+        uint8 selected_type = ui_course3_special_type_from_ch4((int32)core_a_status.remote_ch4);
+        ui_show_text(8, 246, UI_TEXT_T_CH4_SELECT);
+        ui_show_text(88, 246, ui_waypoint_type_text(selected_type));
+        if (core_a_status.navi_record_open_segment_type != 0xFFU)
+        {
+            ui_show_text(8, 272, UI_TEXT_T_WAIT);
+            ui_show_text(56, 272,
+                         ui_waypoint_detail_text(core_a_status.navi_record_open_segment_type,
+                                                 NAVI_SEGMENT_ACTION_END));
+        }
+    }
+
+    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+    {
+        ui_draw_footer_text(UI_TEXT_T_HINT_COURSE3_RECORD);
+    }
+    else if (ui_mode_allows_mine_type())
     {
         ui_draw_footer_text(UI_TEXT_T_HINT_COLLECT_TYPE);
     }
