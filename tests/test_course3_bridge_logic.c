@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 
 #include "course3_bridge_logic.h"
@@ -35,6 +36,18 @@ int main(void)
     assert(Course3Segment_ShouldQueueAction(TEST_VEHICLE_MODE_COURSE_3,
                                             WP_TYPE_STAIR_RAMP,
                                             NAVI_SEGMENT_ACTION_END) == 0U);
+    assert(Course3Segment_ShouldApproach(TEST_VEHICLE_MODE_COURSE_3,
+                                        WP_TYPE_BRIDGE,
+                                        NAVI_SEGMENT_ACTION_START,
+                                        0.50f) == 1U);
+    assert(Course3Segment_ShouldApproach(TEST_VEHICLE_MODE_COURSE_3,
+                                        WP_TYPE_BUMP,
+                                        NAVI_SEGMENT_ACTION_START,
+                                        0.501f) == 0U);
+    assert(Course3Segment_ShouldApproach(TEST_VEHICLE_MODE_COURSE_3,
+                                        WP_TYPE_STAIR_RAMP,
+                                        NAVI_SEGMENT_ACTION_END,
+                                        0.10f) == 0U);
 
     assert(Course3Remote_SelectSpecialType(192) == WP_TYPE_BRIDGE);
     assert(Course3Remote_SelectSpecialType(591) == WP_TYPE_BRIDGE);
@@ -43,6 +56,12 @@ int main(void)
     assert(Course3Remote_SelectSpecialType(1391) == WP_TYPE_BUMP);
     assert(Course3Remote_SelectSpecialType(1392) == WP_TYPE_STAIR_RAMP);
     assert(Course3Remote_SelectSpecialType(1792) == WP_TYPE_STAIR_RAMP);
+
+    assert(fabsf(Course3AngleSlew_Step(0.0f, 90.0f, 0.9f) - 0.9f) < 0.001f);
+    assert(fabsf(Course3AngleSlew_Step(10.0f, -30.0f, 1.0f) - 9.0f) < 0.001f);
+    assert(fabsf(Course3AngleSlew_Step(179.0f, -179.0f, 1.0f) - 180.0f) < 0.001f);
+    assert(fabsf(Course3AngleSlew_Step(-179.0f, 179.0f, 1.0f) + 180.0f) < 0.001f);
+    assert(fabsf(Course3AngleSlew_Step(12.0f, 14.0f, 5.0f) - 14.0f) < 0.001f);
 
     puts("course3_bridge_logic tests passed");
     return 0;

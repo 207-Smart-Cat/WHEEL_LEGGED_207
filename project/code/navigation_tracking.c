@@ -54,6 +54,18 @@ static uint16_t static_point_count = 0;
 static uint8_t navi_record_origin_cal_pending = 0U;
 static uint8_t navi_start_cal_pending = 0U;
 
+typedef struct
+{
+    uint8_t active;
+    uint8_t bridge_height_applied;
+    uint16_t target_idx;
+    WayPoint_Type type;
+} NaviCourse3Approach_t;
+
+static NaviCourse3Approach_t navi_course3_approach;
+static uint8_t navi_course3_angle_slew_initialized = 0U;
+static float navi_course3_angle_slew_cmd = 0.0f;
+
 
 
 //====================================================变量声明=======================================================
@@ -76,8 +88,15 @@ static uint8_t navi_record_segment_state(WayPoint_Type *open_type);
 static uint8_t navi_segment_validate_route(void);
 static void navi_bridge_reset(uint8_t restore_low_height);
 static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
-                                                float *azimuth,
-                                                float *turn_error);
+                                                 float *azimuth,
+                                                 float *turn_error);
+static void navi_course3_approach_reset(uint8_t restore_bridge_height);
+static void navi_course3_approach_handoff(void);
+static uint8_t navi_course3_approach_update(uint16_t target_idx,
+                                            float distance,
+                                            uint8_t nav_info_valid);
+static void navi_course3_angle_slew_reset(void);
+static float navi_course3_angle_slew_apply(float desired_angle);
 
 void navi_record_update_status(void)
 {
@@ -296,8 +315,8 @@ static uint8_t navi_segment_validate_route(void)
 }
 
 static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
-                                                float *azimuth,
-                                                float *turn_error)
+                                                 float *azimuth,
+                                                 float *turn_error)
 {
     Navi_WayPoint_t *start;
     Navi_WayPoint_t *end;
@@ -353,6 +372,110 @@ static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
                                            lookahead_x, lookahead_y);
     *turn_error = navi_limit_angle180(*azimuth - robot_pose.yaw);
     return 1U;
+}
+
+static void navi_course3_approach_reset(uint8_t restore_bridge_height)
+{
+    if (restore_bridge_height &&
+        navi_course3_approach.active &&
+        navi_course3_approach.bridge_height_applied)
+    {
+        Height_PID_Switch(false);
+    }
+    memset(&navi_course3_approach, 0, sizeof(navi_course3_approach));
+}
+
+static void navi_course3_approach_handoff(void)
+{
+    /* Bridge keeps the high body selected during approach; its action restores it. */
+    memset(&navi_course3_approach, 0, sizeof(navi_course3_approach));
+}
+
+static uint8_t navi_course3_approach_update(uint16_t target_idx,
+                                            float distance,
+                                            uint8_t nav_info_valid)
+{
+    Navi_WayPoint_t *target;
+
+    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3 ||
+        target_idx >= navi_ctrl.point_total_count ||
+        target_idx >= NAVI_POINT_MAX)
+    {
+        navi_course3_approach_reset(1U);
+        return 0U;
+    }
+
+    target = &point_map[target_idx];
+    if (!target->valid ||
+        !Course3Segment_IsPairedType((uint8)target->type) ||
+        target->action_cmd != NAVI_SEGMENT_ACTION_START)
+    {
+        navi_course3_approach_reset(1U);
+        return 0U;
+    }
+
+    if (navi_course3_approach.active)
+    {
+        if (navi_course3_approach.target_idx != target_idx ||
+            navi_course3_approach.type != target->type)
+        {
+            navi_course3_approach_reset(1U);
+            return 0U;
+        }
+        return 1U;
+    }
+
+    if (!nav_info_valid ||
+        !Course3Segment_ShouldApproach(Runtime_Get_Vehicle_Mode(),
+                                       (uint8)target->type,
+                                       target->action_cmd,
+                                       distance))
+    {
+        return 0U;
+    }
+
+    navi_course3_approach.active = 1U;
+    navi_course3_approach.target_idx = target_idx;
+    navi_course3_approach.type = target->type;
+    if (target->type == WP_TYPE_BRIDGE)
+    {
+        Height_PID_Switch(true);
+        navi_course3_approach.bridge_height_applied = 1U;
+    }
+    Turn_Reset();
+    navi_speed_profile_reset();
+    IPC_LOG_Printf("\r\n[NAVI_COURSE3] approach %s start point %d: distance <= %.2f m, speed=%d.\r\n",
+                   get_enum_name(target->type),
+                   target_idx,
+                   (double)NAVI_COURSE3_APPROACH_DISTANCE,
+                   (int)NAVI_COURSE3_APPROACH_SPEED);
+    return 1U;
+}
+
+static void navi_course3_angle_slew_reset(void)
+{
+    navi_course3_angle_slew_initialized = 0U;
+    navi_course3_angle_slew_cmd = 0.0f;
+}
+
+static float navi_course3_angle_slew_apply(float desired_angle)
+{
+    float max_step = NAVI_COURSE3_ANGLE_SLEW_RATE_DEG_S * ENCODER_DT;
+
+    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3)
+    {
+        return desired_angle;
+    }
+    if (!navi_course3_angle_slew_initialized)
+    {
+        navi_course3_angle_slew_cmd = navi_limit_angle180(target_angle);
+        navi_course3_angle_slew_initialized = 1U;
+    }
+
+    navi_course3_angle_slew_cmd = Course3AngleSlew_Step(navi_course3_angle_slew_cmd,
+                                                        desired_angle,
+                                                        max_step);
+    return navi_course3_angle_slew_cmd;
 }
 
 static pid_param_t navi_speed_pid;
@@ -826,6 +949,9 @@ void task_navigation_control(void) {
         // --- 驱动模式切换处理 ---
         if (navi_ctrl.navi_mode_driver == 0) {     
             if (last_mode_driver != 0) {
+                navi_course3_approach_reset(1U);
+                navi_course3_angle_slew_reset();
+                navi_bridge_reset(1U);
                 Navi_Action_Reset_New_Course3_Segments();
                 IPC_LOG_Printf(">>> [状态] 系统已切入 停车与地图选择模式 <<<\r\n");
             }
@@ -875,6 +1001,8 @@ void task_navigation_control(void) {
                 target_angle = IMU_data.filter_result.yaw;
                 Turn_Reset();
                 navi_speed_profile_reset();
+                navi_course3_approach_reset(1U);
+                navi_course3_angle_slew_reset();
                 is_action_busy = 0;
                 Navi_Yaw_Calibration_Start(NAVI_YAW_CAL_CONTEXT_NAV_START);
                 navi_start_cal_pending = 1U;
@@ -908,6 +1036,7 @@ void task_navigation_control(void) {
             uint16_t total_points = navi_ctrl.point_total_count;
             uint16_t curr_idx = navi_ctrl.point_current_idx;
             static uint8_t smooth_speed_hold_ticks = 0U;
+            uint8_t course3_approach_active = 0U;
             if (total_points == 0)     break; 
             if (Vehicle_Is_Emergency_Stop())
             {
@@ -915,6 +1044,8 @@ void task_navigation_control(void) {
                 vofa_mode_driver = 0.0f;
                 navi_ctrl.navi_mode_driver = 0;
                 navi_bridge_reset(1U);
+                navi_course3_approach_reset(1U);
+                navi_course3_angle_slew_reset();
                 Navi_Action_Reset_New_Course3_Segments();
                 navi_speed_profile_reset();
                 break;
@@ -982,6 +1113,10 @@ void task_navigation_control(void) {
                 (void)navi_course3_apply_line_lookahead(curr_idx, &azimuth, &print_turn_angle);
             }
 
+            course3_approach_active = navi_course3_approach_update(curr_idx,
+                                                                  distance,
+                                                                  nav_info_valid);
+
             if (smooth_speed_hold_ticks > 0U)
             {
                 smooth_speed_hold_ticks--;
@@ -1014,6 +1149,15 @@ void task_navigation_control(void) {
                 }
             }
             Navi_Action_Manager(navi_ctrl.point_current_idx);  // 动作接管识别 
+            if (is_action_busy)
+            {
+                if (course3_approach_active)
+                {
+                    navi_course3_approach_handoff();
+                    course3_approach_active = 0U;
+                }
+                navi_course3_angle_slew_reset();
+            }
             
             if (Navi_Action_Consume_Done(curr_idx)) {
                 if (curr_idx >= (total_points - 1U)) {
@@ -1036,9 +1180,17 @@ void task_navigation_control(void) {
             
             if (!is_action_busy) {  
                 // 1. 转向角始终由 Tracking 计算
-                target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - print_turn_angle); 
+                float desired_target_angle =
+                    navi_limit_angle180(IMU_data.filter_result.yaw - print_turn_angle);
+                target_angle = navi_course3_angle_slew_apply(desired_target_angle);
                 
                 // 2. 速度赋值被完美收束在此处
+                if (course3_approach_active)
+                {
+                    target_velocity = nav_info_valid ? NAVI_COURSE3_APPROACH_SPEED : 0.0f;
+                }
+                else
+                {
 #if (USE_HOST_TARGET_VELOCITY == 0)
                    
                     target_velocity = DEFAULT_TRACKING_VELOCITY;       // 恒定速度，专门用于安全调试动作
@@ -1063,6 +1215,7 @@ void task_navigation_control(void) {
                     NAVI_SMOOTH_ZONE_SPEED_LIMIT,
                     apply_smooth_speed_limit);
 #endif
+                }
             }   else {
                 navi_speed_profile_reset();
             }
@@ -1108,6 +1261,8 @@ void task_navigation_control(void) {
                     target_velocity = 0.0f;
                     vofa_mode_driver = 0.0f;
                     navi_ctrl.navi_mode_driver = 0;
+                    navi_course3_approach_reset(1U);
+                    navi_course3_angle_slew_reset();
                     navi_speed_profile_reset();
                     IPC_LOG_Printf("\r\n[NAVI] final/stop point %d reached, navigation stopped.\r\n", curr_idx);
                     break;

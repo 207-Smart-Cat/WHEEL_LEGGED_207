@@ -62,6 +62,9 @@
 #define NAVI_BRIDGE_ACTION_START   NAVI_SEGMENT_ACTION_START
 #define NAVI_BRIDGE_ACTION_END     NAVI_SEGMENT_ACTION_END
 #define NAVI_COURSE3_LINE_LOOKAHEAD_DISTANCE 0.40f
+#define NAVI_COURSE3_APPROACH_DISTANCE       0.50f
+#define NAVI_COURSE3_APPROACH_SPEED          100.0f
+#define NAVI_COURSE3_ANGLE_SLEW_RATE_DEG_S   180.0f
 
 
 //=================================================定义  结构体================================================
