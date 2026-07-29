@@ -14,6 +14,8 @@
 
 #include "navigation_action.h"
 
+#include "course3_bridge_odometry.h"
+
 #include "control.h"
 
 #include "small_driver_uart_control.h"
@@ -65,6 +67,8 @@ typedef struct {
 } NaviYawCalibrationState_t;
 
 static NaviYawCalibrationState_t yaw_calibration;
+static Course3BridgeOdometry_t course3_bridge_odometry;
+static uint8_t course3_bridge_odometry_active = 0U;
 
 // 在文件上方的全局变量区添加：
 #if USE_WIFI_TUNE
@@ -85,6 +89,15 @@ static NaviYawCalibrationState_t yaw_calibration;
 static float initial_yaw_offset = 0.0f;  // 记录开机/重置时的绝对航向角作为零点偏置
 #endif
 
+static float navi_control_yaw_to_navigation_yaw(float control_yaw_deg)
+{
+#if NAVI_USE_LOCAL_FRAME
+    return navi_limit_angle180(-(navi_limit_angle180(control_yaw_deg - initial_yaw_offset)));
+#else
+    return navi_limit_angle180(-control_yaw_deg);
+#endif
+}
+
 
 //====================================================静态函数=================================================
 
@@ -99,7 +112,25 @@ static float Navi_Get_YawRate_Enc(void);
 
 //====================================================函数声明=============================================
 
+void Navi_Course3_Bridge_Odometry_Begin(float control_yaw_deg,
+                                        float start_x, float start_y,
+                                        float end_x, float end_y)
+{
+    Course3BridgeOdometry_Begin(&course3_bridge_odometry,
+                                navi_control_yaw_to_navigation_yaw(control_yaw_deg),
+                                start_x, start_y, end_x, end_y);
+    course3_bridge_odometry_active = 1U;
+}
 
+void Navi_Course3_Bridge_Odometry_End(void)
+{
+    course3_bridge_odometry_active = 0U;
+}
+
+uint8_t Navi_Course3_Bridge_Odometry_Is_Complete(void)
+{
+    return (course3_bridge_odometry_active && course3_bridge_odometry.completed) ? 1U : 0U;
+}
 
 //-------------------------------------------------------------------------------------------------------------------
 
@@ -603,6 +634,14 @@ void navi_ekf_update(void) {
 
     // 将增量累加进全局坐标系
     if (robot_pose.manual_update_mode == 0) {         //自动时才更新
+        if (course3_bridge_odometry_active)
+        {
+            Course3BridgeOdometry_Update(&course3_bridge_odometry,
+                                         filter_data.left_mps,
+                                         filter_data.right_mps,
+                                         ENCODER_DT,
+                                         &dx, &dy);
+        }
         robot_pose.x += dx;
         robot_pose.y += dy;
     }

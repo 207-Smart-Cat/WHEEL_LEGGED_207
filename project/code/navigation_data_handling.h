@@ -255,6 +255,12 @@ uint8_t navi_airborne_detection();                                //ÌÚ¿Õ¼ì²âº¯Êý
 void Navi_Set_Manual_Update_Mode(uint8_t enable);
 void Navi_Manual_Add_Pose(float val1, float val2, uint8_t frame);
 
+void Navi_Course3_Bridge_Odometry_Begin(float control_yaw_deg,
+                                        float start_x, float start_y,
+                                        float end_x, float end_y);
+void Navi_Course3_Bridge_Odometry_End(void);
+uint8_t Navi_Course3_Bridge_Odometry_Is_Complete(void);
+
 //=================================================ÉùÃ÷  »ù´¡º¯Êý================================================
 
 

@@ -229,6 +229,7 @@ void Navi_Action_Reset_New_Course3_Segments(void)
             Vision_Align_Cal_Reset();
         }
     }
+    Navi_Course3_Bridge_Odometry_End();
     course3_aux_restore_direction();
     memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
 }
@@ -862,6 +863,11 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
                     Turn_Reset();
                     navi_tracking_speed_profile_reset();
+                    Navi_Course3_Bridge_Odometry_Begin(course3_bridge_target_yaw,
+                                                        point_map[course3_bridge_start_idx].x,
+                                                        point_map[course3_bridge_start_idx].y,
+                                                        point_map[course3_bridge_end_idx].x,
+                                                        point_map[course3_bridge_end_idx].y);
                     course3_bridge_action_initialized = 1U;
                     action_fsm.state_timer_ms = 0U;
                 }
@@ -870,8 +876,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 target_velocity = COURSE3_BRIDGE_SPEED;
                 Direction_p = COURSE3_BRIDGE_DIRECTION_P;
                 PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
-                if (course3_bridge_end_idx < navi_ctrl.point_total_count &&
-                    navi_isreach_target_point(course3_bridge_end_idx))
+                if (Navi_Course3_Bridge_Odometry_Is_Complete())
                 {
                     uint16_t completed_start_idx = course3_bridge_start_idx;
                     uint16_t completed_end_idx = course3_bridge_end_idx;
@@ -881,6 +886,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     navi_tracking_speed_profile_reset();
                     course3_bridge_low_restored = 1U;
                     course3_bridge_action_active = 0U;
+                    Navi_Course3_Bridge_Odometry_End();
                     course3_bridge_action_initialized = 0U;
                     if (action_seq.current_ptr < action_seq.total_count &&
                         action_seq.list[action_seq.current_ptr].wp_index == completed_start_idx)
