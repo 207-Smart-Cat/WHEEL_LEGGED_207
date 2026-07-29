@@ -236,7 +236,7 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 #define NAVI_JUMP_TAKEOFF_SPEED               NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_BURST_PWM                   (1300)
 #define NAVI_JUMP_AIR_RETRACT_X               (0.000f)
-#define NAVI_JUMP_AIR_RETRACT_Y               (0.005f)
+#define NAVI_JUMP_AIR_RETRACT_Y               (0.025f)
 #define NAVI_JUMP_RETRACT_MOVE_MS              (120U)
 #define NAVI_JUMP_RETRACT_HOLD_MS              (50U)
 #define NAVI_JUMP_RETRACT_MIN_MS               (80U)
@@ -246,7 +246,7 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 #define NAVI_JUMP_RECOVER_PWM         (420)
 #define NAVI_JUMP_PREPARE_RAMP_MS     (260U)
 #define NAVI_JUMP_PREPARE_MS          (260U)
-#define NAVI_JUMP_BURST_MS            (220U)
+#define NAVI_JUMP_BURST_MS            (180U)
 #define NAVI_JUMP_RECOVER_MS          (100U)
 #define NAVI_JUMP_LANDING_MAX_MS      (150U)
 #define NAVI_JUMP_LAND_ACCEL_G        (1.0f)
@@ -260,6 +260,9 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 #define NAVI_REMOTE_BUMP_POST_TIMEOUT_MS      (10000U)
 
 #define NAVI_TRIPLE_JUMP_TOTAL_COUNT      (3U)
+
+#define NAVI_JUMP_RETRACT_PWM          (420)
+#define NAVI_JUMP_BUFFER_PWM           (520)
 
 typedef struct
 {
@@ -1220,14 +1223,21 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             if (elapsed_ms < NAVI_JUMP_RETRACT_MOVE_MS)
             {
                 jump_drive_symmetric_xy(NAVI_JUMP_AIR_RETRACT_X, NAVI_JUMP_AIR_RETRACT_Y);
+                
+                //jump_drive_symmetric_pwm(NAVI_JUMP_RETRACT_PWM);   // 快速收腿
             }
             else if (elapsed_ms < NAVI_JUMP_RETRACT_TOTAL_MS)
             {
                 jump_drive_symmetric_xy(NAVI_JUMP_AIR_RETRACT_X, NAVI_JUMP_AIR_RETRACT_Y);
+                
+                //jump_drive_symmetric_pwm(NAVI_JUMP_RETRACT_PWM);   // 保持短腿
             }
             else
             {
                 jump_drive_symmetric_xy(NAVI_JUMP_EXE_BUFFER_X, NAVI_JUMP_EXE_BUFFER_Y);
+                
+                //jump_drive_symmetric_pwm(NAVI_JUMP_BUFFER_PWM);    // 放出落地缓冲
+                
                 buffer_ms = elapsed_ms - NAVI_JUMP_RETRACT_TOTAL_MS;
 
                 if (jump_landing_detected_latched ||
