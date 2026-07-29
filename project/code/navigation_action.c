@@ -1221,22 +1221,16 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             }
 
             if (elapsed_ms < NAVI_JUMP_RETRACT_MOVE_MS)
-            {
-                jump_drive_symmetric_xy(NAVI_JUMP_AIR_RETRACT_X, NAVI_JUMP_AIR_RETRACT_Y);
-                
-                //jump_drive_symmetric_pwm(NAVI_JUMP_RETRACT_PWM);   // 快速收腿
+            {                
+                jump_drive_symmetric_pwm(NAVI_JUMP_RETRACT_PWM);   // 快速收腿
             }
             else if (elapsed_ms < NAVI_JUMP_RETRACT_TOTAL_MS)
-            {
-                jump_drive_symmetric_xy(NAVI_JUMP_AIR_RETRACT_X, NAVI_JUMP_AIR_RETRACT_Y);
-                
-                //jump_drive_symmetric_pwm(NAVI_JUMP_RETRACT_PWM);   // 保持短腿
+            {                
+                jump_drive_symmetric_pwm(NAVI_JUMP_RETRACT_PWM);   // 保持短腿
             }
             else
-            {
-                jump_drive_symmetric_xy(NAVI_JUMP_EXE_BUFFER_X, NAVI_JUMP_EXE_BUFFER_Y);
-                
-                //jump_drive_symmetric_pwm(NAVI_JUMP_BUFFER_PWM);    // 放出落地缓冲
+            {                
+                jump_drive_symmetric_pwm(NAVI_JUMP_BUFFER_PWM);    // 放出落地缓冲
                 
                 buffer_ms = elapsed_ms - NAVI_JUMP_RETRACT_TOTAL_MS;
 
