@@ -455,6 +455,13 @@ void Remote_control_callback(void)
             Remote_ResetRecordTrigger();
             Remote_CheckJumpTrigger(remote_drive_enabled);
         }
+
+        /* 遥控跳跃由 5 ms 导航任务接管，禁止普通摇杆覆盖动作命令。 */
+        if (Navi_Action_Remote_Jump_Active())
+        {
+            return;
+        }
+
         if (remote_drive_enabled)
         {
             Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);

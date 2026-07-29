@@ -122,7 +122,9 @@ extern uint8_t is_action_busy;
 
 uint8_t navigation_jump_is_active(void);
 uint8_t Navi_Action_Servo_Takeover_Active(void);
-uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger, float hold_yaw);
+uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger,
+                        float control_yaw,
+                        float nav_yaw);
 uint8_t Navi_Action_Start_Remote_Jump(void);
 void Navi_Jump_Task_5ms(void);
 uint8_t Navi_Action_Remote_Jump_Active(void);
