@@ -23,8 +23,9 @@ extern Navi_WayPoint_t point_map[NAVI_POINT_MAX];
 extern Navi_Controller_t navi_ctrl;
 extern float target_velocity;
 extern float target_angle;
+extern pid_param_t motor_speed;
 extern pid_param_t motor_direction;
-extern void Height_PID_Switch(bool high_mode);
+extern int bridge_high;
 extern void pid_low_init(void);
 extern void Turn_Reset(void);
 extern uint8 Vision_Align_Cal_Result_Valid(void);
@@ -71,14 +72,16 @@ static uint8_t course3_display_state = COURSE3_DISPLAY_IDLE;
 static uint8_t course3_display_done_pending_clear = 0U;
 
 #define COURSE3_ALIGN_SPEED             (70.0f)
-#define COURSE3_SEARCH_SPEED            (100.0f)
+#define COURSE3_SEARCH_SPEED            (90.0f)
 #define COURSE3_ALIGN_CENTER_PX         (5)
 #define COURSE3_ALIGN_LOST_MS           (3000U)
-#define COURSE3_BRIDGE_SPEED             (400.0f)
-#define COURSE3_BRIDGE_LEG_Y             (0.05f)
+#define COURSE3_VISION_CAL_SPEED          (90.0f)
+#define COURSE3_BRIDGE_SPEED             (233.0f)
+#define COURSE3_BRIDGE_LEG_Y             (0.03f)
+#define COURSE3_BRIDGE_SPEED_P           (0.012f)
 #define COURSE3_BRIDGE_HOLD_MS           (1000U)
 #define COURSE3_ACTION_DIRECTION_P        (50.0f)
-#define COURSE3_BRIDGE_DIRECTION_P        (60.0f)
+#define COURSE3_BRIDGE_DIRECTION_P        (50.0f)
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif
@@ -543,7 +546,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                                                 (uint8)point_map[target_idx].type,
                                                 point_map[target_idx].action_cmd))
             {
-                target_velocity = 150.0f;
+                target_velocity = COURSE3_VISION_CAL_SPEED;
                 if (Vision_Align_Cal_Result_Valid())
                 {
                     uint16_t bridge_end_idx = 0U;
@@ -647,7 +650,10 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     {
                         navi_ctrl.point_current_idx = course3_bridge_end_idx;
                     }
-                    Height_PID_Switch(true);
+                    y_current = COURSE3_BRIDGE_LEG_Y;
+                    bridge_high = 1;
+                    Speed_p = COURSE3_BRIDGE_SPEED_P;
+                    PidChange(&motor_speed, Speed_p, Speed_i, Speed_d);
                     Direction_p = COURSE3_BRIDGE_DIRECTION_P;
                     PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
                     Turn_Reset();

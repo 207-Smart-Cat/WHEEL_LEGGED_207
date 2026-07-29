@@ -816,7 +816,7 @@ static void vision_mode_apply(void)
             return;
         }
 
-        target_velocity = 150.0f;
+        target_velocity = 90.0f;
     }
 
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)

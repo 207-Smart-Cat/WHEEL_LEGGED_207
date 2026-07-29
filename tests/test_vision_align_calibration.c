@@ -18,18 +18,18 @@ static void stable_wait_requires_full_window(void)
 
     for (uint8 i = 0U; i < (VISION_ALIGN_STABLE_WINDOW_FRAMES - 1U); i++)
     {
-        VisionAlignCal_Update(&cal, 1U, 1U, frame++, 29, 10.0f);
+        VisionAlignCal_Update(&cal, 1U, 1U, frame++, VISION_ALIGN_STABLE_ERROR_PX, 10.0f);
         assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_STABLE_WAIT);
         assert(VisionAlignCal_GetStableCount(&cal) == (uint8)(i + 1U));
     }
 
-    VisionAlignCal_Update(&cal, 1U, 1U, frame++, 31, 10.0f);
+    VisionAlignCal_Update(&cal, 1U, 1U, frame++, VISION_ALIGN_STABLE_ERROR_PX + 1, 10.0f);
     assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_STABLE_WAIT);
     assert(VisionAlignCal_GetStableCount(&cal) == 0U);
 
     for (uint8 i = 0U; i < VISION_ALIGN_STABLE_WINDOW_FRAMES; i++)
     {
-        VisionAlignCal_Update(&cal, 1U, 1U, frame++, -30, 10.0f);
+        VisionAlignCal_Update(&cal, 1U, 1U, frame++, -VISION_ALIGN_STABLE_ERROR_PX, 10.0f);
     }
     assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_SAMPLING);
     assert(VisionAlignCal_GetStableCount(&cal) == VISION_ALIGN_STABLE_WINDOW_FRAMES);
@@ -46,7 +46,7 @@ static void sampling_uses_center_window_and_wrap_safe_average(void)
         VisionAlignCal_Update(&cal, 1U, 1U, frame++, 12, 170.0f);
     }
 
-    VisionAlignCal_Update(&cal, 1U, 1U, frame++, 8, 178.0f);
+    VisionAlignCal_Update(&cal, 1U, 1U, frame++, VISION_ALIGN_SAMPLE_ERROR_PX + 1, 178.0f);
     assert(VisionAlignCal_GetSampleCount(&cal) == 0U);
 
     for (uint8 i = 0U; i < VISION_ALIGN_SIDE_SAMPLE_TARGET; i++)
@@ -60,7 +60,7 @@ static void sampling_uses_center_window_and_wrap_safe_average(void)
     assert_close(VisionAlignCal_GetResultYaw(&cal), 180.0f);
 }
 
-static void sampling_requires_five_samples_on_each_side(void)
+static void sampling_requires_target_samples_on_each_side(void)
 {
     VisionAlignCal_t cal;
     uint32 frame = 1U;
@@ -96,7 +96,7 @@ int main(void)
 {
     stable_wait_requires_full_window();
     sampling_uses_center_window_and_wrap_safe_average();
-    sampling_requires_five_samples_on_each_side();
+    sampling_requires_target_samples_on_each_side();
     puts("vision_align_calibration tests passed");
     return 0;
 }
