@@ -177,7 +177,10 @@ static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float m
         return 0.0f;
     }
 
-    if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_MOTOR) || jump_is_active() || Navi_Action_Servo_Takeover_Active())
+    if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_MOTOR) ||
+        jump_is_active() ||
+        Navi_Action_Servo_Takeover_Active() ||
+        Bumpy_Action_Is_Active())
     {
         anti_stall_reset(ANTI_STALL_CLEAR_SAFETY);
         anti_stall_dbg_enabled = 1.0f;
@@ -719,6 +722,17 @@ static void vision_mode_apply(void)
 {
     uint8_t enabled = (core_b_cmd.vision_enabled || Navi_Action_Vision_Align_Active()) ? 1U : 0U;
     uint8_t valid = core_b_cmd.vision_valid;
+
+    if (Bumpy_Action_Is_Active() || Navi_Action_Remote_Bump_Active())
+    {
+        if (g_vision_last_enabled)
+        {
+            Turn_Reset();
+        }
+        g_vision_last_enabled = 0U;
+        g_vision_stale_ticks = 0U;
+        return;
+    }
 
     if (!enabled)
     {

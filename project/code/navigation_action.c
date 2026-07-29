@@ -10,6 +10,7 @@
 #include "bumpy_control.h"
 #include "runtime_status.h"
 #include "bridge_roll_peak.h"
+#include "remote.h"
 
 #include <stdlib.h>
 
@@ -54,6 +55,13 @@ static uint8_t jump_landing_detected_latched = 0U;
 static uint8_t jump_landing_confirm_count = 0U;
 static uint8_t remote_jump_active = 0;
 static volatile uint8_t remote_jump_request = 0U;
+static uint8_t remote_bump_active = 0U;
+static volatile uint8_t remote_bump_request = 0U;
+static float remote_bump_hold_control_yaw = 0.0f;
+static float remote_bump_hold_nav_yaw = 0.0f;
+static float remote_bump_post_start_x = 0.0f;
+static float remote_bump_post_start_y = 0.0f;
+static uint32_t remote_bump_post_elapsed_ms = 0U;
 static Course3AlignSamples_t course3_align_samples;
 static uint32_t course3_align_last_frame = 0;
 static float course3_align_map_yaw = 0.0f;
@@ -229,6 +237,11 @@ static void navi_bump_fault_exit(uint16_t target_idx)
 #define NAVI_JUMP_LAND_DETECT_ARM_MS          (30U)
 #define NAVI_JUMP_LAND_CONFIRM_SAMPLES        (2U)
 #define NAVI_JUMP_DEBUG_LOG                   (0U)
+
+#define NAVI_REMOTE_BUMP_PROFILE_ID           (1U)
+#define NAVI_REMOTE_BUMP_POST_DISTANCE_M      (1.20f)
+#define NAVI_REMOTE_BUMP_POST_SPEED           (220.0f)
+#define NAVI_REMOTE_BUMP_POST_TIMEOUT_MS      (10000U)
 
 #define NAVI_TRIPLE_JUMP_TOTAL_COUNT      (3U)
 
@@ -441,6 +454,16 @@ uint8_t Navi_Action_Remote_Jump_Active(void)
     return remote_jump_active;
 }
 
+uint8_t Navi_Action_Remote_Bump_Active(void)
+{
+    return remote_bump_active;
+}
+
+uint8_t Navi_Action_Remote_Test_Active(void)
+{
+    return (remote_jump_active || remote_bump_active) ? 1U : 0U;
+}
+
 static uint8_t navi_jump_is_remote_trigger(void)
 {
     return (jump_active_trigger == NAVI_JUMP_TRIGGER_REMOTE) ? 1U : 0U;
@@ -449,6 +472,118 @@ static uint8_t navi_jump_is_remote_trigger(void)
 void Navi_Action_Request_Remote_Jump(void)
 {
     remote_jump_request = 1U;
+}
+
+void Navi_Action_Request_Remote_Bump(void)
+{
+    remote_bump_request = 1U;
+}
+
+static void navi_action_remote_bump_clear(uint8_t log_fault,
+                                          BumpyExitReason_t reason)
+{
+    target_velocity = 0.0f;
+    target_angle = remote_bump_hold_control_yaw;
+    remote_bump_active = 0U;
+    remote_bump_request = 0U;
+    remote_bump_post_elapsed_ms = 0U;
+    is_action_busy = 0U;
+    action_fsm.state = FSM_IDLE;
+    action_fsm.state_timer_ms = 0U;
+    action_fsm.is_airborne_expect = 0U;
+    Bumpy_Action_Reset();
+
+    if (log_fault)
+    {
+        IPC_LOG_Printf("BUMP_TEST,FAULT,reason=%u\r\n",
+                       (unsigned int)reason);
+    }
+}
+
+static BumpyExitReason_t navi_action_remote_bump_safety_reason(void)
+{
+    if (Vehicle_Is_Emergency_Stop())
+    {
+        return BUMP_EXIT_EMERGENCY;
+    }
+    if (Remote_GetStatus() != REMOTE_CONNECTED)
+    {
+        return BUMP_EXIT_REMOTE_LOST;
+    }
+    if (Remote_GetChannelData(5) <= 1000)
+    {
+        return BUMP_EXIT_USER_STOP;
+    }
+    if (!robot_pose.is_valid)
+    {
+        return BUMP_EXIT_SENSOR_INVALID;
+    }
+    if (remote_bump_post_elapsed_ms >= NAVI_REMOTE_BUMP_POST_TIMEOUT_MS)
+    {
+        return BUMP_EXIT_TIMEOUT;
+    }
+    return BUMP_EXIT_NONE;
+}
+
+uint8_t Navi_Action_Start_Remote_Bump(void)
+{
+    if (Vehicle_Is_Emergency_Stop() ||
+        remote_jump_active ||
+        remote_bump_active ||
+        remote_jump_request ||
+        navigation_jump_is_active() ||
+        jump_is_active() ||
+        Bumpy_Action_Is_Active() ||
+        is_action_busy)
+    {
+        return 0U;
+    }
+
+    if (!Bumpy_Action_Start(NAVI_REMOTE_BUMP_PROFILE_ID))
+    {
+        return 0U;
+    }
+
+    remote_bump_active = 1U;
+    is_action_busy = 1U;
+    action_fsm.state = FSM_BUMP_DETECT;
+    action_fsm.state_timer_ms = 0U;
+    action_fsm.is_airborne_expect = 0U;
+    remote_bump_hold_control_yaw = navi_limit_angle180(target_angle);
+    remote_bump_hold_nav_yaw = navi_limit_angle180(robot_pose.yaw);
+    remote_bump_post_start_x = robot_pose.x;
+    remote_bump_post_start_y = robot_pose.y;
+    remote_bump_post_elapsed_ms = 0U;
+
+    IPC_LOG_Printf("BUMP_TEST,START,profile=%u\r\n",
+                   (unsigned int)NAVI_REMOTE_BUMP_PROFILE_ID);
+    return 1U;
+}
+
+void Navi_Action_Process_Remote_Bump_Request_5ms(void)
+{
+    if (!remote_bump_request)
+    {
+        return;
+    }
+
+    remote_bump_request = 0U;
+    IPC_LOG_Printf("BUMP_TEST,REQUEST\r\n");
+
+    if (Vehicle_Is_Emergency_Stop() ||
+        Navi_Action_Remote_Test_Active() ||
+        navigation_jump_is_active() ||
+        jump_is_active() ||
+        Bumpy_Action_Is_Active() ||
+        is_action_busy)
+    {
+        return;
+    }
+
+    if (!Navi_Action_Start_Remote_Bump())
+    {
+        target_velocity = 0.0f;
+    }
 }
 
 uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger,
@@ -461,7 +596,9 @@ uint8_t Navi_Jump_Start(NaviJumpTrigger_t trigger,
         return 0U;
     }
 
-    if (remote_jump_active || is_action_busy || navigation_jump_is_active() || jump_is_active())
+    if (remote_jump_active || remote_bump_active || is_action_busy ||
+        navigation_jump_is_active() || jump_is_active() ||
+        Bumpy_Action_Is_Active())
     {
         return 0U;
     }
@@ -515,9 +652,10 @@ void Navi_Action_Process_Remote_Jump_Request_5ms(void)
         return;
     }
 
-    if (Navi_Action_Remote_Jump_Active() ||
+    if (Navi_Action_Remote_Test_Active() ||
         navigation_jump_is_active() ||
         jump_is_active() ||
+        Bumpy_Action_Is_Active() ||
         is_action_busy)
     {
         return;
@@ -588,6 +726,9 @@ void navi_parse_global_path(void) {
     course3_display_state = COURSE3_DISPLAY_IDLE;
     course3_display_done_pending_clear = 0U;
     remote_jump_request = 0U;
+    remote_bump_request = 0U;
+    remote_bump_active = 0U;
+    remote_bump_post_elapsed_ms = 0U;
     jump_active_trigger = NAVI_JUMP_TRIGGER_WAYPOINT;
 #if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
     jump_sequence_done_count = 0;
@@ -626,7 +767,7 @@ void navi_parse_global_path(void) {
 // ==============================================================================
 static void navi_action_fsm_update(uint16_t target_idx, float distance) {
     WayPoint_Type upcoming_type = WP_TYPE_NORMAL;
-    if (!remote_jump_active) {
+    if (!Navi_Action_Remote_Test_Active()) {
         upcoming_type = point_map[target_idx].type;
     }
     action_fsm.state_timer_ms += (uint32_t)(ENCODER_DT * 1000.0f);
@@ -1216,7 +1357,12 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0U;
             } else if (result == BUMP_ACTION_RESULT_FAULT ||
                        result == BUMP_ACTION_RESULT_IDLE) {
-                navi_bump_fault_exit(target_idx);
+                if (remote_bump_active) {
+                    navi_action_remote_bump_clear(
+                        1U, Bumpy_Action_Get_Exit_Reason());
+                } else {
+                    navi_bump_fault_exit(target_idx);
+                }
             }
             break;
         }
@@ -1230,7 +1376,12 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0U;
             } else if (result == BUMP_ACTION_RESULT_FAULT ||
                        result == BUMP_ACTION_RESULT_IDLE) {
-                navi_bump_fault_exit(target_idx);
+                if (remote_bump_active) {
+                    navi_action_remote_bump_clear(
+                        1U, Bumpy_Action_Get_Exit_Reason());
+                } else {
+                    navi_bump_fault_exit(target_idx);
+                }
             }
             break;
         }
@@ -1240,19 +1391,83 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             BumpyActionResult_t result = Bumpy_Action_Process_5ms();
             is_action_busy = 1U;
             if (result == BUMP_ACTION_RESULT_DONE) {
-                action_done_pending = 1U;
-                action_done_idx = target_idx;
-                if (action_seq.current_ptr < action_seq.total_count &&
-                    action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
-                    action_seq.current_ptr++;
+                if (remote_bump_active) {
+                    remote_bump_post_start_x = robot_pose.x;
+                    remote_bump_post_start_y = robot_pose.y;
+                    remote_bump_post_elapsed_ms = 0U;
+                    remote_bump_hold_control_yaw =
+                        navi_limit_angle180(target_angle);
+                    action_fsm.state = FSM_BUMP_TEST_POST_DRIVE;
+                    action_fsm.state_timer_ms = 0U;
+                    action_fsm.is_airborne_expect = 0U;
+                    is_action_busy = 1U;
+                    IPC_LOG_Printf(
+                        "BUMP_TEST,ENTER_POST_DRIVE,distance=1.20\r\n");
+                } else {
+                    action_done_pending = 1U;
+                    action_done_idx = target_idx;
+                    if (action_seq.current_ptr < action_seq.total_count &&
+                        action_seq.list[action_seq.current_ptr].wp_index == target_idx) {
+                        action_seq.current_ptr++;
+                    }
+                    action_fsm.state = FSM_IDLE;
+                    action_fsm.state_timer_ms = 0U;
+                    action_fsm.is_airborne_expect = 0U;
+                    is_action_busy = 0U;
                 }
+            } else if (result == BUMP_ACTION_RESULT_FAULT ||
+                       result == BUMP_ACTION_RESULT_IDLE) {
+                if (remote_bump_active) {
+                    navi_action_remote_bump_clear(
+                        1U, Bumpy_Action_Get_Exit_Reason());
+                } else {
+                    navi_bump_fault_exit(target_idx);
+                }
+            }
+            break;
+        }
+
+        case FSM_BUMP_TEST_POST_DRIVE:
+        {
+            float dx;
+            float dy;
+            float yaw_rad;
+            float forward_distance;
+            BumpyExitReason_t safety_reason;
+
+            is_action_busy = 1U;
+            action_fsm.is_airborne_expect = 0U;
+            target_velocity = NAVI_REMOTE_BUMP_POST_SPEED;
+            target_angle = remote_bump_hold_control_yaw;
+
+            dx = robot_pose.x - remote_bump_post_start_x;
+            dy = robot_pose.y - remote_bump_post_start_y;
+            yaw_rad = (float)ANGLE_TO_RAD(remote_bump_hold_nav_yaw);
+            forward_distance = dx * cosf(yaw_rad) + dy * sinf(yaw_rad);
+            if (forward_distance < 0.0f)
+            {
+                forward_distance = 0.0f;
+            }
+
+            remote_bump_post_elapsed_ms += 5U;
+            safety_reason = navi_action_remote_bump_safety_reason();
+            if (safety_reason != BUMP_EXIT_NONE)
+            {
+                navi_action_remote_bump_clear(1U, safety_reason);
+            }
+            else if (forward_distance >= NAVI_REMOTE_BUMP_POST_DISTANCE_M)
+            {
+                target_velocity = 0.0f;
+                target_angle = remote_bump_hold_control_yaw;
+                remote_bump_active = 0U;
+                remote_bump_request = 0U;
+                remote_bump_post_elapsed_ms = 0U;
+                is_action_busy = 0U;
                 action_fsm.state = FSM_IDLE;
                 action_fsm.state_timer_ms = 0U;
                 action_fsm.is_airborne_expect = 0U;
-                is_action_busy = 0U;
-            } else if (result == BUMP_ACTION_RESULT_FAULT ||
-                       result == BUMP_ACTION_RESULT_IDLE) {
-                navi_bump_fault_exit(target_idx);
+                Bumpy_Action_Reset();
+                IPC_LOG_Printf("BUMP_TEST,DONE\r\n");
             }
             break;
         }
@@ -1333,6 +1548,31 @@ void Navi_Jump_Task_5ms(void)
     }
 }
 
+void Navi_Bump_Test_Task_5ms(void)
+{
+    BumpyExitReason_t safety_reason;
+
+    if (!remote_bump_active)
+    {
+        return;
+    }
+
+    safety_reason = navi_action_remote_bump_safety_reason();
+    if (safety_reason != BUMP_EXIT_NONE)
+    {
+        navi_action_remote_bump_clear(1U, safety_reason);
+        return;
+    }
+
+    navi_action_fsm_update(0U, 0.0f);
+
+    if (remote_bump_active && action_fsm.state == FSM_IDLE)
+    {
+        navi_action_remote_bump_clear(
+            1U, Bumpy_Action_Get_Exit_Reason());
+    }
+}
+
 // ============================================================================
 // ================== END REMOTE CH6 NAVIGATION JUMP BRIDGE ===================
 // ============================================================================
@@ -1342,7 +1582,7 @@ void Navi_Jump_Task_5ms(void)
 // 动作管理入口：由循迹层周期调用
 // ==============================================================================
 void Navi_Action_Manager(uint16_t  curr_idx) {
-    if (remote_jump_active) return;
+    if (Navi_Action_Remote_Test_Active()) return;
 
     if (action_seq.total_count == 0 || action_seq.current_ptr >= action_seq.total_count) return;
 

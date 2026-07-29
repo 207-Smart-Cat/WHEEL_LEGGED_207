@@ -353,7 +353,7 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
         return;
     }
 
-    if (jump_is_active() || Navi_Action_Remote_Jump_Active())
+    if (jump_is_active() || Navi_Action_Remote_Test_Active())
     {
         remote_ch6_last_high = ch6_high;
         jump_set_trigger_block_reason(JUMP_BLOCK_BUSY);
@@ -375,6 +375,8 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
     {
         if (remote_drive_enabled && remote_jump_armed)
         {
+            int32_t ch4 = Remote_GetChannelData(4);
+
             /* ==================== LEGACY CH6 JUMP PATH - DISABLED ====================
              * Original logic: CH6 triggered the jump_control.c manual jump FSM.
              * Kept for rollback; do not delete.
@@ -383,7 +385,18 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
 
             /* ==================== NEW CH6 NAVIGATION JUMP PATH ==================== */
             Runtime_Set_Module_Enabled(RUNTIME_MODULE_NAVIGATION, 1U);
-            Navi_Action_Request_Remote_Jump();
+            if (ch4 < REMOTE_CH4_MID_THRESHOLD)
+            {
+                Navi_Action_Request_Remote_Jump();
+            }
+            else if (ch4 > REMOTE_CH4_HIGH_THRESHOLD)
+            {
+                Navi_Action_Request_Remote_Bump();
+            }
+            else
+            {
+                /* CH4 中位是测试安全空挡。 */
+            }
             /* ==================== END NEW CH6 NAVIGATION JUMP PATH ==================== */
             remote_jump_armed = 0;
         }
@@ -456,8 +469,8 @@ void Remote_control_callback(void)
             Remote_CheckJumpTrigger(remote_drive_enabled);
         }
 
-        /* 遥控跳跃由 5 ms 导航任务接管，禁止普通摇杆覆盖动作命令。 */
-        if (Navi_Action_Remote_Jump_Active())
+        /* 遥控动作由 5 ms 导航任务接管，禁止普通摇杆覆盖动作命令。 */
+        if (Navi_Action_Remote_Test_Active())
         {
             return;
         }

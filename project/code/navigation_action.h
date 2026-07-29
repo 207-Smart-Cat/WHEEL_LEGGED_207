@@ -104,6 +104,7 @@ typedef enum {
     ,FSM_BUMP_CROSSING
     ,FSM_BUMP_RECOVER
     ,FSM_JUMP_NEXT_APPROACH  // 第二、第三跳：按净前向距离接近下一起跳位置
+    ,FSM_BUMP_TEST_POST_DRIVE // 遥控颠簸测试完成后继续定距行驶
 } ActionState_e;
 
 // ========================== 数据结构定义 ==========================
@@ -142,6 +143,12 @@ void Navi_Action_Process_Remote_Jump_Request_5ms(void);
 uint8_t Navi_Action_Start_Remote_Jump(void);
 void Navi_Jump_Task_5ms(void);
 uint8_t Navi_Action_Remote_Jump_Active(void);
+void Navi_Action_Request_Remote_Bump(void);
+void Navi_Action_Process_Remote_Bump_Request_5ms(void);
+uint8_t Navi_Action_Start_Remote_Bump(void);
+void Navi_Bump_Test_Task_5ms(void);
+uint8_t Navi_Action_Remote_Bump_Active(void);
+uint8_t Navi_Action_Remote_Test_Active(void);
 uint8_t Navi_Action_Vision_Align_Active(void);
 uint8_t Navi_Action_Get_Course3_Display_State(void);
 uint8_t Navi_Action_Course3_Execution_Active(void);

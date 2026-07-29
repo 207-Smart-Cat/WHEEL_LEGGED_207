@@ -124,7 +124,9 @@ void pit0_ch15_isr() // Navigation EKF positioning and jump action, 5ms
     }
     navi_ekf_update();
     Navi_Action_Process_Remote_Jump_Request_5ms();
+    Navi_Action_Process_Remote_Bump_Request_5ms();
     Navi_Jump_Task_5ms();
+    Navi_Bump_Test_Task_5ms();
     task_navigation_control();
     pit_isr_flag_clear(PIT_CH15);
 }
