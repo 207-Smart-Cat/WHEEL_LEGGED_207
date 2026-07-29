@@ -204,8 +204,7 @@ static void navi_bump_fault_exit(uint16_t target_idx)
 #define NAVI_JUMP_TOUCH_INHIBIT_MIN_MS       (200U)
 #define NAVI_JUMP_TOUCH_INHIBIT_FORWARD_M    (0.05f)
 #define NAVI_JUMP_BACKOFF_TARGET_M           (0.60f)
-#define NAVI_JUMP_RUNUP_RESERVE_M            (0.30f)
-#define NAVI_JUMP_RUNUP_TARGET_M              (NAVI_JUMP_BACKOFF_TARGET_M - NAVI_JUMP_RUNUP_RESERVE_M)
+#define NAVI_JUMP_RUNUP_TARGET_M              (0.15f)
 #define NAVI_JUMP_PREPARE_SPEED               NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_TAKEOFF_SPEED               NAVI_JUMP_RUNUP_SPEED
 #define NAVI_JUMP_BURST_PWM           (1300)
@@ -214,11 +213,12 @@ static void navi_bump_fault_exit(uint16_t target_idx)
 #define NAVI_JUMP_EXE_BUFFER_X        (+0.00f)
 #define NAVI_JUMP_EXE_BUFFER_Y        (0.035f)
 #define NAVI_JUMP_RECOVER_PWM         (420)
-#define NAVI_JUMP_PREPARE_MS          (100U)
-#define NAVI_JUMP_BURST_MS            (180U)
-#define NAVI_JUMP_AIR_RETRACT_MS      (40U)
-#define NAVI_JUMP_RECOVER_MS          (50U)
-#define NAVI_JUMP_LANDING_MAX_MS      (600U)
+#define NAVI_JUMP_PREPARE_RAMP_MS     (260U)
+#define NAVI_JUMP_PREPARE_MS          (200U)
+#define NAVI_JUMP_BURST_MS            (360U)
+#define NAVI_JUMP_AIR_RETRACT_MS      (80U)
+#define NAVI_JUMP_RECOVER_MS          (100U)
+#define NAVI_JUMP_LANDING_MAX_MS      (1200U)
 #define NAVI_JUMP_LAND_ACCEL_G        (1.0f)
 
 #define NAVI_TRIPLE_JUMP_TOTAL_COUNT      (3U)
@@ -926,7 +926,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             target_angle = jump_hold_control_yaw;
             jump_drive_symmetric_pwm(
                 jump_calc_prepare_pwm((uint16)action_fsm.state_timer_ms,
-                                      (uint16)NAVI_JUMP_PREPARE_MS));
+                                      (uint16)NAVI_JUMP_PREPARE_RAMP_MS));
 
             if (action_fsm.state_timer_ms >= NAVI_JUMP_PREPARE_MS) {
                 action_fsm.state = FSM_JUMP_TAKEOFF;
