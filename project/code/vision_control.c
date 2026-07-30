@@ -1,11 +1,5 @@
 #include "vision_control.h"
-
-#define VISION_DEADBAND_PX       (5)
-#define VISION_GAIN_DEG_PER_PX   (0.32f)
-#define VISION_D_GAIN_DEG_PER_PX_STEP (0.15f)
-#define VISION_FILTER_OLD        (0.65f)
-#define VISION_FILTER_NEW        (0.35f)
-#define VISION_SIGN              (-1.0f)
+#include "course3_tuning.h"
 
 void vision_control_reset(VisionControlState_t *state)
 {

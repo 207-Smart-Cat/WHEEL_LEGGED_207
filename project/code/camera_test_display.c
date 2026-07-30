@@ -3,6 +3,7 @@
 #include "camera_assist.h"
 #include "ipc_shared_data.h"
 #include "course3_display_state.h"
+#include "course3_tuning.h"
 #include "vision_align_calibration.h"
 #include "zf_common_font.h"
 #include "zf_device_ips200.h"
@@ -107,6 +108,11 @@ void CameraTestDisplay_DrawStatusText(void)
             core_a_status.vision_align_right_sample_count,
             VISION_ALIGN_SIDE_SAMPLE_TARGET);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
+    sprintf(line, "Px:S%02d Db%02d P:%4.2f",
+            VISION_ALIGN_SAMPLE_ERROR_PX,
+            VISION_DEADBAND_PX,
+            VISION_PIXEL_TO_ANGLE_P_DEG_PER_PX);
+    camera_test_show_info(CAMERA_TEST_INFO_Y + 176U, line);
 }
 
 void CameraTestDisplay_DrawCourse3FsmOverlay(void)
@@ -256,6 +262,13 @@ void CameraTestDisplay_Render(void)
             core_a_status.vision_align_result_yaw,
             core_a_status.vision_align_result_valid ? "OK" : "--");
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
-    sprintf(line, "Rows:%3u %s", status->valid_rows, status->lane_valid ? "ACTIVE" : "SEARCH");
+    sprintf(line, "Px:S%02d Db%02d C%02d",
+            VISION_ALIGN_SAMPLE_ERROR_PX,
+            VISION_DEADBAND_PX,
+            COURSE3_ALIGN_CENTER_PX);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
+    sprintf(line, "PixPD P:%4.2f D:%4.2f",
+            VISION_PIXEL_TO_ANGLE_P_DEG_PER_PX,
+            VISION_PIXEL_TO_ANGLE_D_DEG_PER_PX);
+    camera_test_show_info(CAMERA_TEST_INFO_Y + 176U, line);
 }

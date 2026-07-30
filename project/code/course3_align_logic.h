@@ -2,9 +2,7 @@
 #define COURSE3_ALIGN_LOGIC_H
 
 #include <stdint.h>
-
-#define COURSE3_ALIGN_SIDE_SAMPLE_COUNT (5U)
-#define COURSE3_ALIGN_CANDIDATE_COUNT   (20U)
+#include "course3_tuning.h"
 
 typedef struct
 {

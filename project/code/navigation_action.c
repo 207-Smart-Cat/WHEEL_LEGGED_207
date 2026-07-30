@@ -10,6 +10,7 @@
 #include "runtime_status.h"
 #include "bridge_roll_peak.h"
 #include "course3_bridge_logic.h"
+#include "course3_tuning.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -92,19 +93,6 @@ static Course3AuxSegmentControl_t course3_aux_segment;
 static uint8_t course3_display_state = COURSE3_DISPLAY_IDLE;
 static uint8_t course3_display_done_pending_clear = 0U;
 
-#define COURSE3_ALIGN_SPEED             (50.0f)
-#define COURSE3_SEARCH_SPEED            (50.0f)
-#define COURSE3_ALIGN_CENTER_PX         (5)
-#define COURSE3_ALIGN_LOST_MS           (3000U)
-#define COURSE3_VISION_CAL_SPEED          (50.0f)
-#define COURSE3_BRIDGE_SPEED             (233.0f)
-#define COURSE3_BRIDGE_LEG_Y             (0.03f)
-#define COURSE3_BRIDGE_SPEED_P           (0.012f)
-#define COURSE3_BRIDGE_HOLD_MS           (1000U)
-#define COURSE3_ACTION_DIRECTION_P        (50.0f)
-#define COURSE3_BRIDGE_DIRECTION_P        (50.0f)
-#define COURSE3_AUX_SEGMENT_SPEED         (300.0f)
-#define COURSE3_AUX_SEGMENT_DIRECTION_P   (50.0f)
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
 #endif

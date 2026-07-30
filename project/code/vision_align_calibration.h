@@ -2,12 +2,7 @@
 #define VISION_ALIGN_CALIBRATION_H
 
 #include "zf_common_typedef.h"
-
-#define VISION_ALIGN_STABLE_WINDOW_FRAMES  (15U)
-#define VISION_ALIGN_SAMPLE_COUNT_TARGET   (8U)
-#define VISION_ALIGN_SIDE_SAMPLE_TARGET    (4U)
-#define VISION_ALIGN_STABLE_ERROR_PX       (40)
-#define VISION_ALIGN_SAMPLE_ERROR_PX       (5)
+#include "course3_tuning.h"
 
 typedef enum
 {
