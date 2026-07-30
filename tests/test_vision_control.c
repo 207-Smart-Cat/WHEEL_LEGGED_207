@@ -60,11 +60,17 @@ static void test_conditional_integral(void)
     int i;
 
     vision_turn_control_reset(&state);
-    assert_close(vision_turn_control_update(&state, 3.0f, 0.0f,
+    assert_close(vision_turn_control_update(&state, 6.0f, 0.0f,
                                             COURSE3_VISION_CONTROL_DT_S, 1U),
-                 COURSE3_VISION_DIRECTION_P * 3.0f);
+                 COURSE3_VISION_DIRECTION_P * 6.0f);
     assert_close(state.integral_deg_s, 0.0f);
     assert_close(state.i_output, 0.0f);
+
+    vision_turn_control_reset(&state);
+    (void)vision_turn_control_update(&state, 5.0f, 0.0f, 0.001f, 1U);
+    assert(state.integral_deg_s > 0.0f);
+    (void)vision_turn_control_update(&state, 5.01f, 0.0f, 0.001f, 1U);
+    assert_close(state.integral_deg_s, 0.0f);
 
     vision_turn_control_reset(&state);
     for (i = 0; i < 1000; ++i)

@@ -5,6 +5,7 @@ $tuning = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/course3_tu
 $control = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/control.c') -Raw
 $vision = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/vision_control.c') -Raw
 $camera = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/camera_assist.c') -Raw
+$display = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/camera_test_display.c') -Raw
 $main = Get-Content -LiteralPath (Join-Path $repoRoot 'project/user/main_cm7_0.c') -Raw
 
 $requiredMacros = @(
@@ -62,6 +63,16 @@ if ($main -notmatch 'pit_ms_init\(PIT_Balance,\s*1\)') {
 
 if ($tuning -notmatch '#define\s+COURSE3_VISION_CONTROL_DT_S\s+\(0\.001f\)') {
     throw 'Vision PID dt does not match the configured 1 ms balance period.'
+}
+
+if ($tuning -notmatch '#define\s+COURSE3_VISION_I_ERROR_MAX_DEG\s+\(5\.00f\)') {
+    throw 'Vision integral error upper bound is not 5 degrees.'
+}
+
+if (([regex]::Matches($display, 'Lim L:%\+5\.0f R:%\+5\.0f')).Count -ne 2 -or
+    ([regex]::Matches($display, 'COURSE3_VISION_TURN_PWM_LIMIT,\s*-COURSE3_VISION_TURN_PWM_LIMIT')).Count -ne 2 -or
+    $display -match 'Trn L:') {
+    throw 'Vision screen does not show the configured positive and negative turn limits.'
 }
 
 $resetCount = ([regex]::Matches($control, 'Vision_Turn_Reset\(\)')).Count

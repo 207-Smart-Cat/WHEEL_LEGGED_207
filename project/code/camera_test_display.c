@@ -110,7 +110,9 @@ void CameraTestDisplay_DrawStatusText(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
     sprintf(line, "Yaw:%7.2f T:%7.2f", core_a_status.yaw, core_a_status.target_angle_status);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
-    sprintf(line, "Trn L:%+5.0f R:%+5.0f", core_a_status.pid_out_turn, -core_a_status.pid_out_turn);
+    sprintf(line, "Lim L:%+5.0f R:%+5.0f",
+            COURSE3_VISION_TURN_PWM_LIMIT,
+            -COURSE3_VISION_TURN_PWM_LIMIT);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
     sprintf(line, "PWM L:%5d R:%5d",
             abs((int)core_a_status.left_pwm_duty),
@@ -259,7 +261,9 @@ void CameraTestDisplay_Render(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 60U, line);
     sprintf(line, "Yaw:%7.2f T:%7.2f", core_a_status.yaw, core_a_status.target_angle_status);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 80U, line);
-    sprintf(line, "Trn L:%+5.0f R:%+5.0f", core_a_status.pid_out_turn, -core_a_status.pid_out_turn);
+    sprintf(line, "Lim L:%+5.0f R:%+5.0f",
+            COURSE3_VISION_TURN_PWM_LIMIT,
+            -COURSE3_VISION_TURN_PWM_LIMIT);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
     sprintf(line, "PWM L:%5d R:%5d",
             abs((int)core_a_status.left_pwm_duty),

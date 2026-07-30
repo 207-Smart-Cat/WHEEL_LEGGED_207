@@ -26,7 +26,7 @@
 #define COURSE3_ALIGN_CENTER_PX            (5)
 #define COURSE3_ALIGN_LOST_MS              (3000U)
 #define VISION_MENU_CAL_SPEED              (100.0f)
-#define COURSE3_VISION_CAL_SPEED           (99.0f)
+#define COURSE3_VISION_CAL_SPEED           (120.0f)
 
 /* Course 3 action execution parameters. */
 #define COURSE3_BRIDGE_SPEED               (233.0f)
@@ -39,7 +39,7 @@
 #define COURSE3_VISION_DIRECTION_D         (0.0f)
 #define COURSE3_VISION_CONTROL_DT_S        (0.001f)
 #define COURSE3_VISION_I_ERROR_MIN_DEG     (0.15f)
-#define COURSE3_VISION_I_ERROR_MAX_DEG     (1.50f)
+#define COURSE3_VISION_I_ERROR_MAX_DEG     (5.00f)
 #define COURSE3_VISION_I_YAW_RATE_MAX_DPS  (8.0f)
 #define COURSE3_VISION_I_OUTPUT_LIMIT      (80.0f)
 #define COURSE3_VISION_TURN_PWM_LIMIT      (500.0f)
