@@ -11,6 +11,7 @@
 #include "vision_control.h"
 #include "navigation_action.h"
 #include "vision_align_calibration.h"
+#include "course3_tuning.h"
 
 #define BALANCE_CONTROL_RUN_LEG_CONTROL 1
 #define VISION_FRAME_TIMEOUT_TICKS 150U  // balance loop runs at 1 ms.
@@ -692,7 +693,7 @@ static float turn_compute(float current_yaw, float target_yaw, uint8_t use_integ
     else
     {
         g_turn_yaw_integral = 0.0f;
-        control_output = vision_control_pd_output(yaw_error, yaw_rate, Direction_p, Direction_d, 2200.0f);
+        control_output = vision_control_pd_output(yaw_error, yaw_rate, COURSE3_VISION_DIRECTION_P, Direction_d, 2200.0f);
     }
 
     return control_output;
