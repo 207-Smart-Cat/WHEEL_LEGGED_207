@@ -664,10 +664,7 @@ static float turn_compute(float current_yaw, float target_yaw, uint8_t use_integ
     while (yaw_error > 180.0f)  yaw_error -= 360.0f;
     while (yaw_error < -180.0f) yaw_error += 360.0f;
 
-    if (fabsf(yaw_error) < 1.5f)
-    {
-        yaw_error = 0.0f;
-    }
+
 
     if (use_integral)
     {
@@ -821,7 +818,7 @@ static void vision_mode_apply(void)
             return;
         }
 
-        target_velocity = 50.0f;
+        target_velocity = COURSE3_VISION_CAL_SPEED;
     }
 
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)

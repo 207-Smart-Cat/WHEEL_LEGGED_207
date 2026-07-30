@@ -26,7 +26,7 @@
 #define COURSE3_SEARCH_SPEED               (110.0f)
 #define COURSE3_ALIGN_CENTER_PX            (5)
 #define COURSE3_ALIGN_LOST_MS              (3000U)
-#define COURSE3_VISION_CAL_SPEED           (50.0f)
+#define COURSE3_VISION_CAL_SPEED           (78.0f)
 
 /* Course 3 action execution parameters. */
 #define COURSE3_BRIDGE_SPEED               (233.0f)

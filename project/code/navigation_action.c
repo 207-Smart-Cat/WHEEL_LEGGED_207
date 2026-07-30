@@ -86,6 +86,8 @@ typedef struct
     uint16_t start_idx;
     uint16_t end_idx;
     float saved_direction_p;
+    uint8_t anti_stall_saved;
+    uint8_t saved_anti_stall_enabled;
     float target_yaw;
 } Course3AuxSegmentControl_t;
 
@@ -197,6 +199,16 @@ static void course3_aux_restore_direction(void)
     course3_aux_segment.direction_saved = 0U;
 }
 
+static void course3_aux_restore_anti_stall(void)
+{
+    if (course3_aux_segment.anti_stall_saved)
+    {
+        Runtime_Set_Module_Enabled(RUNTIME_MODULE_ANTI_STALL,
+                                   course3_aux_segment.saved_anti_stall_enabled);
+    }
+    course3_aux_segment.anti_stall_saved = 0U;
+}
+
 void Navi_Action_Reset_New_Course3_Segments(void)
 {
     uint8_t ramp_calibrating =
@@ -219,6 +231,7 @@ void Navi_Action_Reset_New_Course3_Segments(void)
     }
     Navi_Course3_Bridge_Odometry_End();
     course3_aux_restore_direction();
+    course3_aux_restore_anti_stall();
     memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
 }
 
@@ -241,6 +254,13 @@ static uint8_t course3_aux_begin(WayPoint_Type type,
     course3_aux_segment.saved_direction_p = Direction_p;
     course3_aux_segment.direction_saved = 1U;
     course3_aux_segment.target_yaw = calibrated_yaw;
+    if (type == WP_TYPE_BUMP)
+    {
+        course3_aux_segment.saved_anti_stall_enabled =
+            Runtime_Is_Module_Enabled(RUNTIME_MODULE_ANTI_STALL);
+        course3_aux_segment.anti_stall_saved = 1U;
+        Runtime_Set_Module_Enabled(RUNTIME_MODULE_ANTI_STALL, 1U);
+    }
 
     navi_ctrl.point_current_idx = end_idx;
     return 1U;
@@ -774,6 +794,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 {
                     target_velocity = 0.0f;
                     course3_aux_restore_direction();
+                    course3_aux_restore_anti_stall();
                     memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
                     Turn_Reset();
                     navi_tracking_speed_profile_reset();
@@ -804,6 +825,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 
                     target_velocity = 0.0f;
                     course3_aux_restore_direction();
+                    course3_aux_restore_anti_stall();
                     memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
                     Turn_Reset();
                     navi_tracking_speed_profile_reset();
