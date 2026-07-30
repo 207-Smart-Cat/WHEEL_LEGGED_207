@@ -4,6 +4,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $tuning = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/course3_tuning.h') -Raw
 $control = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/control.c') -Raw
 $vision = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/vision_control.c') -Raw
+$calibration = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/vision_align_calibration.c') -Raw
 $camera = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/camera_assist.c') -Raw
 $display = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/camera_test_display.c') -Raw
 $main = Get-Content -LiteralPath (Join-Path $repoRoot 'project/user/main_cm7_0.c') -Raw
@@ -67,6 +68,18 @@ if ($tuning -notmatch '#define\s+COURSE3_VISION_CONTROL_DT_S\s+\(0\.001f\)') {
 
 if ($tuning -notmatch '#define\s+COURSE3_VISION_I_ERROR_MAX_DEG\s+\(5\.00f\)') {
     throw 'Vision integral error upper bound is not 5 degrees.'
+}
+
+if ($tuning -notmatch '#define\s+VISION_ALIGN_SAMPLE_COUNT_TARGET\s+\(14U\)' -or
+    $tuning -notmatch '#define\s+VISION_ALIGN_COMPLETE_TIMEOUT_MS\s+\(800U\)' -or
+    $tuning -match 'VISION_ALIGN_SIDE_SAMPLE_TARGET') {
+    throw 'Vision alignment completion parameters are not consecutive 14 frames with an 800 ms timeout.'
+}
+
+if ($calibration -match 'VISION_ALIGN_SIDE_SAMPLE_TARGET' -or
+    $calibration -notmatch 'if\s*\(!within_sample\)[\s\S]*?cal->sample_count\s*=\s*0U' -or
+    $calibration -notmatch 'cal->elapsed_ms\s*>=\s*VISION_ALIGN_COMPLETE_TIMEOUT_MS') {
+    throw 'Vision alignment completion logic still depends on side quotas or lacks consecutive/timeout handling.'
 }
 
 if (([regex]::Matches($display, 'Lim L:%\+5\.0f R:%\+5\.0f')).Count -ne 2 -or

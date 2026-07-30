@@ -4,9 +4,9 @@
 /* Course 3 vision alignment thresholds. */
 #define VISION_ALIGN_STABLE_WINDOW_FRAMES  (20U)
 #define VISION_ALIGN_SAMPLE_COUNT_TARGET   (14U)
-#define VISION_ALIGN_SIDE_SAMPLE_TARGET    (7U)
 #define VISION_ALIGN_STABLE_ERROR_PX       (40)
 #define VISION_ALIGN_SAMPLE_ERROR_PX       (5)
+#define VISION_ALIGN_COMPLETE_TIMEOUT_MS   (800U)
 
 /* Course 3 pixel-error to yaw-angle PD mapping. */
 #define VISION_PIXEL_TO_ANGLE_P_DEG_PER_PX (0.3f)

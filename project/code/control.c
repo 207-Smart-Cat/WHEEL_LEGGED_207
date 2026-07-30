@@ -810,7 +810,8 @@ static void vision_apply_course3_calibration(uint8_t valid, float calibration_sp
                           valid,
                           core_b_cmd.vision_frame_seq,
                           core_b_cmd.vision_lane_error_px,
-                          IMU_data.filter_result.yaw);
+                          IMU_data.filter_result.yaw,
+                          (uint16)(COURSE3_VISION_CONTROL_DT_S * 1000.0f));
 
     if (VisionAlignCal_ResultValid(&g_vision_align_cal))
     {
