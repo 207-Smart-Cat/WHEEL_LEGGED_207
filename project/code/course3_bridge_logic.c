@@ -1,9 +1,21 @@
 #include "course3_bridge_logic.h"
 #include "navigation_tracking.h"
 
-#define COURSE3_BRIDGE_VEHICLE_MODE (3U)
+#define COURSE3_VISION_VEHICLE_MODE   (3U)
+#define COURSE3_INERTIAL_VEHICLE_MODE (4U)
 #define COURSE3_CH4_LOW_MID_BOUNDARY (592)
 #define COURSE3_CH4_MID_HIGH_BOUNDARY (1392)
+
+uint8 Course3Mode_IsCourse3(uint8 vehicle_mode)
+{
+    return (vehicle_mode == COURSE3_VISION_VEHICLE_MODE ||
+            vehicle_mode == COURSE3_INERTIAL_VEHICLE_MODE) ? 1U : 0U;
+}
+
+uint8 Course3Mode_UsesVision(uint8 vehicle_mode)
+{
+    return (vehicle_mode == COURSE3_VISION_VEHICLE_MODE) ? 1U : 0U;
+}
 
 uint8 Course3Segment_IsPairedType(uint8 waypoint_type)
 {
@@ -18,6 +30,12 @@ uint8 Course3Segment_RequiresVision(uint8 waypoint_type)
             waypoint_type == WP_TYPE_STAIR_RAMP) ? 1U : 0U;
 }
 
+uint8 Course3Segment_RequiresVisionForMode(uint8 vehicle_mode, uint8 waypoint_type)
+{
+    return (Course3Mode_UsesVision(vehicle_mode) &&
+            Course3Segment_RequiresVision(waypoint_type)) ? 1U : 0U;
+}
+
 uint8 Course3Segment_PointCount(uint8 waypoint_type)
 {
     if (Course3Segment_RequiresVision(waypoint_type))
@@ -25,6 +43,20 @@ uint8 Course3Segment_PointCount(uint8 waypoint_type)
         return 3U;
     }
     return (waypoint_type == WP_TYPE_BUMP) ? 2U : 0U;
+}
+
+uint8 Course3Segment_PointCountForMode(uint8 vehicle_mode, uint8 waypoint_type)
+{
+    if (!Course3Mode_IsCourse3(vehicle_mode) ||
+        !Course3Segment_IsPairedType(waypoint_type))
+    {
+        return 0U;
+    }
+    if (!Course3Mode_UsesVision(vehicle_mode))
+    {
+        return 2U;
+    }
+    return Course3Segment_PointCount(waypoint_type);
 }
 
 uint16 Course3Segment_ExpectedAction(uint8 waypoint_type, uint8 ordinal)
@@ -44,19 +76,48 @@ uint16 Course3Segment_ExpectedAction(uint8 waypoint_type, uint8 ordinal)
     return 0U;
 }
 
+uint16 Course3Segment_ExpectedActionForMode(uint8 vehicle_mode,
+                                           uint8 waypoint_type,
+                                           uint8 ordinal)
+{
+    if (Course3Segment_PointCountForMode(vehicle_mode, waypoint_type) == 0U)
+    {
+        return 0U;
+    }
+    if (!Course3Mode_UsesVision(vehicle_mode))
+    {
+        if (ordinal == 0U) return NAVI_SEGMENT_ACTION_START;
+        if (ordinal == 1U) return NAVI_SEGMENT_ACTION_END;
+        return 0U;
+    }
+    return Course3Segment_ExpectedAction(waypoint_type, ordinal);
+}
+
 uint8 Course3Segment_IsStartAction(uint8 waypoint_type, uint16 action_cmd)
 {
     return (Course3Segment_PointCount(waypoint_type) > 0U &&
             action_cmd == Course3Segment_ExpectedAction(waypoint_type, 0U)) ? 1U : 0U;
 }
 
+uint8 Course3Segment_IsStartActionForMode(uint8 vehicle_mode,
+                                         uint8 waypoint_type,
+                                         uint16 action_cmd)
+{
+    return (Course3Segment_PointCountForMode(vehicle_mode, waypoint_type) > 0U &&
+            action_cmd == Course3Segment_ExpectedActionForMode(vehicle_mode,
+                                                               waypoint_type,
+                                                               0U)) ? 1U : 0U;
+}
+
 uint8 Course3Segment_ShouldQueueAction(uint8 vehicle_mode,
                                        uint8 waypoint_type,
                                        uint16 action_cmd)
 {
-    return (vehicle_mode == COURSE3_BRIDGE_VEHICLE_MODE &&
+    return (Course3Mode_IsCourse3(vehicle_mode) &&
             Course3Segment_IsPairedType(waypoint_type) &&
-            Course3Segment_IsStartAction(waypoint_type, action_cmd)) ? 1U : 0U;
+            Course3Segment_IsStartActionForMode(vehicle_mode,
+                                                waypoint_type,
+                                                action_cmd)) ? 1U : 0U;
 }
 
 uint8 Course3Segment_ShouldApproach(uint8 vehicle_mode,
@@ -114,7 +175,9 @@ uint8 Course3Bridge_ShouldQueueAction(uint8 vehicle_mode,
                                       uint8 waypoint_type,
                                       uint16 action_cmd)
 {
-    return (vehicle_mode == COURSE3_BRIDGE_VEHICLE_MODE &&
+    return (Course3Mode_IsCourse3(vehicle_mode) &&
             waypoint_type == WP_TYPE_BRIDGE &&
-            action_cmd == NAVI_BRIDGE_ACTION_START) ? 1U : 0U;
+            Course3Segment_IsStartActionForMode(vehicle_mode,
+                                                waypoint_type,
+                                                action_cmd)) ? 1U : 0U;
 }

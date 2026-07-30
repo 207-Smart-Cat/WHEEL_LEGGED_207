@@ -6,11 +6,21 @@
 uint8 Course3Bridge_ShouldQueueAction(uint8 vehicle_mode,
                                       uint8 waypoint_type,
                                       uint16 action_cmd);
+uint8 Course3Mode_IsCourse3(uint8 vehicle_mode);
+uint8 Course3Mode_UsesVision(uint8 vehicle_mode);
 uint8 Course3Segment_IsPairedType(uint8 waypoint_type);
 uint8 Course3Segment_RequiresVision(uint8 waypoint_type);
 uint8 Course3Segment_PointCount(uint8 waypoint_type);
 uint16 Course3Segment_ExpectedAction(uint8 waypoint_type, uint8 ordinal);
+uint8 Course3Segment_RequiresVisionForMode(uint8 vehicle_mode, uint8 waypoint_type);
+uint8 Course3Segment_PointCountForMode(uint8 vehicle_mode, uint8 waypoint_type);
+uint16 Course3Segment_ExpectedActionForMode(uint8 vehicle_mode,
+                                           uint8 waypoint_type,
+                                           uint8 ordinal);
 uint8 Course3Segment_IsStartAction(uint8 waypoint_type, uint16 action_cmd);
+uint8 Course3Segment_IsStartActionForMode(uint8 vehicle_mode,
+                                         uint8 waypoint_type,
+                                         uint16 action_cmd);
 uint8 Course3Segment_ShouldQueueAction(uint8 vehicle_mode,
                                        uint8 waypoint_type,
                                        uint16 action_cmd);

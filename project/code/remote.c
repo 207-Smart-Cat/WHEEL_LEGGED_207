@@ -294,7 +294,7 @@ static WayPoint_Type Remote_GetRecordPointType(void)
     }
 
     // Course 3: CH4 selects bridge/bump/stair-ramp; CH6 records the selected special point.
-    if (mode == VEHICLE_MODE_COURSE_3)
+    if (Course3Mode_IsCourse3(mode))
     {
         uint8 open_type = Navi_Record_Get_Open_Segment_Type();
 
@@ -506,7 +506,7 @@ void Remote_control_callback(void)
     {
         uint8 remote_drive_enabled = (Remote_GetChannelData(5) > 1000) ? 1 : 0;
         if (Remote_Is_Navi_Record_Mode() &&
-            Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+            Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()))
         {
             Remote_ResetEmergencyTrigger();
         }
@@ -544,7 +544,7 @@ void Remote_control_callback(void)
         {
             uint8 normal_recorded = 0U;
             Remote_ResetJumpTrigger();
-            if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+            if (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()))
             {
                 normal_recorded = Remote_CheckNormalRecordTrigger(remote_drive_enabled);
             }

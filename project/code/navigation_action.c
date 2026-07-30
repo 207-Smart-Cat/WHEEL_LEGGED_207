@@ -106,6 +106,11 @@ static Course3VisionSegmentControl_t course3_vision_segment;
 
 static uint8_t course3_display_state = COURSE3_DISPLAY_IDLE;
 static uint8_t course3_display_done_pending_clear = 0U;
+static uint8_t course3_aux_begin(WayPoint_Type type,
+                                 uint16_t sequence_idx,
+                                 uint16_t start_idx,
+                                 uint16_t end_idx,
+                                 float target_yaw);
 
 #if (NAVI_JUMP_POSE_UPDATE_MODE == 2U)
 static uint8_t jump_pose_update_active = 0;
@@ -149,7 +154,8 @@ uint8_t Navi_Action_Bridge_Vision_Cal_Active(void)
             Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
                                              (uint8)point_map[idx].type,
                                              point_map[idx].action_cmd) &&
-            Course3Segment_RequiresVision((uint8)point_map[idx].type)) ? 1U : 0U;
+            Course3Segment_RequiresVisionForMode(Runtime_Get_Vehicle_Mode(),
+                                                 (uint8)point_map[idx].type)) ? 1U : 0U;
 }
 uint8_t Navi_Action_Vision_Calibration_Waiting(void)
 {
@@ -288,12 +294,12 @@ static uint8_t course3_vision_segment_find_indices(uint16_t calibrate_idx,
     return 1U;
 }
 
-static float course3_vision_segment_get_map_target_yaw(uint16_t entry_idx,
-                                                       uint16_t end_idx)
+static float course3_segment_get_map_target_yaw(uint16_t start_idx,
+                                                uint16_t end_idx)
 {
     float segment_azimuth = navi_get_two_points_azimuth(
-        point_map[entry_idx].x,
-        point_map[entry_idx].y,
+        point_map[start_idx].x,
+        point_map[start_idx].y,
         point_map[end_idx].x,
         point_map[end_idx].y);
     float navigation_turn_error =
@@ -302,6 +308,50 @@ static float course3_vision_segment_get_map_target_yaw(uint16_t entry_idx,
     /* The steering loop uses IMU yaw with the opposite sign to map yaw. */
     return navi_limit_angle180(IMU_data.filter_result.yaw -
                                navigation_turn_error);
+}
+
+static uint8_t course3_inertial_segment_begin(uint16_t start_idx,
+                                              WayPoint_Type type)
+{
+    uint16_t end_idx = (uint16_t)(start_idx + 1U);
+    float map_target_yaw;
+
+    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3_INERTIAL ||
+        !Course3Segment_IsPairedType((uint8)type) ||
+        end_idx >= navi_ctrl.point_total_count ||
+        !point_map[end_idx].valid || point_map[end_idx].type != type ||
+        point_map[end_idx].action_cmd != NAVI_SEGMENT_ACTION_END)
+    {
+        return 0U;
+    }
+
+    map_target_yaw = course3_segment_get_map_target_yaw(start_idx, end_idx);
+    if (type == WP_TYPE_BRIDGE)
+    {
+        course3_bridge_target_yaw = map_target_yaw;
+        course3_bridge_sequence_idx = start_idx;
+        course3_bridge_start_idx = start_idx;
+        course3_bridge_end_idx = end_idx;
+        course3_bridge_action_active = 1U;
+        course3_bridge_action_initialized = 0U;
+        course3_bridge_low_restored = 0U;
+        navi_ctrl.point_current_idx = end_idx;
+    }
+    else if (!course3_aux_begin(type,
+                                start_idx,
+                                start_idx,
+                                end_idx,
+                                map_target_yaw))
+    {
+        return 0U;
+    }
+
+    target_angle = map_target_yaw;
+    action_fsm.state = FSM_COURSE3_ACTION;
+    action_fsm.state_timer_ms = 0U;
+    is_action_busy = 1U;
+    course3_display_state = COURSE3_DISPLAY_ACTION;
+    return 1U;
 }
 
 
@@ -383,7 +433,7 @@ static uint8_t course3_aux_begin(WayPoint_Type type,
 
 uint8_t Navi_Action_Course3_Execution_Active(void)
 {
-    return (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
+    return (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()) &&
             navi_ctrl.navi_mode_driver == 1U &&
             navi_ctrl.point_current_idx < navi_ctrl.point_total_count) ? 1U : 0U;
 }
@@ -647,9 +697,9 @@ void navi_parse_global_path(void) {
     for (int i = 0; i < navi_ctrl.point_total_count; i++) {
         // 科目三单边桥和台阶经过 Track_align -> Action -> Done。
         if (point_map[i].type == WP_TYPE_MINE_SWEEP ||
-            (point_map[i].type == WP_TYPE_JUMP && mode != VEHICLE_MODE_COURSE_3) ||
-            (mode == VEHICLE_MODE_COURSE_3 &&
-             (point_map[i].type == WP_TYPE_JUMP ||
+            (point_map[i].type == WP_TYPE_JUMP && !Course3Mode_IsCourse3(mode)) ||
+            (Course3Mode_IsCourse3(mode) &&
+             ((Course3Mode_UsesVision(mode) && point_map[i].type == WP_TYPE_JUMP) ||
               Course3Segment_ShouldQueueAction(mode, (uint8)point_map[i].type, point_map[i].action_cmd))))  {
             if (point_map[i].type == WP_TYPE_JUMP) {
                 point_map[i].action_cmd = NAVI_JUMP_ACTION_MODE;
@@ -689,6 +739,20 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 action_fsm.state_timer_ms = 0;
                 is_action_busy = 1;         // 锁定动作接管
             }
+            else if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3_INERTIAL &&
+                     Course3Segment_IsPairedType((uint8)upcoming_type) &&
+                     Course3Segment_IsStartActionForMode(Runtime_Get_Vehicle_Mode(),
+                                                        (uint8)upcoming_type,
+                                                        point_map[target_idx].action_cmd) &&
+                     navi_isreach_target_point(target_idx))
+            {
+                if (!course3_inertial_segment_begin(target_idx, upcoming_type))
+                {
+                    target_velocity = 0.0f;
+                    navi_ctrl.navi_mode_driver = 0U;
+                    vofa_mode_driver = 0.0f;
+                }
+            }
             else if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
                      upcoming_type == WP_TYPE_BUMP &&
                      point_map[target_idx].action_cmd == NAVI_SEGMENT_ACTION_START &&
@@ -714,14 +778,16 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                       (Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
                                                        (uint8)upcoming_type,
                                                        point_map[target_idx].action_cmd) &&
-                       Course3Segment_RequiresVision((uint8)upcoming_type))) &&
+                       Course3Segment_RequiresVisionForMode(Runtime_Get_Vehicle_Mode(),
+                                                           (uint8)upcoming_type))) &&
                      navi_isreach_target_point(target_idx))
             {
                 Course3Align_Reset(&course3_align_samples);
                 if (Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
                                                      (uint8)upcoming_type,
                                                      point_map[target_idx].action_cmd) &&
-                    Course3Segment_RequiresVision((uint8)upcoming_type))
+                    Course3Segment_RequiresVisionForMode(Runtime_Get_Vehicle_Mode(),
+                                                        (uint8)upcoming_type))
                 {
                     uint16_t entry_idx = 0U;
                     uint16_t end_idx = 0U;
@@ -819,7 +885,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     uint16_t entry_idx = course3_vision_segment.entry_idx;
                     uint16_t end_idx = course3_vision_segment.end_idx;
                     float map_target_yaw =
-                        course3_vision_segment_get_map_target_yaw(entry_idx, end_idx);
+                        course3_segment_get_map_target_yaw(entry_idx, end_idx);
 
                     Navi_Course3_Calibration_Meter_End();
                     Vision_Align_Cal_Reset();

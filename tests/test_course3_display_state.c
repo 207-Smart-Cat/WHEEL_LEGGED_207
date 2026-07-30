@@ -22,6 +22,7 @@ int main(void)
     assert(Course3Vision_ShouldEnter(3U, COURSE3_DISPLAY_TRACK_ALIGN, 0U) == 1U);
     assert(Course3Vision_ShouldEnter(3U, COURSE3_DISPLAY_ACTION, 0U) == 0U);
     assert(Course3Vision_ShouldEnter(2U, COURSE3_DISPLAY_TRACK_ALIGN, 0U) == 0U);
+    assert(Course3Vision_ShouldEnter(4U, COURSE3_DISPLAY_TRACK_ALIGN, 0U) == 0U);
     assert(Course3Vision_ShouldEnter(3U, COURSE3_DISPLAY_IDLE, 0U) == 0U);
     assert(Course3Vision_ShouldRestore(COURSE3_DISPLAY_IDLE, 1U) == 1U);
     assert(Course3Vision_ShouldRestore(COURSE3_DISPLAY_ACTION, 1U) == 1U);

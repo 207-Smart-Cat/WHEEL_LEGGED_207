@@ -10,7 +10,8 @@ typedef enum
     VEHICLE_MODE_MANUAL = 0,       // 手动调试
     VEHICLE_MODE_COURSE_1 = 1,     // 科目一
     VEHICLE_MODE_COURSE_2 = 2,     // 科目二
-    VEHICLE_MODE_COURSE_3 = 3      // 科目三
+    VEHICLE_MODE_COURSE_3 = 3,     // 科目三（视觉校准）
+    VEHICLE_MODE_COURSE_3_INERTIAL = 4 // 科目三纯惯导
 } vehicle_mode_t;
 
 // 运行时可控制的模块。枚举顺序会作为 module_enable_mask 里的 bit 位序号使用。

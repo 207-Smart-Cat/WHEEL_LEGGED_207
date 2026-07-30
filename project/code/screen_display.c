@@ -294,6 +294,8 @@ static const ui_cn_glyph_t k_ui_cn_glyphs[] = {
     {0x65AD, {0x04,0x00,0x04,0x04,0x55,0x78,0x4E,0x40,0x44,0x40,0x7F,0x40,0x44,0x7E,0x4E,0x48,0x55,0x48,0x65,0x48,0x44,0x48,0x44,0x48,0x40,0x48,0x7F,0x88,0x00,0x88,0x01,0x08}},
     {0x636E, {0x20,0x00,0x23,0xFC,0x22,0x04,0x22,0x04,0xFB,0xFC,0x22,0x20,0x22,0x20,0x2B,0xFE,0x32,0x20,0xE2,0x20,0x22,0xFC,0x22,0x84,0x22,0x84,0x24,0x84,0xA4,0xFC,0x48,0x84}},
     {0x5F55, {0x00,0x00,0x3F,0xF0,0x00,0x10,0x00,0x10,0x1F,0xF0,0x00,0x10,0x00,0x10,0xFF,0xFE,0x01,0x00,0x21,0x08,0x11,0x90,0x05,0x60,0x09,0x20,0x31,0x18,0xC5,0x06,0x02,0x00}},
+    {0x7EAF, {0x10,0x40,0x10,0x40,0x20,0x40,0x23,0xFC,0x48,0x40,0xFA,0x48,0x12,0x48,0x22,0x48,0x42,0x48,0xFB,0xF8,0x40,0x48,0x00,0x40,0x18,0x42,0xE0,0x42,0x40,0x3E,0x00,0x00}},
+    {0x60EF, {0x11,0xFC,0x11,0x24,0x11,0x24,0x13,0xFE,0x19,0x24,0x55,0x24,0x51,0xFC,0x50,0x00,0x91,0xFC,0x11,0x04,0x11,0x24,0x11,0x24,0x11,0x24,0x10,0x58,0x10,0x84,0x13,0x02}},
     {0x8BB0, {0x00,0x00,0x20,0x00,0x11,0xF8,0x10,0x08,0x00,0x08,0x00,0x08,0xF0,0x08,0x11,0xF8,0x11,0x08,0x11,0x00,0x11,0x00,0x11,0x00,0x15,0x02,0x19,0x02,0x10,0xFE,0x00,0x00}},
 };
 
@@ -319,6 +321,7 @@ static const uint16_t UI_TEXT_T_MODE_MANUAL[] = {0x624B, 0x52A8, 0x8C03, 0x8BD5,
 static const uint16_t UI_TEXT_T_MODE_1[] = {0x79D1, 0x76EE, 0x4E00, 0x0000};
 static const uint16_t UI_TEXT_T_MODE_2[] = {0x79D1, 0x76EE, 0x4E8C, 0x0000};
 static const uint16_t UI_TEXT_T_MODE_3[] = {0x79D1, 0x76EE, 0x4E09, 0x0000};
+static const uint16_t UI_TEXT_T_MODE_3_INERTIAL[] = {0x79D1, 0x76EE, 0x4E09, 0x7EAF, 0x60EF, 0x5BFC, 0x0000};
 static const uint16_t UI_TEXT_T_TEST_BRIDGE[] = {0x5355, 0x8FB9, 0x6865, 0x6A21, 0x5F0F, 0x0000};
 static const uint16_t UI_TEXT_T_APPLIED[] = {0x5DF2, 0x5E94, 0x7528, 0x0000};
 static const uint16_t UI_TEXT_T_POINT_COLLECT[] = {0x6253, 0x70B9, 0x91C7, 0x96C6, 0x0000};
@@ -914,7 +917,8 @@ static const char *const k_mode_names[] = {
     "Manual Debug",
     "Subject 1",
     "Subject 2",
-    "Subject 3"
+    "Subject 3",
+    "Subject 3 Inertial"
 };
 
 static const char *const k_wifi_names[] = {
@@ -961,7 +965,8 @@ static const uint16_t *const k_mode_texts[] = {
     UI_TEXT_T_MODE_MANUAL,
     UI_TEXT_T_MODE_1,
     UI_TEXT_T_MODE_2,
-    UI_TEXT_T_MODE_3
+    UI_TEXT_T_MODE_3,
+    UI_TEXT_T_MODE_3_INERTIAL
 };
 
 static const uint16_t *const k_mode_action_texts[] = {
@@ -1385,7 +1390,7 @@ static uint8_t ui_mode_allows_mine_type(void)
 
 static WayPoint_Type ui_current_record_type(void)
 {
-    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+    if (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()))
     {
         return WP_TYPE_NORMAL;
     }
@@ -1423,6 +1428,8 @@ static const uint16_t *ui_waypoint_type_text(uint8 type)
 
 static const uint16_t *ui_waypoint_detail_text(uint8 type, uint16 action_cmd)
 {
+    uint8 mode = Runtime_Get_Vehicle_Mode();
+
     if ((WayPoint_Type)type == WP_TYPE_BUMP)
     {
         if (action_cmd == NAVI_BUMP_ACTION_START) return UI_TEXT_T_TYPE_BUMP_START;
@@ -1430,19 +1437,34 @@ static const uint16_t *ui_waypoint_detail_text(uint8 type, uint16 action_cmd)
     }
     else if ((WayPoint_Type)type == WP_TYPE_BRIDGE)
     {
-        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_CALIBRATE) return UI_TEXT_T_TYPE_BRIDGE_CAL;
-        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_ENTRY) return UI_TEXT_T_TYPE_BRIDGE_ENTRY;
-        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_END) return UI_TEXT_T_TYPE_BRIDGE_END;
+        if (!Course3Mode_UsesVision(mode))
+        {
+            if (action_cmd == NAVI_SEGMENT_ACTION_START) return UI_TEXT_T_TYPE_BRIDGE_START;
+            if (action_cmd == NAVI_SEGMENT_ACTION_END) return UI_TEXT_T_TYPE_BRIDGE_END;
+        }
+        else
+        {
+            if (action_cmd == NAVI_VISION_SEGMENT_ACTION_CALIBRATE) return UI_TEXT_T_TYPE_BRIDGE_CAL;
+            if (action_cmd == NAVI_VISION_SEGMENT_ACTION_ENTRY) return UI_TEXT_T_TYPE_BRIDGE_ENTRY;
+            if (action_cmd == NAVI_VISION_SEGMENT_ACTION_END) return UI_TEXT_T_TYPE_BRIDGE_END;
+        }
     }
     else if ((WayPoint_Type)type == WP_TYPE_STAIR_RAMP)
     {
-        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_CALIBRATE) return UI_TEXT_T_TYPE_RAMP_CAL;
-        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_ENTRY) return UI_TEXT_T_TYPE_RAMP_ENTRY;
-        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_END) return UI_TEXT_T_TYPE_RAMP_END;
+        if (!Course3Mode_UsesVision(mode))
+        {
+            if (action_cmd == NAVI_SEGMENT_ACTION_START) return UI_TEXT_T_TYPE_RAMP_START;
+            if (action_cmd == NAVI_SEGMENT_ACTION_END) return UI_TEXT_T_TYPE_RAMP_END;
+        }
+        else
+        {
+            if (action_cmd == NAVI_VISION_SEGMENT_ACTION_CALIBRATE) return UI_TEXT_T_TYPE_RAMP_CAL;
+            if (action_cmd == NAVI_VISION_SEGMENT_ACTION_ENTRY) return UI_TEXT_T_TYPE_RAMP_ENTRY;
+            if (action_cmd == NAVI_VISION_SEGMENT_ACTION_END) return UI_TEXT_T_TYPE_RAMP_END;
+        }
     }
     return ui_waypoint_type_text(type);
 }
-
 static const uint16_t *ui_storage_state_text(uint8 state)
 {
     switch ((NavStoreState_t)state)
@@ -1609,13 +1631,22 @@ static void ui_draw_course3_exec(void)
     ips200_show_string(8, 216, line);
     sprintf(line, "Phase:%-10s", phase);
     ips200_show_string(8, 238, line);
-    sprintf(line, "Action yaw: MAP P2-P3");
-    ips200_show_string(8, 258, line);
-    sprintf(line, "Cal:%4.2f/%4.2f Act:%4.2f/%4.2f",
-            core_a_status.course3_calibration_travelled,
-            core_a_status.course3_calibration_target,
-            core_a_status.course3_action_travelled,
-            core_a_status.course3_action_target);
+    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3_INERTIAL)
+    {
+        ips200_show_string(8, 258, "Action yaw: MAP START-END");
+        sprintf(line, "Action:%4.2f/%4.2f m",
+                core_a_status.course3_action_travelled,
+                core_a_status.course3_action_target);
+    }
+    else
+    {
+        ips200_show_string(8, 258, "Action yaw: MAP P2-P3");
+        sprintf(line, "Cal:%4.2f/%4.2f Act:%4.2f/%4.2f",
+                core_a_status.course3_calibration_travelled,
+                core_a_status.course3_calibration_target,
+                core_a_status.course3_action_travelled,
+                core_a_status.course3_action_target);
+    }
     ips200_show_string(8, 278, line);
     ips200_show_string(8, 302, "BACK: Home  UP+DN: Stop");
 }
@@ -1741,7 +1772,7 @@ static void ui_draw_record_collect(void)
     sprintf(line, "Y:% .3f", core_a_status.navi_record_last_y);
     ui_show_string_safe(8, 218, line);
 
-    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+    if (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()))
     {
         uint8 selected_type = Course3Remote_SelectSpecialType((int32)core_a_status.remote_ch4);
         ui_show_text(8, 244, UI_TEXT_T_CH3_RECORD);
@@ -1753,7 +1784,8 @@ static void ui_draw_record_collect(void)
             ui_show_text(140, 266, UI_TEXT_T_WAIT);
             ui_show_text(172, 266,
                          ui_waypoint_detail_text(core_a_status.navi_record_open_segment_type,
-                             Course3Segment_ExpectedAction(
+                             Course3Segment_ExpectedActionForMode(
+                                 Runtime_Get_Vehicle_Mode(),
                                  core_a_status.navi_record_open_segment_type,
                                  core_a_status.navi_record_next_segment_ordinal)));
         }
@@ -1764,7 +1796,7 @@ static void ui_draw_record_collect(void)
         ui_show_text(88, 246, ui_waypoint_type_text((uint8)ui_current_record_type()));
     }
 
-    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+    if (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()))
     {
         ui_draw_footer_text(UI_TEXT_T_HINT_COURSE3_RECORD);
     }
@@ -2344,7 +2376,7 @@ static void ui_handle_group_select(ui_key_event_t events[UI_KEY_COUNT])
                 }
                 else
                 {
-                    ui_set_screen((Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3) ?
+                    ui_set_screen((Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode())) ?
                                   UI_SCREEN_COURSE3_EXEC : UI_SCREEN_MODE_ACTION);
                 }
             }

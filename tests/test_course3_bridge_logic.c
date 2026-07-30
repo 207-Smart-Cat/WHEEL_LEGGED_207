@@ -6,6 +6,7 @@
 #include "navigation_tracking.h"
 
 #define TEST_VEHICLE_MODE_COURSE_3 (3U)
+#define TEST_VEHICLE_MODE_COURSE_3_INERTIAL (4U)
 #define TEST_VEHICLE_MODE_NORMAL   (0U)
 
 int main(void)
@@ -22,6 +23,11 @@ int main(void)
     assert(Course3Bridge_ShouldQueueAction(TEST_VEHICLE_MODE_NORMAL,
                                            WP_TYPE_BRIDGE,
                                            NAVI_BRIDGE_ACTION_START) == 0U);
+    assert(Course3Mode_IsCourse3(TEST_VEHICLE_MODE_COURSE_3) == 1U);
+    assert(Course3Mode_IsCourse3(TEST_VEHICLE_MODE_COURSE_3_INERTIAL) == 1U);
+    assert(Course3Mode_IsCourse3(TEST_VEHICLE_MODE_NORMAL) == 0U);
+    assert(Course3Mode_UsesVision(TEST_VEHICLE_MODE_COURSE_3) == 1U);
+    assert(Course3Mode_UsesVision(TEST_VEHICLE_MODE_COURSE_3_INERTIAL) == 0U);
 
     assert(Course3Segment_IsPairedType(WP_TYPE_BRIDGE) == 1U);
     assert(Course3Segment_IsPairedType(WP_TYPE_BUMP) == 1U);
@@ -37,12 +43,39 @@ int main(void)
     assert(Course3Segment_ExpectedAction(WP_TYPE_BRIDGE, 1U) == NAVI_VISION_SEGMENT_ACTION_ENTRY);
     assert(Course3Segment_ExpectedAction(WP_TYPE_BRIDGE, 2U) == NAVI_VISION_SEGMENT_ACTION_END);
     assert(Course3Segment_ExpectedAction(WP_TYPE_BUMP, 1U) == NAVI_BUMP_ACTION_END);
+    assert(Course3Segment_PointCountForMode(TEST_VEHICLE_MODE_COURSE_3,
+                                           WP_TYPE_BRIDGE) == 3U);
+    assert(Course3Segment_PointCountForMode(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                           WP_TYPE_BRIDGE) == 2U);
+    assert(Course3Segment_PointCountForMode(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                           WP_TYPE_BUMP) == 2U);
+    assert(Course3Segment_PointCountForMode(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                           WP_TYPE_STAIR_RAMP) == 2U);
+    assert(Course3Segment_ExpectedActionForMode(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                               WP_TYPE_BRIDGE,
+                                               0U) == NAVI_SEGMENT_ACTION_START);
+    assert(Course3Segment_ExpectedActionForMode(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                               WP_TYPE_BRIDGE,
+                                               1U) == NAVI_SEGMENT_ACTION_END);
+    assert(Course3Segment_RequiresVisionForMode(TEST_VEHICLE_MODE_COURSE_3,
+                                               WP_TYPE_BRIDGE) == 1U);
+    assert(Course3Segment_RequiresVisionForMode(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                               WP_TYPE_BRIDGE) == 0U);
     assert(Course3Segment_ShouldQueueAction(TEST_VEHICLE_MODE_COURSE_3,
                                             WP_TYPE_BUMP,
                                             NAVI_SEGMENT_ACTION_START) == 1U);
     assert(Course3Segment_ShouldQueueAction(TEST_VEHICLE_MODE_COURSE_3,
                                             WP_TYPE_STAIR_RAMP,
                                             NAVI_SEGMENT_ACTION_END) == 0U);
+    assert(Course3Segment_ShouldQueueAction(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                            WP_TYPE_BRIDGE,
+                                            NAVI_SEGMENT_ACTION_START) == 1U);
+    assert(Course3Segment_ShouldQueueAction(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                            WP_TYPE_BUMP,
+                                            NAVI_SEGMENT_ACTION_START) == 1U);
+    assert(Course3Segment_ShouldQueueAction(TEST_VEHICLE_MODE_COURSE_3_INERTIAL,
+                                            WP_TYPE_STAIR_RAMP,
+                                            NAVI_SEGMENT_ACTION_START) == 1U);
     assert(Course3Segment_ShouldApproach(TEST_VEHICLE_MODE_COURSE_3,
                                         WP_TYPE_BRIDGE,
                                         NAVI_SEGMENT_ACTION_START,

@@ -186,6 +186,7 @@ static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next
 {
     WayPoint_Type open = WP_TYPE_NORMAL;
     uint8_t ordinal = 0U;
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
     uint16_t i;
 
     if (open_type == NULL || next_ordinal == NULL)
@@ -204,7 +205,7 @@ static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next
 
         if (open == WP_TYPE_NORMAL)
         {
-            if (record_point_map[i].action_cmd != Course3Segment_ExpectedAction((uint8)type, 0U))
+            if (record_point_map[i].action_cmd != Course3Segment_ExpectedActionForMode(mode, (uint8)type, 0U))
             {
                 *open_type = WP_TYPE_NORMAL;
                 *next_ordinal = 0U;
@@ -214,7 +215,7 @@ static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next
             ordinal = 1U;
         }
         else if (open == type &&
-                 record_point_map[i].action_cmd == Course3Segment_ExpectedAction((uint8)type, ordinal))
+                 record_point_map[i].action_cmd == Course3Segment_ExpectedActionForMode(mode, (uint8)type, ordinal))
         {
             ordinal++;
         }
@@ -225,7 +226,7 @@ static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next
             return 0U;
         }
 
-        if (ordinal >= Course3Segment_PointCount((uint8)type))
+        if (ordinal >= Course3Segment_PointCountForMode(mode, (uint8)type))
         {
             open = WP_TYPE_NORMAL;
             ordinal = 0U;
@@ -278,8 +279,9 @@ static void navi_bridge_reset(uint8_t restore_low_height)
 static uint8_t navi_segment_validate_route(void)
 {
     uint16_t i;
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
 
-    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3)
+    if (!Course3Mode_IsCourse3(mode))
     {
         return 1U;
     }
@@ -290,12 +292,23 @@ static uint8_t navi_segment_validate_route(void)
         uint8_t point_count;
         uint8_t ordinal;
 
-        if (!point_map[i].valid || !Course3Segment_IsPairedType((uint8)type))
+        if (!point_map[i].valid)
         {
             continue;
         }
+        if (!Course3Segment_IsPairedType((uint8)type))
+        {
+            if (!Course3Mode_UsesVision(mode) &&
+                type != WP_TYPE_HOME && type != WP_TYPE_NORMAL)
+            {
+                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] unsupported inertial Course3 type %s at point %d.\r\n",
+                               get_enum_name(type), i);
+                return 0U;
+            }
+            continue;
+        }
 
-        point_count = Course3Segment_PointCount((uint8)type);
+        point_count = Course3Segment_PointCountForMode(mode, (uint8)type);
         if (point_count == 0U || (uint32_t)i + point_count > navi_ctrl.point_total_count)
         {
             IPC_LOG_Printf("\r\n[NAVI_SEGMENT] %s at point %d is incomplete.\r\n",
@@ -307,7 +320,7 @@ static uint8_t navi_segment_validate_route(void)
         {
             uint16_t idx = (uint16_t)(i + ordinal);
             if (!point_map[idx].valid || point_map[idx].type != type ||
-                point_map[idx].action_cmd != Course3Segment_ExpectedAction((uint8)type, ordinal))
+                point_map[idx].action_cmd != Course3Segment_ExpectedActionForMode(mode, (uint8)type, ordinal))
             {
                 IPC_LOG_Printf("\r\n[NAVI_SEGMENT] old or invalid %s map at point %d; record it again.\r\n",
                                get_enum_name(type), idx);
@@ -344,7 +357,7 @@ static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
     float lookahead_y;
 
     if (azimuth == NULL || turn_error == NULL ||
-        Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3 ||
+        !Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()) ||
         target_idx == 0U || target_idx >= navi_ctrl.point_total_count ||
         !point_map[target_idx].valid || point_map[target_idx].type != WP_TYPE_NORMAL)
     {
@@ -405,7 +418,7 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
 {
     Navi_WayPoint_t *target;
 
-    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3 ||
+    if (!Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()) ||
         target_idx >= navi_ctrl.point_total_count ||
         target_idx >= NAVI_POINT_MAX)
     {
@@ -416,7 +429,9 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
     target = &point_map[target_idx];
     if (!target->valid ||
         !Course3Segment_IsPairedType((uint8)target->type) ||
-        target->action_cmd != NAVI_SEGMENT_ACTION_START)
+        !Course3Segment_IsStartActionForMode(Runtime_Get_Vehicle_Mode(),
+                                                   (uint8)target->type,
+                                                   target->action_cmd))
     {
         navi_course3_approach_reset(1U);
         return 0U;
@@ -465,7 +480,7 @@ static float navi_course3_angle_slew_apply(float desired_angle)
 {
     float max_step = NAVI_COURSE3_ANGLE_SLEW_RATE_DEG_S * ENCODER_DT;
 
-    if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3)
+    if (!Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()))
     {
         return desired_angle;
     }
@@ -536,7 +551,7 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
     while (idx < (navi_ctrl.point_total_count - 1U) &&
            (point_map[idx].type == WP_TYPE_NORMAL ||
             point_map[idx].type == WP_TYPE_HOME ||
-            (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
+            (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()) &&
              Course3Segment_IsPairedType((uint8)point_map[idx].type))))
     {
         double dx = point_map[idx + 1U].x - point_map[idx].x;
@@ -766,8 +781,9 @@ void navi_auto_record_task(void) {
         WayPoint_Type record_type = (WayPoint_Type)wifi_remote_type;
         uint16_t action_cmd = (uint16_t)wifi_in_action;
 
-        if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+        if (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()))
         {
+            uint8_t mode = Runtime_Get_Vehicle_Mode();
             WayPoint_Type open_type = WP_TYPE_NORMAL;
             uint8_t next_ordinal = 0U;
             if (!navi_record_segment_state(&open_type, &next_ordinal))
@@ -785,7 +801,7 @@ void navi_auto_record_task(void) {
             if (Course3Segment_IsPairedType((uint8)record_type))
             {
                 uint8_t ordinal = (open_type == record_type) ? next_ordinal : 0U;
-                action_cmd = Course3Segment_ExpectedAction((uint8)record_type, ordinal);
+                action_cmd = Course3Segment_ExpectedActionForMode(mode, (uint8)record_type, ordinal);
                 if (ordinal > 0U && record_point_count > 0U &&
                     navi_get_two_points_distance(record_point_map[record_point_count - 1U].x,
                                                  record_point_map[record_point_count - 1U].y,
