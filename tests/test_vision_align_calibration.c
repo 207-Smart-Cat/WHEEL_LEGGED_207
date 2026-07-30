@@ -40,6 +40,9 @@ static void sampling_uses_center_window_and_wrap_safe_average(void)
     VisionAlignCal_t cal;
     uint32 frame = 1U;
 
+    assert(VISION_ALIGN_SIDE_SAMPLE_TARGET == 4U);
+    assert(VISION_ALIGN_SAMPLE_COUNT_TARGET == 8U);
+
     VisionAlignCal_Reset(&cal);
     for (uint8 i = 0U; i < VISION_ALIGN_STABLE_WINDOW_FRAMES; i++)
     {

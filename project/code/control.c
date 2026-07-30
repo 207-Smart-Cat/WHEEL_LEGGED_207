@@ -368,7 +368,7 @@ void Height_PID_Switch(bool high_mode)
     {
         y_current = 0.040f;
         Speed_p = 0.025f;
-        Direction_p = 15.0f;
+        Direction_p = 20.0f;
         Direction_i = 0.010f;
         Direction_d = 2.330f;
         bridge_high = 0;
@@ -820,7 +820,7 @@ static void vision_mode_apply(void)
             return;
         }
 
-        target_velocity = 90.0f;
+        target_velocity = 50.0f;
     }
 
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)

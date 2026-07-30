@@ -57,7 +57,6 @@ static uint8_t navi_start_cal_pending = 0U;
 typedef struct
 {
     uint8_t active;
-    uint8_t bridge_height_applied;
     uint16_t target_idx;
     WayPoint_Type type;
 } NaviCourse3Approach_t;
@@ -376,18 +375,12 @@ static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
 
 static void navi_course3_approach_reset(uint8_t restore_bridge_height)
 {
-    if (restore_bridge_height &&
-        navi_course3_approach.active &&
-        navi_course3_approach.bridge_height_applied)
-    {
-        Height_PID_Switch(false);
-    }
+    (void)restore_bridge_height;
     memset(&navi_course3_approach, 0, sizeof(navi_course3_approach));
 }
 
 static void navi_course3_approach_handoff(void)
 {
-    /* Bridge keeps the high body selected during approach; its action restores it. */
     memset(&navi_course3_approach, 0, sizeof(navi_course3_approach));
 }
 
@@ -437,11 +430,6 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
     navi_course3_approach.active = 1U;
     navi_course3_approach.target_idx = target_idx;
     navi_course3_approach.type = target->type;
-    if (target->type == WP_TYPE_BRIDGE)
-    {
-        Height_PID_Switch(true);
-        navi_course3_approach.bridge_height_applied = 1U;
-    }
     Turn_Reset();
     navi_speed_profile_reset();
     IPC_LOG_Printf("\r\n[NAVI_COURSE3] approach %s start point %d: distance <= %.2f m, speed=%d.\r\n",

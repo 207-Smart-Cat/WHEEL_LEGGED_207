@@ -92,11 +92,11 @@ static Course3AuxSegmentControl_t course3_aux_segment;
 static uint8_t course3_display_state = COURSE3_DISPLAY_IDLE;
 static uint8_t course3_display_done_pending_clear = 0U;
 
-#define COURSE3_ALIGN_SPEED             (70.0f)
-#define COURSE3_SEARCH_SPEED            (90.0f)
+#define COURSE3_ALIGN_SPEED             (50.0f)
+#define COURSE3_SEARCH_SPEED            (50.0f)
 #define COURSE3_ALIGN_CENTER_PX         (5)
 #define COURSE3_ALIGN_LOST_MS           (3000U)
-#define COURSE3_VISION_CAL_SPEED          (90.0f)
+#define COURSE3_VISION_CAL_SPEED          (50.0f)
 #define COURSE3_BRIDGE_SPEED             (233.0f)
 #define COURSE3_BRIDGE_LEG_Y             (0.03f)
 #define COURSE3_BRIDGE_SPEED_P           (0.012f)

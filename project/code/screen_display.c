@@ -12,6 +12,7 @@
 #include "vehicle_supervisor.h"
 #include "battery_monitor.h"
 #include "course3_display_state.h"
+#include "course3_bridge_logic.h"
 #if defined(CY_CORE_CM7_1)
 #include "camera_assist.h"
 #include "camera_test_display.h"
@@ -366,6 +367,9 @@ static const uint16_t UI_TEXT_T_TYPE_RAMP[] = {0x53F0, 0x9636, 0x659C, 0x5761, 0
 static const uint16_t UI_TEXT_T_TYPE_RAMP_START[] = {0x659C, 0x5761, 0x5F00, 0x59CB, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_RAMP_END[] = {0x659C, 0x5761, 0x7ED3, 0x675F, 0x0000};
 static const uint16_t UI_TEXT_T_CH4_SELECT[] = {0x0043, 0x0048, 0x0034, 0x9009, 0x62E9, 0x0000};
+static const uint16_t UI_TEXT_T_CH3_RECORD[] = {0x0043, 0x0048, 0x0033, 0x8BB0, 0x5F55, 0x0000};
+static const uint16_t UI_TEXT_T_CH6_RECORD[] = {0x0043, 0x0048, 0x0036, 0x8BB0, 0x5F55, 0x0000};
+static const uint16_t UI_TEXT_T_NEXT_RECORD[] = {0x5F85, 0x8BB0, 0x7C7B, 0x578B, 0x0000};
 static const uint16_t UI_TEXT_T_HINT_COURSE3_RECORD[] = {0x0043, 0x0048, 0x0036, 0x7279, 0x6B8A, 0x0020, 0x0043, 0x0048, 0x0033, 0x666E, 0x901A, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_STOP[] = {0x7EC8, 0x70B9, 0x0000};
 static const uint16_t UI_TEXT_T_RESERVED[] = {0x9884, 0x7559, 0x63A5, 0x53E3, 0x0000};
@@ -1374,6 +1378,10 @@ static uint8_t ui_mode_allows_mine_type(void)
 
 static WayPoint_Type ui_current_record_type(void)
 {
+    if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
+    {
+        return WP_TYPE_NORMAL;
+    }
     if (ui_mode_allows_mine_type() && ui_record_type_index == 1U)
     {
         return WP_TYPE_MINE_SWEEP;
@@ -1388,12 +1396,6 @@ static uint8_t ui_is_paired_segment_type(uint8 type)
             type == WP_TYPE_STAIR_RAMP) ? 1U : 0U;
 }
 
-static uint8_t ui_course3_special_type_from_ch4(int32 ch4)
-{
-    if (ch4 < 592) return WP_TYPE_BRIDGE;
-    if (ch4 < 1392) return WP_TYPE_BUMP;
-    return WP_TYPE_STAIR_RAMP;
-}
 
 static const uint16_t *ui_waypoint_type_text(uint8 type)
 {
@@ -1713,16 +1715,23 @@ static void ui_draw_record_collect(void)
 
     if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
     {
-        uint8 selected_type = ui_course3_special_type_from_ch4((int32)core_a_status.remote_ch4);
-        ui_show_text(8, 246, UI_TEXT_T_CH4_SELECT);
-        ui_show_text(88, 246, ui_waypoint_type_text(selected_type));
+        uint8 selected_type = Course3Remote_SelectSpecialType((int32)core_a_status.remote_ch4);
+        ui_show_text(8, 244, UI_TEXT_T_CH3_RECORD);
+        ui_show_text(88, 244, UI_TEXT_T_TYPE_NORMAL);
+        ui_show_text(8, 266, UI_TEXT_T_CH6_RECORD);
+        ui_show_text(88, 266, ui_waypoint_type_text(selected_type));
         if (core_a_status.navi_record_open_segment_type != 0xFFU)
         {
-            ui_show_text(8, 272, UI_TEXT_T_WAIT);
-            ui_show_text(56, 272,
+            ui_show_text(140, 266, UI_TEXT_T_WAIT);
+            ui_show_text(172, 266,
                          ui_waypoint_detail_text(core_a_status.navi_record_open_segment_type,
                                                  NAVI_SEGMENT_ACTION_END));
         }
+    }
+    else if (ui_mode_allows_mine_type())
+    {
+        ui_show_text(8, 246, UI_TEXT_T_NEXT_RECORD);
+        ui_show_text(88, 246, ui_waypoint_type_text((uint8)ui_current_record_type()));
     }
 
     if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
