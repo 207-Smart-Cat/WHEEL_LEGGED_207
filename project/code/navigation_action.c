@@ -14,6 +14,8 @@
 
 #include <stdlib.h>
 
+extern void Control_Velocity_Loop_Reset(void);
+
 // ==================== 动作状态机实例 ====================
 ActionFSM_t action_fsm = {FSM_IDLE, 0, 0};
 ActionSequence_t action_seq = {0};
@@ -228,9 +230,9 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 // 单跳和三级跳使用同一基础速度，需要停车的状态在状态机中明确清零。
 #define NAVI_JUMP_ACTION_SPEED             (320.0f)
 #define NAVI_JUMP_RUNUP_SPEED              NAVI_JUMP_ACTION_SPEED
-#define NAVI_JUMP_SECOND_APPROACH_M        (0.10f)
+#define NAVI_JUMP_SECOND_APPROACH_M        (0.00f)
 #define NAVI_JUMP_SECOND_APPROACH_SPEED    NAVI_JUMP_ACTION_SPEED  
-#define NAVI_JUMP_THIRD_APPROACH_M         (0.10f)
+#define NAVI_JUMP_THIRD_APPROACH_M         (0.00f)
 #define NAVI_JUMP_THIRD_APPROACH_SPEED     NAVI_JUMP_ACTION_SPEED
 
 // ================== 跳跃接近与触边检测 ==================
@@ -242,9 +244,9 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 #define NAVI_JUMP_TOUCH_HIGH_SAMPLES         (6U)       // 高速状态确认次数
 #define NAVI_JUMP_TOUCH_LOW_CONFIRM          (4U)       // 低速状态确认次数
 
-#define NAVI_JUMP_TOUCH_SETTLE_MS            (100U)      // 碰撞后稳定等待
+#define NAVI_JUMP_TOUCH_SETTLE_MS            (500U)      // 碰撞后稳定等待
 #define NAVI_JUMP_TOUCH_INHIBIT_MIN_MS       (200U)     // 防止重复触边检测
-#define NAVI_JUMP_TOUCH_INHIBIT_FORWARD_M    (0.05f)    // 触边后最小前进距离
+#define NAVI_JUMP_TOUCH_INHIBIT_FORWARD_M    (0.10f)    // 触边后最小前进距离
 
 // ================== 跳跃后退准备 ==================
 #define NAVI_JUMP_BACKOFF_SPEED              (-120.0f)
@@ -260,20 +262,18 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 
 // ================== 跳跃预压阶段 ==================
 #define NAVI_JUMP_PREPARE_PWM                 (370)     // 从中位750线性收腿至该PWM
-#define NAVI_JUMP_PREPARE_RAMP_MS             (100U)
-#define NAVI_JUMP_PREPARE_MS                  (100U)
+#define NAVI_JUMP_PREPARE_RAMP_MS             (200U)
+#define NAVI_JUMP_PREPARE_MS                  (200U)
 
 // ================== 爆发伸腿阶段 ==================
 #define NAVI_JUMP_BURST_PWM                   (1300)    // 最大伸腿PWM
 #define NAVI_JUMP_BURST_MS                    (180U)
 
 // ================== 二、三级跳地面时间 ==================
-// 10U 表示 PREPARE/TAKEOFF 缩短10%，保留一级跳时间的90%。
-#define NAVI_JUMP_FOLLOWUP_GROUND_REDUCTION_PERCENT (0U)
-
-#if (NAVI_JUMP_FOLLOWUP_GROUND_REDUCTION_PERCENT > 100U)
-#error "Invalid follow-up jump ground reduction percent"
-#endif
+// 后续台阶仅剩约0.2m：不再额外接近，预压加快，但保留爆发时间保证跳高。
+#define NAVI_JUMP_FOLLOWUP_PREPARE_RAMP_MS    (100U)
+#define NAVI_JUMP_FOLLOWUP_PREPARE_MS         (100U)
+#define NAVI_JUMP_FOLLOWUP_BURST_MS           NAVI_JUMP_BURST_MS
 
 // ================== 空中收腿阶段 ==================
 #define NAVI_JUMP_RETRACT_PWM                 (420)     // 空中收腿PWM
@@ -477,15 +477,16 @@ static const NaviJumpFollowupConfig_t *navi_jump_get_followup_config(void)
 #endif
 }
 
-static uint16 navi_jump_ground_duration_ms(uint16 first_jump_ms)
+static uint16 navi_jump_stage_duration_ms(uint16 first_jump_ms,
+                                          uint16 followup_jump_ms)
 {
 #if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
     if (jump_sequence_done_count > 0U)
     {
-        return (uint16)(((uint32)first_jump_ms *
-                         (100U - NAVI_JUMP_FOLLOWUP_GROUND_REDUCTION_PERCENT)) /
-                        100U);
+        return followup_jump_ms;
     }
+#else
+    (void)followup_jump_ms;
 #endif
     return first_jump_ms;
 }
@@ -518,15 +519,19 @@ static uint8_t navi_jump_touch_update(void)
         NAVI_JUMP_TOUCH_LOW_CONFIRM);
 }
 
-static float navi_jump_post_takeoff_speed(void)
+static uint8_t navi_jump_is_final_jump(void)
 {
 #if (NAVI_JUMP_ACTION_MODE == NAVI_JUMP_ACTION_TRIPLE)
-    if (jump_sequence_done_count < (NAVI_TRIPLE_JUMP_TOTAL_COUNT - 1U))
-    {
-        return NAVI_JUMP_ACTION_SPEED;
-    }
+    return (jump_sequence_done_count >=
+            (NAVI_TRIPLE_JUMP_TOTAL_COUNT - 1U)) ? 1U : 0U;
+#else
+    return 1U;
 #endif
-    return 0.0f;
+}
+
+static float navi_jump_post_takeoff_speed(void)
+{
+    return navi_jump_is_final_jump() ? 0.0f : NAVI_JUMP_ACTION_SPEED;
 }
 
 static void navi_jump_pose_update_begin(void)
@@ -1299,10 +1304,12 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 
         case FSM_JUMP_PREPARE:
         {
-            uint16 prepare_ramp_ms = navi_jump_ground_duration_ms(
-                (uint16)NAVI_JUMP_PREPARE_RAMP_MS);
-            uint16 prepare_ms = navi_jump_ground_duration_ms(
-                (uint16)NAVI_JUMP_PREPARE_MS);
+            uint16 prepare_ramp_ms = navi_jump_stage_duration_ms(
+                (uint16)NAVI_JUMP_PREPARE_RAMP_MS,
+                (uint16)NAVI_JUMP_FOLLOWUP_PREPARE_RAMP_MS);
+            uint16 prepare_ms = navi_jump_stage_duration_ms(
+                (uint16)NAVI_JUMP_PREPARE_MS,
+                (uint16)NAVI_JUMP_FOLLOWUP_PREPARE_MS);
 
             is_action_busy = 1;
             action_fsm.is_airborne_expect = 0;
@@ -1327,8 +1334,9 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
 
         case FSM_JUMP_TAKEOFF:
         {
-            uint16 burst_ms = navi_jump_ground_duration_ms(
-                (uint16)NAVI_JUMP_BURST_MS);
+            uint16 burst_ms = navi_jump_stage_duration_ms(
+                (uint16)NAVI_JUMP_BURST_MS,
+                (uint16)NAVI_JUMP_FOLLOWUP_BURST_MS);
 
             is_action_busy = 1;
             action_fsm.is_airborne_expect = 0;
@@ -1365,6 +1373,10 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 elapsed_ms >= NAVI_JUMP_RETRACT_MIN_MS)
             {
                 target_velocity = navi_jump_post_takeoff_speed();
+                if (navi_jump_is_final_jump())
+                {
+                    Control_Velocity_Loop_Reset();
+                }
                 action_fsm.state = FSM_JUMP_LANDING;
                 action_fsm.state_timer_ms = 0U;
                 action_fsm.is_airborne_expect = 0U;
@@ -1390,6 +1402,10 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     buffer_ms >= NAVI_JUMP_LANDING_MAX_MS)
                 {
                     target_velocity = navi_jump_post_takeoff_speed();
+                    if (navi_jump_is_final_jump())
+                    {
+                        Control_Velocity_Loop_Reset();
+                    }
                     action_fsm.state = FSM_JUMP_LANDING;
                     action_fsm.state_timer_ms = 0U;
                     action_fsm.is_airborne_expect = 0U;

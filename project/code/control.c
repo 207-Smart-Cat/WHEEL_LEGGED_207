@@ -526,6 +526,18 @@ float Velocity(velocity_loop_state_t *state, float measured_velocity, float targ
 
     return state->velocity; // Filtered velocity output used for A/B validation.
 }
+
+void Control_Velocity_Loop_Reset(void)
+{
+    g_velocity_forward.velocity = 0.0f;
+    g_velocity_forward.encoder_bias = 0.0f;
+    g_velocity_forward.encoder_integral = 0.0f;
+    Velocity_Angle_left = 0.0f;
+    Velocity_Angle_right = 0.0f;
+    g_leg_speed_tilt_deg = 0.0f;
+    leg_dbg_speed_tilt = 0.0f;
+}
+
 // 平衡控制计算（PD控制角度环）
 float Balance(float Angle, float Gyro, float target)
 {
