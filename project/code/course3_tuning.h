@@ -46,6 +46,7 @@
 #define COURSE3_ACTION_DIRECTION_P         (50.0f)
 #define COURSE3_BRIDGE_DIRECTION_P         (50.0f)
 #define COURSE3_AUX_SEGMENT_SPEED          (300.0f)
+#define COURSE3_BUMP_DIRECTION_P           (20.0f)
 #define COURSE3_AUX_SEGMENT_DIRECTION_P    (50.0f)
 
 #endif

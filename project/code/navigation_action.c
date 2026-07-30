@@ -919,7 +919,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 is_action_busy = 1U;
                 if (!course3_aux_segment.initialized)
                 {
-                    Direction_p = COURSE3_AUX_SEGMENT_DIRECTION_P;
+                    Direction_p = (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP) ?
+                                  COURSE3_BUMP_DIRECTION_P : COURSE3_AUX_SEGMENT_DIRECTION_P;
                     PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
                     Turn_Reset();
                     navi_tracking_speed_profile_reset();
@@ -962,7 +963,8 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     segment_complete = Navi_Course3_Bridge_Odometry_Is_Complete();
                 }
                 target_velocity = COURSE3_AUX_SEGMENT_SPEED;
-                Direction_p = COURSE3_AUX_SEGMENT_DIRECTION_P;
+                Direction_p = (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP) ?
+                              COURSE3_BUMP_DIRECTION_P : COURSE3_AUX_SEGMENT_DIRECTION_P;
                 PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
 
                 if (segment_complete)
