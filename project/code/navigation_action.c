@@ -226,10 +226,10 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 // ================== 跳跃基础速度与后续跳接近 ==================
 // RUNUP 阶段不接管舵机；PREPARE/TAKEOFF 后才接管舵机。
 // 单跳和三级跳使用同一基础速度，需要停车的状态在状态机中明确清零。
-#define NAVI_JUMP_ACTION_SPEED             (300.0f)
+#define NAVI_JUMP_ACTION_SPEED             (320.0f)
 #define NAVI_JUMP_RUNUP_SPEED              NAVI_JUMP_ACTION_SPEED
 #define NAVI_JUMP_SECOND_APPROACH_M        (0.10f)
-#define NAVI_JUMP_SECOND_APPROACH_SPEED    NAVI_JUMP_ACTION_SPEED
+#define NAVI_JUMP_SECOND_APPROACH_SPEED    NAVI_JUMP_ACTION_SPEED  
 #define NAVI_JUMP_THIRD_APPROACH_M         (0.10f)
 #define NAVI_JUMP_THIRD_APPROACH_SPEED     NAVI_JUMP_ACTION_SPEED
 
@@ -242,26 +242,26 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 #define NAVI_JUMP_TOUCH_HIGH_SAMPLES         (6U)       // 高速状态确认次数
 #define NAVI_JUMP_TOUCH_LOW_CONFIRM          (4U)       // 低速状态确认次数
 
-#define NAVI_JUMP_TOUCH_SETTLE_MS            (500U)      // 碰撞后稳定等待
+#define NAVI_JUMP_TOUCH_SETTLE_MS            (100U)      // 碰撞后稳定等待
 #define NAVI_JUMP_TOUCH_INHIBIT_MIN_MS       (200U)     // 防止重复触边检测
 #define NAVI_JUMP_TOUCH_INHIBIT_FORWARD_M    (0.05f)    // 触边后最小前进距离
 
 // ================== 跳跃后退准备 ==================
 #define NAVI_JUMP_BACKOFF_SPEED              (-120.0f)
 #define NAVI_JUMP_BACKOFF_FINE_SPEED         (-60.0f)
-#define NAVI_JUMP_BACKOFF_TARGET_M           (0.35f)    // 撞台阶后后退距离
-#define NAVI_JUMP_BACKOFF_FINE_ZONE_M        (0.10f)    // 后退末端减速距离
+#define NAVI_JUMP_BACKOFF_TARGET_M           (0.30f)    // 撞台阶后后退距离
+#define NAVI_JUMP_BACKOFF_FINE_ZONE_M        (0.15f)    // 后退末端减速距离
 
 // ================== 跳跃助跑阶段 ==================
-#define NAVI_JUMP_TAKEOFF_RESERVE_M          (0.30f)    // 起跳前保留距离
+#define NAVI_JUMP_TAKEOFF_RESERVE_M          (0.25f)    // 起跳前保留距离
 #define NAVI_JUMP_RUNUP_TARGET_M             \
         (NAVI_JUMP_BACKOFF_TARGET_M - NAVI_JUMP_TAKEOFF_RESERVE_M)
 #define NAVI_JUMP_TAKEOFF_SPEED              NAVI_JUMP_RUNUP_SPEED
 
 // ================== 跳跃预压阶段 ==================
 #define NAVI_JUMP_PREPARE_PWM                 (370)     // 从中位750线性收腿至该PWM
-#define NAVI_JUMP_PREPARE_RAMP_MS             (200U)
-#define NAVI_JUMP_PREPARE_MS                  (200U)
+#define NAVI_JUMP_PREPARE_RAMP_MS             (100U)
+#define NAVI_JUMP_PREPARE_MS                  (100U)
 
 // ================== 爆发伸腿阶段 ==================
 #define NAVI_JUMP_BURST_PWM                   (1300)    // 最大伸腿PWM
@@ -269,7 +269,7 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 
 // ================== 二、三级跳地面时间 ==================
 // 10U 表示 PREPARE/TAKEOFF 缩短10%，保留一级跳时间的90%。
-#define NAVI_JUMP_FOLLOWUP_GROUND_REDUCTION_PERCENT (10U)
+#define NAVI_JUMP_FOLLOWUP_GROUND_REDUCTION_PERCENT (0U)
 
 #if (NAVI_JUMP_FOLLOWUP_GROUND_REDUCTION_PERCENT > 100U)
 #error "Invalid follow-up jump ground reduction percent"
@@ -285,7 +285,7 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
         (NAVI_JUMP_RETRACT_MOVE_MS + NAVI_JUMP_RETRACT_HOLD_MS)
 
 // ================== 落地缓冲阶段 ==================
-#define NAVI_JUMP_BUFFER_PWM                  (520)     // 落地缓冲PWM
+#define NAVI_JUMP_BUFFER_PWM                  (450)     // 落地缓冲PWM
 
 // ================== 落地检测阶段 ==================
 #define NAVI_JUMP_LANDING_MAX_MS              (150U)
@@ -294,28 +294,29 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 #define NAVI_JUMP_LAND_CONFIRM_SAMPLES        (2U)      // 落地检测连续确认次数
 
 // ================== 落地恢复阶段 ==================
-#define NAVI_JUMP_RECOVER_PWM                 (420)
-#define NAVI_JUMP_RECOVER_MS                  (100U)
+#define NAVI_JUMP_RECOVER_PWM                 (400)
+#define NAVI_JUMP_RECOVER_MS                  (50U)
 
 // ================== 跳跃位姿更新方式 ==================
 // 1U：使用自动位姿更新；2U：暂停自动更新，每跳结束后固定补偿。
 #define NAVI_JUMP_POSE_UPDATE_MODE            (1U)
-#define NAVI_JUMP_FIXED_FORWARD_M             (0.30f)   // 模式2的车体前向补偿
+#define NAVI_JUMP_FIXED_FORWARD_M             (0.30f)   // 模式2的车体前向补偿               @@@注意方向应该指的是航向方向，而不是绝对坐标方向
 #define NAVI_JUMP_FIXED_RIGHT_M               (0.00f)   // 模式2的车体右向补偿
 
 // ================== 三级跳数量与结束后路线 ==================
-#define NAVI_TRIPLE_JUMP_TOTAL_COUNT          (3U)
+#define NAVI_TRIPLE_JUMP_TOTAL_COUNT          (3U)                     // 三连跳总次数
 
-#define NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY    (0U)
-#define NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE    (1U)
-#define NAVI_TRIPLE_JUMP_AFTER_MODE            NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY
+#define NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY    (0U)                     // 三连跳后结束
+#define NAVI_TRIPLE_JUMP_AFTER_FULL_COURSE    (1U)                     // 全流程后结束
+#define NAVI_TRIPLE_JUMP_AFTER_MODE            NAVI_TRIPLE_JUMP_AFTER_TRIPLE_ONLY // 三连跳结束模式
 
-#define NAVI_TRIPLE_JUMP_RAMP_DOWN_MS         (1500U)
-#define NAVI_TRIPLE_JUMP_TURN_BACK_MS         (1300U)
-#define NAVI_TRIPLE_JUMP_RAMP_UP_MS           (1700U)
-#define NAVI_TRIPLE_JUMP_STAIR_DOWN_MS        (1400U)
-#define NAVI_TRIPLE_JUMP_RAMP_SPEED           NAVI_JUMP_RUNUP_SPEED
-#define NAVI_TRIPLE_JUMP_STAIR_SPEED          (250.0f)
+#define NAVI_TRIPLE_JUMP_RAMP_DOWN_MS         (1500U)                  // 下坡过渡时间(ms)
+#define NAVI_TRIPLE_JUMP_TURN_BACK_MS         (1300U)                  // 掉头等待时间(ms)
+#define NAVI_TRIPLE_JUMP_RAMP_UP_MS           (1700U)                  // 上坡过渡时间(ms)
+#define NAVI_TRIPLE_JUMP_STAIR_DOWN_MS        (1400U)                  // 下阶梯时间(ms)
+
+#define NAVI_TRIPLE_JUMP_RAMP_SPEED           NAVI_JUMP_RUNUP_SPEED    // 坡道通过速度
+#define NAVI_TRIPLE_JUMP_STAIR_SPEED          (250.0f)                // 阶梯通过速度
 
 // ================== 调试配置 ==================
 #define NAVI_JUMP_DEBUG_LOG                   (0U)       // 跳跃调试打印开关
