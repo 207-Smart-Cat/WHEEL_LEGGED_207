@@ -30,7 +30,14 @@ static void camera_reset_status(void)
     camera_assist_status.lane_center_x = CAMERA_ASSIST_TARGET_X;
     camera_assist_status.mode = CAMERA_ASSIST_MODE_CENTER;
     camera_assist_status.exposure_time = MT9V03X_EXP_TIME_DEF;
+    CameraAssist_ResetVisionControl();
+}
+
+void CameraAssist_ResetVisionControl(void)
+{
     vision_control_reset(&camera_vision_control);
+    camera_assist_status.vision_angle_raw_deg = 0.0f;
+    camera_assist_status.vision_angle_offset_deg = 0.0f;
 }
 
 static uint8 camera_capture_snapshot(void)
@@ -253,6 +260,7 @@ static void camera_update_lane(uint8 threshold)
     if (valid_rows >= CAMERA_ASSIST_MIN_VALID_ROWS && center_weight > 0U)
     {
         int16 raw_center = (int16)((center_sum + center_weight / 2U) / center_weight);
+        int16 raw_lane_error_px = (int16)(raw_center - (int16)CAMERA_ASSIST_TARGET_X);
 
         if (!camera_assist_status.lane_valid)
         {
@@ -265,6 +273,7 @@ static void camera_update_lane(uint8 threshold)
         }
         camera_assist_status.lane_error_px =
             (int16)(camera_assist_status.lane_center_x - (int16)CAMERA_ASSIST_TARGET_X);
+        camera_assist_status.raw_lane_error_px = raw_lane_error_px;
         if (far_rows > 0U && near_rows > 0U)
         {
             camera_assist_status.heading_error_px = (int16)
@@ -276,16 +285,15 @@ static void camera_update_lane(uint8 threshold)
         }
         camera_assist_status.lane_valid = 1;
         camera_assist_status.vision_angle_offset_deg =
-            vision_control_update(&camera_vision_control, camera_assist_status.lane_error_px);
+            vision_control_update(&camera_vision_control, raw_lane_error_px);
         camera_assist_status.vision_angle_raw_deg = camera_vision_control.raw_offset_deg;
     }
     else
     {
         camera_assist_status.lane_valid = 0;
+        camera_assist_status.raw_lane_error_px = 0;
         camera_assist_status.heading_error_px = 0;
-        vision_control_reset(&camera_vision_control);
-        camera_assist_status.vision_angle_raw_deg = 0.0f;
-        camera_assist_status.vision_angle_offset_deg = 0.0f;
+        CameraAssist_ResetVisionControl();
     }
 }
 

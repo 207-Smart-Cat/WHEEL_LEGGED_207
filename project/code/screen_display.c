@@ -1205,6 +1205,7 @@ static void ui_set_screen(ui_screen_t screen)
 #if defined(CY_CORE_CM7_1)
     if (screen == UI_SCREEN_VISION)
     {
+        CameraAssist_ResetVisionControl();
         IPC_Update_Vision_Command_CoreB(1U, 0U, 0U, 0, 0.0f);
     }
     else if (ui_screen == UI_SCREEN_VISION)

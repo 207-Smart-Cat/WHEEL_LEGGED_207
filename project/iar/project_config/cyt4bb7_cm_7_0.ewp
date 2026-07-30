@@ -1137,6 +1137,9 @@
             <name>$PROJ_DIR$\..\..\code\vision_control.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\course3_tuning.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\jump_control.c</name>
         </file>
         <file>

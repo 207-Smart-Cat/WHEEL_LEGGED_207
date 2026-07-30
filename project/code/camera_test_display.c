@@ -9,6 +9,8 @@
 #include "zf_device_ips200.h"
 #include "zf_device_mt9v03x.h"
 
+#include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 
 #define CAMERA_TEST_IMAGE_X          (26U)
@@ -25,6 +27,13 @@ static uint32 camera_test_last_frame;
 
 static void camera_test_show_info(uint16 y, const char *text);
 static const char *camera_test_vision_cal_state_text(uint8 state);
+
+static const char *camera_test_turn_direction(float angle_error)
+{
+    if (angle_error > 0.05f) return "LEFT";
+    if (angle_error < -0.05f) return "RIGHT";
+    return "HOLD";
+}
 
 void CameraTestDisplay_DrawLaneBoundaries(void)
 {
@@ -63,7 +72,8 @@ void CameraTestDisplay_DrawCenterLines(void)
 
     if (camera_assist_status.lane_valid)
     {
-        uint16 lane_x = CAMERA_TEST_IMAGE_X + (uint16)camera_assist_status.lane_center_x;
+        uint16 lane_x = CAMERA_TEST_IMAGE_X + (uint16)
+            ((int16)((MT9V03X_W - 1U) / 2U) + camera_assist_status.raw_lane_error_px);
 
         for (y = CAMERA_ASSIST_ROI_Y_TOP; y <= CAMERA_ASSIST_ROI_Y_BOTTOM; y++)
         {
@@ -77,6 +87,7 @@ void CameraTestDisplay_DrawCenterLines(void)
 void CameraTestDisplay_DrawStatusText(void)
 {
     char line[32];
+    float turn_error;
     const CameraAssistStatus_t *status = &camera_assist_status;
 
     if (status->frame_count == 0U || (status->frame_count % 5U) != 0U)
@@ -90,28 +101,25 @@ void CameraTestDisplay_DrawStatusText(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y + 20U, line);
     sprintf(line, "Center: %3d px     ", status->lane_center_x);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 40U, line);
-    sprintf(line, "ErrPx : %3d       ", status->lane_error_px);
+    sprintf(line, "Err R:%3d F:%3d   ", status->raw_lane_error_px, status->lane_error_px);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 60U, line);
     sprintf(line, "MapDeg:%6.2f     ", status->vision_angle_raw_deg);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 80U, line);
-    sprintf(line, "VisDeg:%6.2f     ", status->vision_angle_offset_deg);
+    turn_error = status->vision_angle_offset_deg;
+    sprintf(line, "Cmd:%-5s %6.2fdeg", camera_test_turn_direction(turn_error), fabsf(turn_error));
     camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
     sprintf(line, "Yaw:%7.2f T:%7.2f", core_a_status.yaw, core_a_status.target_angle_status);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
-    sprintf(line, "Cal:%s       ", camera_test_vision_cal_state_text(core_a_status.vision_align_cal_state));
+    sprintf(line, "Trn L:%+5.0f R:%+5.0f", core_a_status.pid_out_turn, -core_a_status.pid_out_turn);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
-    sprintf(line, "St:%02u/%u L:%u/%u R:%u/%u",
-            core_a_status.vision_align_stable_count,
-            VISION_ALIGN_STABLE_WINDOW_FRAMES,
-            core_a_status.vision_align_left_sample_count,
-            VISION_ALIGN_SIDE_SAMPLE_TARGET,
-            core_a_status.vision_align_right_sample_count,
-            VISION_ALIGN_SIDE_SAMPLE_TARGET);
+    sprintf(line, "PWM L:%5d R:%5d",
+            abs((int)core_a_status.left_pwm_duty),
+            abs((int)core_a_status.right_pwm_duty));
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
-    sprintf(line, "Px:S%02d Db%02d P:%4.2f",
-            VISION_ALIGN_SAMPLE_ERROR_PX,
-            VISION_DEADBAND_PX,
-            VISION_PIXEL_TO_ANGLE_P_DEG_PER_PX);
+    sprintf(line, "V:%3.0f P:%3.1f I:%3.1f",
+            core_a_status.target_velocity_status,
+            COURSE3_VISION_DIRECTION_P,
+            COURSE3_VISION_DIRECTION_I);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 176U, line);
 }
 
@@ -199,6 +207,7 @@ void CameraTestDisplay_Render(void)
     char line[32];
     uint16 image_center_x;
     uint16 lane_x;
+    float turn_error;
     const CameraAssistStatus_t *status = &camera_assist_status;
 
     if (!status->ready)
@@ -232,7 +241,8 @@ void CameraTestDisplay_Render(void)
 
     if (status->lane_valid)
     {
-        lane_x = CAMERA_TEST_IMAGE_X + (uint16)status->lane_center_x;
+        lane_x = CAMERA_TEST_IMAGE_X + (uint16)
+            ((int16)((MT9V03X_W - 1U) / 2U) + status->raw_lane_error_px);
         ips200_draw_line(lane_x, CAMERA_TEST_IMAGE_Y + CAMERA_ASSIST_ROI_Y_TOP,
                          lane_x, CAMERA_TEST_IMAGE_Y + CAMERA_ASSIST_ROI_Y_BOTTOM,
                          RGB565_RED);
@@ -242,32 +252,31 @@ void CameraTestDisplay_Render(void)
     camera_test_show_info(CAMERA_TEST_INFO_Y, line);
     sprintf(line, "Lane : %s       ", status->lane_valid ? "VALID" : "SEARCHING");
     camera_test_show_info(CAMERA_TEST_INFO_Y + 20U, line);
-    sprintf(line, "ErrPx : %3d C:%3d", status->lane_error_px, status->lane_center_x);
+    sprintf(line, "Err R:%3d F:%3d", status->raw_lane_error_px, status->lane_error_px);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 40U, line);
-    sprintf(line, "VisDeg:%6.2f     ", status->vision_angle_offset_deg);
+    turn_error = status->vision_angle_offset_deg;
+    sprintf(line, "Cmd:%-5s %6.2fdeg", camera_test_turn_direction(turn_error), fabsf(turn_error));
     camera_test_show_info(CAMERA_TEST_INFO_Y + 60U, line);
     sprintf(line, "Yaw:%7.2f T:%7.2f", core_a_status.yaw, core_a_status.target_angle_status);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 80U, line);
-    sprintf(line, "Cal:%s       ", camera_test_vision_cal_state_text(core_a_status.vision_align_cal_state));
+    sprintf(line, "Trn L:%+5.0f R:%+5.0f", core_a_status.pid_out_turn, -core_a_status.pid_out_turn);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 100U, line);
-    sprintf(line, "St:%02u/%u L:%u/%u R:%u/%u",
-            core_a_status.vision_align_stable_count,
-            VISION_ALIGN_STABLE_WINDOW_FRAMES,
-            core_a_status.vision_align_left_sample_count,
-            VISION_ALIGN_SIDE_SAMPLE_TARGET,
-            core_a_status.vision_align_right_sample_count,
-            VISION_ALIGN_SIDE_SAMPLE_TARGET);
+    sprintf(line, "PWM L:%5d R:%5d",
+            abs((int)core_a_status.left_pwm_duty),
+            abs((int)core_a_status.right_pwm_duty));
     camera_test_show_info(CAMERA_TEST_INFO_Y + 120U, line);
-    sprintf(line, "Result:%7.2f %s",
+    sprintf(line, "Cal:%-11s R:%5.1f%s",
+            camera_test_vision_cal_state_text(core_a_status.vision_align_cal_state),
             core_a_status.vision_align_result_yaw,
             core_a_status.vision_align_result_valid ? "OK" : "--");
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
-    sprintf(line, "Px:S%02d Db%02d C%02d",
-            VISION_ALIGN_SAMPLE_ERROR_PX,
-            VISION_DEADBAND_PX,
-            COURSE3_ALIGN_CENTER_PX);
+    sprintf(line, "V:%3.0f P:%3.1f I:%3.1f",
+            core_a_status.target_velocity_status,
+            COURSE3_VISION_DIRECTION_P,
+            COURSE3_VISION_DIRECTION_I);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
-    sprintf(line, "PixPD P:%4.2f D:%4.2f",
+    sprintf(line, "D:%3.1f PxP:%4.2f PxD:%4.2f",
+            COURSE3_VISION_DIRECTION_D,
             VISION_PIXEL_TO_ANGLE_P_DEG_PER_PX,
             VISION_PIXEL_TO_ANGLE_D_DEG_PER_PX);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 176U, line);

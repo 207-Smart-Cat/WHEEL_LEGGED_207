@@ -22,6 +22,7 @@ typedef struct
     uint32 frame_count;
     int16 lane_center_x;
     int16 lane_error_px;
+    int16 raw_lane_error_px;
     int16 heading_error_px;
     float vision_angle_raw_deg;
     float vision_angle_offset_deg;
@@ -38,6 +39,7 @@ extern CameraAssistStatus_t camera_assist_status;
 
 void CameraAssist_Init(void);
 void CameraAssist_AttachToInitializedCamera(void);
+void CameraAssist_ResetVisionControl(void);
 void CameraAssist_ProcessFrame(void);
 void CameraAssist_SetMode(CameraAssistMode_t mode);
 uint8 CameraAssist_SetExposureTime(uint16 exposure_time);

@@ -13,12 +13,18 @@ if ($tuning -notmatch '#define\s+COURSE3_VISION_CAL_SPEED\s+\([0-9]+(?:\.[0-9]+)
     throw 'COURSE3_VISION_CAL_SPEED must be defined in course3_tuning.h.'
 }
 
+if ($tuning -notmatch '#define\s+VISION_MENU_CAL_SPEED\s+\(100\.0f\)') {
+    throw 'VISION_MENU_CAL_SPEED must keep the manual Vision page at the configured test speed.'
+}
+
 if ($control -match 'target_velocity\s*=\s*50\.0f\s*;') {
     throw 'control.c still hard-codes vision calibration speed as 50.0f.'
 }
 
 if ($control -notmatch 'target_velocity\s*=\s*COURSE3_VISION_CAL_SPEED\s*;') {
-    throw 'control.c does not use COURSE3_VISION_CAL_SPEED for vision calibration speed.'
+    if ($control -notmatch 'manual_cal_enabled\s*\?\s*VISION_MENU_CAL_SPEED\s*:\s*COURSE3_VISION_CAL_SPEED') {
+        throw 'Menu and course3 vision calibration speeds are not selected independently.'
+    }
 }
 
 if ($action -notmatch 'anti_stall_saved' -or

@@ -690,6 +690,7 @@ static float turn_compute(float current_yaw, float target_yaw, uint8_t use_integ
     else
     {
         const float vision_i_state_limit = 15000.0f;
+        const float vision_yaw_rate = -yaw_rate;
 
         if (yaw_error == 0.0f)
         {
@@ -705,7 +706,7 @@ static float turn_compute(float current_yaw, float target_yaw, uint8_t use_integ
 
         control_output = COURSE3_VISION_DIRECTION_P * yaw_error +
                          COURSE3_VISION_DIRECTION_I * g_turn_yaw_integral -
-                         COURSE3_VISION_DIRECTION_D * yaw_rate;
+                         COURSE3_VISION_DIRECTION_D * vision_yaw_rate;
         control_output = constrain_float(control_output,
                                          -COURSE3_VISION_TURN_PWM_LIMIT,
                                          COURSE3_VISION_TURN_PWM_LIMIT);
@@ -776,6 +777,44 @@ void Vision_Align_Cal_Reset(void)
     VisionAlignCal_Reset(&g_vision_align_cal);
 }
 
+static void vision_apply_course3_calibration(uint8_t valid, float calibration_speed)
+{
+    if (g_vision_stale_ticks > VISION_FRAME_TIMEOUT_TICKS)
+    {
+        VisionAlignCal_Reset(&g_vision_align_cal);
+        target_velocity = 0.0f;
+        target_angle = IMU_data.filter_result.yaw;
+        Turn_Reset();
+        return;
+    }
+
+    VisionAlignCal_Update(&g_vision_align_cal,
+                          1U,
+                          valid,
+                          core_b_cmd.vision_frame_seq,
+                          core_b_cmd.vision_lane_error_px,
+                          IMU_data.filter_result.yaw);
+
+    if (VisionAlignCal_ResultValid(&g_vision_align_cal))
+    {
+        target_velocity = 0.0f;
+        target_angle = VisionAlignCal_GetResultYaw(&g_vision_align_cal);
+        return;
+    }
+
+    target_velocity = calibration_speed;
+    if (valid)
+    {
+        target_angle = vision_wrap_angle(IMU_data.filter_result.yaw +
+                                         core_b_cmd.vision_angle_offset_deg);
+    }
+    else
+    {
+        target_angle = IMU_data.filter_result.yaw;
+        Turn_Reset();
+    }
+}
+
 static void vision_mode_apply(void)
 {
     uint8_t page_enabled = core_b_cmd.vision_enabled ? 1U : 0U;
@@ -813,30 +852,11 @@ static void vision_mode_apply(void)
 
     if (cal_enabled)
     {
-        if (g_vision_stale_ticks > VISION_FRAME_TIMEOUT_TICKS)
-        {
-            VisionAlignCal_Reset(&g_vision_align_cal);
-            target_velocity = 0.0f;
-            target_angle = IMU_data.filter_result.yaw;
-            Turn_Reset();
-            return;
-        }
-
-        VisionAlignCal_Update(&g_vision_align_cal,
-                              1U,
-                              valid,
-                              core_b_cmd.vision_frame_seq,
-                              core_b_cmd.vision_lane_error_px,
-                              IMU_data.filter_result.yaw);
-
-        if (VisionAlignCal_ResultValid(&g_vision_align_cal))
-        {
-            target_velocity = 0.0f;
-            target_angle = VisionAlignCal_GetResultYaw(&g_vision_align_cal);
-            return;
-        }
-
-        target_velocity = COURSE3_VISION_CAL_SPEED;
+        // The menu Vision entry and the bridge/ramp start use this exact path.
+        vision_apply_course3_calibration(valid,
+                                         manual_cal_enabled ? VISION_MENU_CAL_SPEED :
+                                                              COURSE3_VISION_CAL_SPEED);
+        return;
     }
 
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)

@@ -33,8 +33,17 @@ if ($control -match 'vision_control_pd_output\(yaw_error,\s*yaw_rate,\s*COURSE3_
 
 if ($control -notmatch 'COURSE3_VISION_DIRECTION_P\s*\*\s*yaw_error' -or
     $control -notmatch 'COURSE3_VISION_DIRECTION_I\s*\*\s*g_turn_yaw_integral' -or
-    $control -notmatch 'COURSE3_VISION_DIRECTION_D\s*\*\s*yaw_rate') {
+    $control -notmatch 'vision_yaw_rate\s*=\s*-yaw_rate' -or
+    $control -notmatch 'COURSE3_VISION_DIRECTION_D\s*\*\s*vision_yaw_rate') {
     throw 'Vision direction control does not use the dedicated vision PID constants.'
+}
+
+if ($control -notmatch 'target_angle\s*=\s*vision_wrap_angle\(IMU_data\.filter_result\.yaw\s*\+\s*core_b_cmd\.vision_angle_offset_deg\)') {
+    throw 'Vision calibration does not apply the pixel correction relative to the current yaw.'
+}
+
+if ($control -match 'g_vision_reference_yaw') {
+    throw 'Vision calibration still uses a fixed entry yaw, which permits a non-centered visual equilibrium.'
 }
 
 Write-Output 'course3 vision Direction_P tuning test passed'
