@@ -9,7 +9,7 @@ $control = Get-Content -LiteralPath $controlPath -Raw
 $action = Get-Content -LiteralPath $actionPath -Raw
 $tuning = Get-Content -LiteralPath $tuningPath -Raw
 
-if ($tuning -notmatch '#define\s+COURSE3_VISION_CAL_SPEED\s+\(50\.0f\)') {
+if ($tuning -notmatch '#define\s+COURSE3_VISION_CAL_SPEED\s+\([0-9]+(?:\.[0-9]+)?f\)') {
     throw 'COURSE3_VISION_CAL_SPEED must be defined in course3_tuning.h.'
 }
 

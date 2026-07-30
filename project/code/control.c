@@ -689,8 +689,26 @@ static float turn_compute(float current_yaw, float target_yaw, uint8_t use_integ
     }
     else
     {
-        g_turn_yaw_integral = 0.0f;
-        control_output = vision_control_pd_output(yaw_error, yaw_rate, COURSE3_VISION_DIRECTION_P, Direction_d, 2200.0f);
+        const float vision_i_state_limit = 15000.0f;
+
+        if (yaw_error == 0.0f)
+        {
+            g_turn_yaw_integral *= 0.995f;
+        }
+        else
+        {
+            g_turn_yaw_integral += yaw_error;
+            g_turn_yaw_integral = constrain_float(g_turn_yaw_integral,
+                                                  -vision_i_state_limit,
+                                                  vision_i_state_limit);
+        }
+
+        control_output = COURSE3_VISION_DIRECTION_P * yaw_error +
+                         COURSE3_VISION_DIRECTION_I * g_turn_yaw_integral -
+                         COURSE3_VISION_DIRECTION_D * yaw_rate;
+        control_output = constrain_float(control_output,
+                                         -COURSE3_VISION_TURN_PWM_LIMIT,
+                                         COURSE3_VISION_TURN_PWM_LIMIT);
     }
 
     return control_output;
