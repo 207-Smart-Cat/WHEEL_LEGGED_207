@@ -29,18 +29,50 @@ void VisionAlignCal_Reset(VisionAlignCal_t *cal)
     cal->result_valid = 0U;
     cal->has_anchor = 0U;
     cal->elapsed_ms = 0U;
+    cal->result_generation = 0U;
     cal->anchor_yaw = 0.0f;
     cal->sample_delta_sum = 0.0f;
     cal->result_yaw = 0.0f;
 }
 
-void VisionAlignCal_Update(VisionAlignCal_t *cal,
-                           uint8 enabled,
-                           uint8 lane_valid,
-                           uint32 frame_seq,
-                           int16 lane_error_px,
-                           float current_yaw,
-                           uint16 dt_ms)
+static void vision_align_begin_next_batch(VisionAlignCal_t *cal)
+{
+    cal->state = VISION_ALIGN_CAL_STABLE_WAIT;
+    cal->stable_count = 0U;
+    cal->sample_count = 0U;
+    cal->left_sample_count = 0U;
+    cal->right_sample_count = 0U;
+    cal->has_anchor = 0U;
+    cal->elapsed_ms = 0U;
+    cal->anchor_yaw = 0.0f;
+    cal->sample_delta_sum = 0.0f;
+}
+
+static void vision_align_finish_batch(VisionAlignCal_t *cal,
+                                      float result_yaw,
+                                      uint8 continuous)
+{
+    cal->result_yaw = vision_align_wrap_angle(result_yaw);
+    cal->result_valid = 1U;
+    cal->result_generation++;
+    if (continuous)
+    {
+        vision_align_begin_next_batch(cal);
+    }
+    else
+    {
+        cal->state = VISION_ALIGN_CAL_DONE;
+    }
+}
+
+static void vision_align_update_mode(VisionAlignCal_t *cal,
+                                     uint8 enabled,
+                                     uint8 lane_valid,
+                                     uint32 frame_seq,
+                                     int16 lane_error_px,
+                                     float current_yaw,
+                                     uint16 dt_ms,
+                                     uint8 continuous)
 {
     uint8 within_stable;
     uint8 within_sample;
@@ -70,6 +102,12 @@ void VisionAlignCal_Update(VisionAlignCal_t *cal,
 
     if (cal->state == VISION_ALIGN_CAL_DONE)
     {
+        return;
+    }
+
+    if (continuous && !lane_valid)
+    {
+        vision_align_begin_next_batch(cal);
         return;
     }
 
@@ -132,9 +170,7 @@ void VisionAlignCal_Update(VisionAlignCal_t *cal,
 
         if (cal->elapsed_ms >= VISION_ALIGN_COMPLETE_TIMEOUT_MS)
         {
-            cal->result_yaw = vision_align_wrap_angle(current_yaw);
-            cal->result_valid = 1U;
-            cal->state = VISION_ALIGN_CAL_DONE;
+            vision_align_finish_batch(cal, current_yaw, continuous);
             return;
         }
 
@@ -165,12 +201,35 @@ void VisionAlignCal_Update(VisionAlignCal_t *cal,
 
         if (cal->sample_count >= VISION_ALIGN_SAMPLE_COUNT_TARGET)
         {
-            cal->result_yaw = vision_align_wrap_angle(cal->anchor_yaw +
-                cal->sample_delta_sum / (float)cal->sample_count);
-            cal->result_valid = 1U;
-            cal->state = VISION_ALIGN_CAL_DONE;
+            vision_align_finish_batch(cal,
+                cal->anchor_yaw + cal->sample_delta_sum / (float)cal->sample_count,
+                continuous);
         }
     }
+}
+
+void VisionAlignCal_Update(VisionAlignCal_t *cal,
+                           uint8 enabled,
+                           uint8 lane_valid,
+                           uint32 frame_seq,
+                           int16 lane_error_px,
+                           float current_yaw,
+                           uint16 dt_ms)
+{
+    vision_align_update_mode(cal, enabled, lane_valid, frame_seq, lane_error_px,
+                             current_yaw, dt_ms, 0U);
+}
+
+void VisionAlignCal_UpdateContinuous(VisionAlignCal_t *cal,
+                                     uint8 enabled,
+                                     uint8 lane_valid,
+                                     uint32 frame_seq,
+                                     int16 lane_error_px,
+                                     float current_yaw,
+                                     uint16 dt_ms)
+{
+    vision_align_update_mode(cal, enabled, lane_valid, frame_seq, lane_error_px,
+                             current_yaw, dt_ms, 1U);
 }
 
 VisionAlignCalState_t VisionAlignCal_GetState(const VisionAlignCal_t *cal)
@@ -206,4 +265,9 @@ uint8 VisionAlignCal_ResultValid(const VisionAlignCal_t *cal)
 float VisionAlignCal_GetResultYaw(const VisionAlignCal_t *cal)
 {
     return cal->result_yaw;
+}
+
+uint32 VisionAlignCal_GetResultGeneration(const VisionAlignCal_t *cal)
+{
+    return cal->result_generation;
 }

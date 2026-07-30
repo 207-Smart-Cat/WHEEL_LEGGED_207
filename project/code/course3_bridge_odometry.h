@@ -11,6 +11,13 @@ typedef struct
     uint8_t completed;
 } Course3BridgeOdometry_t;
 
+typedef struct
+{
+    float target_distance_m;
+    float travelled_distance_m;
+    uint8_t completed;
+} Course3TravelMeter_t;
+
 float Course3Bridge_ComputeLength(float start_x, float start_y,
                                   float end_x, float end_y);
 float Course3Bridge_MinWheelSpeed(float left_mps, float right_mps);
@@ -22,5 +29,9 @@ uint8 Course3BridgeOdometry_Update(Course3BridgeOdometry_t *odometry,
                                    float left_mps, float right_mps,
                                    float dt,
                                    float *dx, float *dy);
+void Course3TravelMeter_Begin(Course3TravelMeter_t *meter, float target_distance_m);
+uint8 Course3TravelMeter_Update(Course3TravelMeter_t *meter,
+                                float left_mps, float right_mps,
+                                float dt);
 
 #endif

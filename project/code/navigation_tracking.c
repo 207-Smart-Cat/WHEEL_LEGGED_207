@@ -83,7 +83,7 @@ static float navi_calc_turn_speed_limit(float turn_error_deg);
 static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid);
 static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd);
 static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points);
-static uint8_t navi_record_segment_state(WayPoint_Type *open_type);
+static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next_ordinal);
 static uint8_t navi_segment_validate_route(void);
 static void navi_bridge_reset(uint8_t restore_low_height);
 static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
@@ -182,12 +182,13 @@ static void navi_record_undo_last(void)
     IPC_LOG_Printf("\r\n>>> [NAVI_RECORD] undo last point, remain %d <<<\r\n", record_point_count);
 }
 
-static uint8_t navi_record_segment_state(WayPoint_Type *open_type)
+static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next_ordinal)
 {
     WayPoint_Type open = WP_TYPE_NORMAL;
+    uint8_t ordinal = 0U;
     uint16_t i;
 
-    if (open_type == NULL)
+    if (open_type == NULL || next_ordinal == NULL)
     {
         return 0U;
     }
@@ -201,22 +202,38 @@ static uint8_t navi_record_segment_state(WayPoint_Type *open_type)
             continue;
         }
 
-        if (open == WP_TYPE_NORMAL && record_point_map[i].action_cmd == NAVI_SEGMENT_ACTION_START)
+        if (open == WP_TYPE_NORMAL)
         {
+            if (record_point_map[i].action_cmd != Course3Segment_ExpectedAction((uint8)type, 0U))
+            {
+                *open_type = WP_TYPE_NORMAL;
+                *next_ordinal = 0U;
+                return 0U;
+            }
             open = type;
+            ordinal = 1U;
         }
-        else if (open == type && record_point_map[i].action_cmd == NAVI_SEGMENT_ACTION_END)
+        else if (open == type &&
+                 record_point_map[i].action_cmd == Course3Segment_ExpectedAction((uint8)type, ordinal))
         {
-            open = WP_TYPE_NORMAL;
+            ordinal++;
         }
         else
         {
             *open_type = WP_TYPE_NORMAL;
+            *next_ordinal = 0U;
             return 0U;
+        }
+
+        if (ordinal >= Course3Segment_PointCount((uint8)type))
+        {
+            open = WP_TYPE_NORMAL;
+            ordinal = 0U;
         }
     }
 
     *open_type = open;
+    *next_ordinal = ordinal;
     return 1U;
 }
 
@@ -229,12 +246,25 @@ uint8 Navi_Record_Get_Last_Action(void)
 uint8 Navi_Record_Get_Open_Segment_Type(void)
 {
     WayPoint_Type open_type = WP_TYPE_NORMAL;
+    uint8_t next_ordinal = 0U;
 
-    if (!navi_record_segment_state(&open_type) || open_type == WP_TYPE_NORMAL)
+    if (!navi_record_segment_state(&open_type, &next_ordinal) || open_type == WP_TYPE_NORMAL)
     {
         return 0xFFU;
     }
     return (uint8)open_type;
+}
+
+uint8 Navi_Record_Get_Next_Segment_Ordinal(void)
+{
+    WayPoint_Type open_type = WP_TYPE_NORMAL;
+    uint8_t next_ordinal = 0U;
+
+    if (!navi_record_segment_state(&open_type, &next_ordinal) || open_type == WP_TYPE_NORMAL)
+    {
+        return 0xFFU;
+    }
+    return next_ordinal;
 }
 
 static void navi_bridge_reset(uint8_t restore_low_height)
@@ -247,8 +277,6 @@ static void navi_bridge_reset(uint8_t restore_low_height)
 
 static uint8_t navi_segment_validate_route(void)
 {
-    WayPoint_Type open_type = WP_TYPE_NORMAL;
-    uint16_t start_idx = 0U;
     uint16_t i;
 
     if (Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3)
@@ -259,55 +287,42 @@ static uint8_t navi_segment_validate_route(void)
     for (i = 0U; i < navi_ctrl.point_total_count; i++)
     {
         WayPoint_Type type = point_map[i].type;
+        uint8_t point_count;
+        uint8_t ordinal;
 
         if (!point_map[i].valid || !Course3Segment_IsPairedType((uint8)type))
         {
-            if (open_type != WP_TYPE_NORMAL)
-            {
-                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] point %d interrupts open %s segment.\r\n",
-                               i, get_enum_name(open_type));
-                return 0U;
-            }
             continue;
         }
 
-        if (open_type == WP_TYPE_NORMAL)
+        point_count = Course3Segment_PointCount((uint8)type);
+        if (point_count == 0U || (uint32_t)i + point_count > navi_ctrl.point_total_count)
         {
-            if (point_map[i].action_cmd != NAVI_SEGMENT_ACTION_START)
-            {
-                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] point %d (%s) is not a valid start.\r\n",
-                               i, get_enum_name(type));
-                return 0U;
-            }
-            start_idx = i;
-            open_type = type;
+            IPC_LOG_Printf("\r\n[NAVI_SEGMENT] %s at point %d is incomplete.\r\n",
+                           get_enum_name(type), i);
+            return 0U;
         }
-        else
+
+        for (ordinal = 0U; ordinal < point_count; ordinal++)
         {
-            if (type != open_type ||
-                point_map[i].action_cmd != NAVI_SEGMENT_ACTION_END ||
-                i != (uint16_t)(start_idx + 1U))
+            uint16_t idx = (uint16_t)(i + ordinal);
+            if (!point_map[idx].valid || point_map[idx].type != type ||
+                point_map[idx].action_cmd != Course3Segment_ExpectedAction((uint8)type, ordinal))
             {
-                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] point %d is not the paired %s end.\r\n",
-                               i, get_enum_name(open_type));
+                IPC_LOG_Printf("\r\n[NAVI_SEGMENT] old or invalid %s map at point %d; record it again.\r\n",
+                               get_enum_name(type), idx);
                 return 0U;
             }
-            if (navi_get_two_points_distance(point_map[start_idx].x, point_map[start_idx].y,
-                                             point_map[i].x, point_map[i].y) < 0.01f)
+            if (ordinal > 0U &&
+                navi_get_two_points_distance(point_map[idx - 1U].x, point_map[idx - 1U].y,
+                                             point_map[idx].x, point_map[idx].y) < 0.01f)
             {
                 IPC_LOG_Printf("\r\n[NAVI_SEGMENT] %s points %d and %d overlap.\r\n",
-                               get_enum_name(open_type), start_idx, i);
+                               get_enum_name(type), idx - 1U, idx);
                 return 0U;
             }
-            open_type = WP_TYPE_NORMAL;
         }
-    }
-
-    if (open_type != WP_TYPE_NORMAL)
-    {
-        IPC_LOG_Printf("\r\n[NAVI_SEGMENT] %s start point %d has no end point.\r\n",
-                       get_enum_name(open_type), start_idx);
-        return 0U;
+        i = (uint16_t)(i + point_count - 1U);
     }
 
     return 1U;
@@ -754,7 +769,8 @@ void navi_auto_record_task(void) {
         if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)
         {
             WayPoint_Type open_type = WP_TYPE_NORMAL;
-            if (!navi_record_segment_state(&open_type))
+            uint8_t next_ordinal = 0U;
+            if (!navi_record_segment_state(&open_type, &next_ordinal))
             {
                 navi_ctrl.trigger_record = 0;
                 IPC_LOG_Printf("\r\n>>> [打点失败] 成对路段航点序列无效，请清空或撤销后重试 <<<\r\n");
@@ -768,17 +784,15 @@ void navi_auto_record_task(void) {
             }
             if (Course3Segment_IsPairedType((uint8)record_type))
             {
-                action_cmd = (open_type == record_type) ?
-                             NAVI_SEGMENT_ACTION_END : NAVI_SEGMENT_ACTION_START;
-                if (action_cmd == NAVI_SEGMENT_ACTION_END && record_point_count > 0U &&
+                uint8_t ordinal = (open_type == record_type) ? next_ordinal : 0U;
+                action_cmd = Course3Segment_ExpectedAction((uint8)record_type, ordinal);
+                if (ordinal > 0U && record_point_count > 0U &&
                     navi_get_two_points_distance(record_point_map[record_point_count - 1U].x,
                                                  record_point_map[record_point_count - 1U].y,
                                                  robot_pose.x,
                                                  robot_pose.y) < 0.01f)
                 {
-                    navi_ctrl.trigger_record = 0U;
-                    IPC_LOG_Printf("\r\n>>> [NAVI_RECORD] segment start/end distance must be at least 1 cm <<<\r\n");
-                    return;
+                    IPC_LOG_Printf("\r\n[NAVI_RECORD] warning: adjacent segment points are closer than 1 cm; execution will reject this map.\r\n");
                 }
             }
         }

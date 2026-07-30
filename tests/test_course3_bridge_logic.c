@@ -30,6 +30,13 @@ int main(void)
     assert(Course3Segment_RequiresVision(WP_TYPE_BRIDGE) == 1U);
     assert(Course3Segment_RequiresVision(WP_TYPE_STAIR_RAMP) == 1U);
     assert(Course3Segment_RequiresVision(WP_TYPE_BUMP) == 0U);
+    assert(Course3Segment_PointCount(WP_TYPE_BRIDGE) == 3U);
+    assert(Course3Segment_PointCount(WP_TYPE_STAIR_RAMP) == 3U);
+    assert(Course3Segment_PointCount(WP_TYPE_BUMP) == 2U);
+    assert(Course3Segment_ExpectedAction(WP_TYPE_BRIDGE, 0U) == NAVI_VISION_SEGMENT_ACTION_CALIBRATE);
+    assert(Course3Segment_ExpectedAction(WP_TYPE_BRIDGE, 1U) == NAVI_VISION_SEGMENT_ACTION_ENTRY);
+    assert(Course3Segment_ExpectedAction(WP_TYPE_BRIDGE, 2U) == NAVI_VISION_SEGMENT_ACTION_END);
+    assert(Course3Segment_ExpectedAction(WP_TYPE_BUMP, 1U) == NAVI_BUMP_ACTION_END);
     assert(Course3Segment_ShouldQueueAction(TEST_VEHICLE_MODE_COURSE_3,
                                             WP_TYPE_BUMP,
                                             NAVI_SEGMENT_ACTION_START) == 1U);
@@ -46,7 +53,7 @@ int main(void)
                                         0.501f) == 0U);
     assert(Course3Segment_ShouldApproach(TEST_VEHICLE_MODE_COURSE_3,
                                         WP_TYPE_STAIR_RAMP,
-                                        NAVI_SEGMENT_ACTION_END,
+                                        NAVI_VISION_SEGMENT_ACTION_END,
                                         0.10f) == 0U);
 
     assert(Course3Remote_SelectSpecialType(192) == WP_TYPE_BRIDGE);

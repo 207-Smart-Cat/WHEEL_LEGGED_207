@@ -69,6 +69,8 @@ typedef struct {
 static NaviYawCalibrationState_t yaw_calibration;
 static Course3BridgeOdometry_t course3_bridge_odometry;
 static uint8_t course3_bridge_odometry_active = 0U;
+static Course3TravelMeter_t course3_calibration_meter;
+static uint8_t course3_calibration_meter_active = 0U;
 
 // 在文件上方的全局变量区添加：
 #if USE_WIFI_TUNE
@@ -130,6 +132,41 @@ void Navi_Course3_Bridge_Odometry_End(void)
 uint8_t Navi_Course3_Bridge_Odometry_Is_Complete(void)
 {
     return (course3_bridge_odometry_active && course3_bridge_odometry.completed) ? 1U : 0U;
+}
+float Navi_Course3_Bridge_Odometry_Get_Travelled(void)
+{
+    return course3_bridge_odometry.travelled_distance_m;
+}
+
+float Navi_Course3_Bridge_Odometry_Get_Target(void)
+{
+    return course3_bridge_odometry.target_distance_m;
+}
+
+void Navi_Course3_Calibration_Meter_Begin(float target_distance_m)
+{
+    Course3TravelMeter_Begin(&course3_calibration_meter, target_distance_m);
+    course3_calibration_meter_active = 1U;
+}
+
+void Navi_Course3_Calibration_Meter_End(void)
+{
+    course3_calibration_meter_active = 0U;
+}
+
+uint8_t Navi_Course3_Calibration_Meter_Is_Complete(void)
+{
+    return (course3_calibration_meter_active && course3_calibration_meter.completed) ? 1U : 0U;
+}
+
+float Navi_Course3_Calibration_Meter_Get_Travelled(void)
+{
+    return course3_calibration_meter.travelled_distance_m;
+}
+
+float Navi_Course3_Calibration_Meter_Get_Target(void)
+{
+    return course3_calibration_meter.target_distance_m;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -634,6 +671,13 @@ void navi_ekf_update(void) {
 
     // 将增量累加进全局坐标系
     if (robot_pose.manual_update_mode == 0) {         //自动时才更新
+        if (course3_calibration_meter_active)
+        {
+            Course3TravelMeter_Update(&course3_calibration_meter,
+                                      filter_data.left_mps,
+                                      filter_data.right_mps,
+                                      ENCODER_DT);
+        }
         if (course3_bridge_odometry_active)
         {
             Course3BridgeOdometry_Update(&course3_bridge_odometry,

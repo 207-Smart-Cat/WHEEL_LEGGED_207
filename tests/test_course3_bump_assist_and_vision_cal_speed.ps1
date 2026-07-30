@@ -27,6 +27,16 @@ if ($control -notmatch 'target_velocity\s*=\s*COURSE3_VISION_CAL_SPEED\s*;') {
     }
 }
 
+if ($control -match 'VisionAlignCal_UpdateContinuous\s*\(') {
+    throw 'Course3 visual guidance must not collect or use calibrated yaw batches.'
+}
+
+if ($action -notmatch 'course3_vision_segment_get_map_target_yaw\s*\(entry_idx,\s*end_idx\)' -or
+    $action -notmatch 'navi_get_two_points_azimuth\s*\(' -or
+    $action -match 'course3_vision_segment\.latest_yaw') {
+    throw 'Bridge/ramp action yaw must come from the P2-to-P3 inertial map direction.'
+}
+
 if ($action -notmatch 'anti_stall_saved' -or
     $action -notmatch 'Runtime_Is_Module_Enabled\(RUNTIME_MODULE_ANTI_STALL\)' -or
     $action -notmatch 'Runtime_Set_Module_Enabled\(RUNTIME_MODULE_ANTI_STALL,\s*1U\)' -or

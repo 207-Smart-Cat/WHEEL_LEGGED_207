@@ -24,6 +24,7 @@ typedef struct
     uint8 result_valid;
     uint8 has_anchor;
     uint16 elapsed_ms;
+    uint32 result_generation;
     float anchor_yaw;
     float sample_delta_sum;
     float result_yaw;
@@ -37,6 +38,13 @@ void VisionAlignCal_Update(VisionAlignCal_t *cal,
                            int16 lane_error_px,
                            float current_yaw,
                            uint16 dt_ms);
+void VisionAlignCal_UpdateContinuous(VisionAlignCal_t *cal,
+                                     uint8 enabled,
+                                     uint8 lane_valid,
+                                     uint32 frame_seq,
+                                     int16 lane_error_px,
+                                     float current_yaw,
+                                     uint16 dt_ms);
 VisionAlignCalState_t VisionAlignCal_GetState(const VisionAlignCal_t *cal);
 uint8 VisionAlignCal_GetStableCount(const VisionAlignCal_t *cal);
 uint8 VisionAlignCal_GetSampleCount(const VisionAlignCal_t *cal);
@@ -44,5 +52,6 @@ uint8 VisionAlignCal_GetLeftSampleCount(const VisionAlignCal_t *cal);
 uint8 VisionAlignCal_GetRightSampleCount(const VisionAlignCal_t *cal);
 uint8 VisionAlignCal_ResultValid(const VisionAlignCal_t *cal);
 float VisionAlignCal_GetResultYaw(const VisionAlignCal_t *cal);
+uint32 VisionAlignCal_GetResultGeneration(const VisionAlignCal_t *cal);
 
 #endif

@@ -8,6 +8,9 @@ uint8 Course3Bridge_ShouldQueueAction(uint8 vehicle_mode,
                                       uint16 action_cmd);
 uint8 Course3Segment_IsPairedType(uint8 waypoint_type);
 uint8 Course3Segment_RequiresVision(uint8 waypoint_type);
+uint8 Course3Segment_PointCount(uint8 waypoint_type);
+uint16 Course3Segment_ExpectedAction(uint8 waypoint_type, uint8 ordinal);
+uint8 Course3Segment_IsStartAction(uint8 waypoint_type, uint16 action_cmd);
 uint8 Course3Segment_ShouldQueueAction(uint8 vehicle_mode,
                                        uint8 waypoint_type,
                                        uint16 action_cmd);

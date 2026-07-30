@@ -57,10 +57,16 @@
 
 #define DEFAULT_TRACKING_VELOCITY 300.0f   //默认速度
 
-#define NAVI_SEGMENT_ACTION_START  1U
-#define NAVI_SEGMENT_ACTION_END    2U
-#define NAVI_BRIDGE_ACTION_START   NAVI_SEGMENT_ACTION_START
-#define NAVI_BRIDGE_ACTION_END     NAVI_SEGMENT_ACTION_END
+#define NAVI_VISION_SEGMENT_ACTION_CALIBRATE 1U
+#define NAVI_VISION_SEGMENT_ACTION_ENTRY     2U
+#define NAVI_VISION_SEGMENT_ACTION_END       3U
+#define NAVI_BUMP_ACTION_START               1U
+#define NAVI_BUMP_ACTION_END                 2U
+#define NAVI_SEGMENT_ACTION_START            NAVI_BUMP_ACTION_START
+#define NAVI_SEGMENT_ACTION_END              NAVI_BUMP_ACTION_END
+#define NAVI_BRIDGE_ACTION_START             NAVI_VISION_SEGMENT_ACTION_CALIBRATE
+#define NAVI_BRIDGE_ACTION_ENTRY             NAVI_VISION_SEGMENT_ACTION_ENTRY
+#define NAVI_BRIDGE_ACTION_END               NAVI_VISION_SEGMENT_ACTION_END
 #define NAVI_COURSE3_LINE_LOOKAHEAD_DISTANCE 0.40f
 #define NAVI_COURSE3_APPROACH_DISTANCE       0.50f
 #define NAVI_COURSE3_APPROACH_SPEED          100.0f
@@ -191,6 +197,7 @@ void navi_auto_record_task(void) ;               //航点记录动作
 void navi_record_update_status(void);
 uint8 Navi_Record_Get_Last_Action(void);
 uint8 Navi_Record_Get_Open_Segment_Type(void);
+uint8 Navi_Record_Get_Next_Segment_Ordinal(void);
 
 void navi_path_optimize(void);                      //线性插值
 

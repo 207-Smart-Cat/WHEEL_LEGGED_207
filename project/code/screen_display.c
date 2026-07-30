@@ -121,6 +121,8 @@ typedef struct {
 } ui_cn_glyph_t;
 
 static const ui_cn_glyph_t k_ui_cn_glyphs[] = {
+    {0x51C6, {0x84,0x40,0x48,0x00,0x4F,0xF0,0x18,0x80,0x28,0x80,0x0F,0xE0,0x48,0x80,0x48,0x80,0x8F,0xE0,0x88,0x80,0x08,0x80,0x0F,0xF0,0x08,0x00,0x00,0x00,0x00,0x00,0x00,0x00}},
+    {0x6821, {0x20,0x80,0x27,0xF0,0xF8,0x00,0x21,0x40,0x62,0x20,0x74,0x10,0xAA,0x20,0xA2,0x20,0x21,0x40,0x20,0x80,0x21,0x40,0x22,0x20,0x24,0x10,0x00,0x00,0x00,0x00,0x00,0x00}},
     {0x4E00, {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7F,0xFE,0x7F,0xFE,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}},
     {0x4E09, {0x00,0x00,0x3F,0xFC,0x3F,0xFC,0x00,0x00,0x00,0x00,0x00,0x00,0x1F,0xF8,0x1F,0xF8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7F,0xFE,0x7F,0xFE,0x00,0x00,0x00,0x00}},
     {0x4E0A, {0x00,0x00,0x01,0x00,0x01,0x00,0x01,0x00,0x01,0x00,0x01,0x00,0x01,0xFC,0x01,0x00,0x01,0x00,0x01,0x00,0x01,0x00,0x01,0x00,0x01,0x00,0x7F,0xFE,0x7F,0xFE,0x00,0x00}},
@@ -359,6 +361,10 @@ static const uint16_t UI_TEXT_T_TYPE_CONE[] = {0x7ED5, 0x6876, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BRIDGE[] = {0x5355, 0x8FB9, 0x6865, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BRIDGE_START[] = {0x5355, 0x8FB9, 0x6865, 0x5F00, 0x59CB, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BRIDGE_END[] = {0x5355, 0x8FB9, 0x6865, 0x7ED3, 0x675F, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_BRIDGE_CAL[] = {0x5355, 0x8FB9, 0x6865, 0x6821, 0x51C6, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_BRIDGE_ENTRY[] = {0x5355, 0x8FB9, 0x6865, 0x5165, 0x53E3, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_RAMP_CAL[] = {0x53F0, 0x9636, 0x6821, 0x51C6, 0x0000};
+static const uint16_t UI_TEXT_T_TYPE_RAMP_ENTRY[] = {0x53F0, 0x9636, 0x5165, 0x53E3, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_JUMP[] = {0x4E09, 0x7EA7, 0x8DF3, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BUMP[] = {0x98A0, 0x7C38, 0x8DEF, 0x6BB5, 0x0000};
 static const uint16_t UI_TEXT_T_TYPE_BUMP_START[] = {0x98A0, 0x7C38, 0x5F00, 0x59CB, 0x0000};
@@ -1417,20 +1423,22 @@ static const uint16_t *ui_waypoint_type_text(uint8 type)
 
 static const uint16_t *ui_waypoint_detail_text(uint8 type, uint16 action_cmd)
 {
-    if (ui_is_paired_segment_type(type))
+    if ((WayPoint_Type)type == WP_TYPE_BUMP)
     {
-        if (action_cmd == NAVI_SEGMENT_ACTION_START)
-        {
-            if ((WayPoint_Type)type == WP_TYPE_BRIDGE) return UI_TEXT_T_TYPE_BRIDGE_START;
-            if ((WayPoint_Type)type == WP_TYPE_BUMP) return UI_TEXT_T_TYPE_BUMP_START;
-            return UI_TEXT_T_TYPE_RAMP_START;
-        }
-        if (action_cmd == NAVI_SEGMENT_ACTION_END)
-        {
-            if ((WayPoint_Type)type == WP_TYPE_BRIDGE) return UI_TEXT_T_TYPE_BRIDGE_END;
-            if ((WayPoint_Type)type == WP_TYPE_BUMP) return UI_TEXT_T_TYPE_BUMP_END;
-            return UI_TEXT_T_TYPE_RAMP_END;
-        }
+        if (action_cmd == NAVI_BUMP_ACTION_START) return UI_TEXT_T_TYPE_BUMP_START;
+        if (action_cmd == NAVI_BUMP_ACTION_END) return UI_TEXT_T_TYPE_BUMP_END;
+    }
+    else if ((WayPoint_Type)type == WP_TYPE_BRIDGE)
+    {
+        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_CALIBRATE) return UI_TEXT_T_TYPE_BRIDGE_CAL;
+        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_ENTRY) return UI_TEXT_T_TYPE_BRIDGE_ENTRY;
+        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_END) return UI_TEXT_T_TYPE_BRIDGE_END;
+    }
+    else if ((WayPoint_Type)type == WP_TYPE_STAIR_RAMP)
+    {
+        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_CALIBRATE) return UI_TEXT_T_TYPE_RAMP_CAL;
+        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_ENTRY) return UI_TEXT_T_TYPE_RAMP_ENTRY;
+        if (action_cmd == NAVI_VISION_SEGMENT_ACTION_END) return UI_TEXT_T_TYPE_RAMP_END;
     }
     return ui_waypoint_type_text(type);
 }
@@ -1555,12 +1563,21 @@ static void ui_draw_vision(void)
 }
 
 #endif
-
 static void ui_draw_course3_exec(void)
 {
     char line[40];
     const char *type = Course3TargetType_Text(core_a_status.course3_target_type);
     const char *state = Course3DisplayState_Text(core_a_status.course3_display_state);
+    const char *phase = "NAV";
+
+    switch (core_a_status.course3_vision_phase)
+    {
+        case COURSE3_VISION_PHASE_CALIBRATING: phase = "CAL RUN"; break;
+        case COURSE3_VISION_PHASE_ENTRY_WAIT:  phase = "ENTRY WAIT"; break;
+        case COURSE3_VISION_PHASE_BRIDGE:      phase = "BRIDGE"; break;
+        case COURSE3_VISION_PHASE_RAMP:        phase = "RAMP"; break;
+        default: break;
+    }
 
     if (force_ui_refresh)
     {
@@ -1590,7 +1607,17 @@ static void ui_draw_course3_exec(void)
     ips200_show_string(8, 196, line);
     sprintf(line, "dYaw:%6.2f D:%6.2f", core_a_status.course3_error_yaw, core_a_status.course3_distance);
     ips200_show_string(8, 216, line);
-    ips200_show_string(8, 270, "BACK: Home  UP+DN: Stop");
+    sprintf(line, "Phase:%-10s", phase);
+    ips200_show_string(8, 238, line);
+    sprintf(line, "Action yaw: MAP P2-P3");
+    ips200_show_string(8, 258, line);
+    sprintf(line, "Cal:%4.2f/%4.2f Act:%4.2f/%4.2f",
+            core_a_status.course3_calibration_travelled,
+            core_a_status.course3_calibration_target,
+            core_a_status.course3_action_travelled,
+            core_a_status.course3_action_target);
+    ips200_show_string(8, 278, line);
+    ips200_show_string(8, 302, "BACK: Home  UP+DN: Stop");
 }
 
 static void ui_draw_mode(void)
@@ -1726,7 +1753,9 @@ static void ui_draw_record_collect(void)
             ui_show_text(140, 266, UI_TEXT_T_WAIT);
             ui_show_text(172, 266,
                          ui_waypoint_detail_text(core_a_status.navi_record_open_segment_type,
-                                                 NAVI_SEGMENT_ACTION_END));
+                             Course3Segment_ExpectedAction(
+                                 core_a_status.navi_record_open_segment_type,
+                                 core_a_status.navi_record_next_segment_ordinal)));
         }
     }
     else if (ui_mode_allows_mine_type())

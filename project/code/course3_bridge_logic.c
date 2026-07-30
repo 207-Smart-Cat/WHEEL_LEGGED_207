@@ -18,13 +18,45 @@ uint8 Course3Segment_RequiresVision(uint8 waypoint_type)
             waypoint_type == WP_TYPE_STAIR_RAMP) ? 1U : 0U;
 }
 
+uint8 Course3Segment_PointCount(uint8 waypoint_type)
+{
+    if (Course3Segment_RequiresVision(waypoint_type))
+    {
+        return 3U;
+    }
+    return (waypoint_type == WP_TYPE_BUMP) ? 2U : 0U;
+}
+
+uint16 Course3Segment_ExpectedAction(uint8 waypoint_type, uint8 ordinal)
+{
+    if (Course3Segment_RequiresVision(waypoint_type))
+    {
+        if (ordinal == 0U) return NAVI_VISION_SEGMENT_ACTION_CALIBRATE;
+        if (ordinal == 1U) return NAVI_VISION_SEGMENT_ACTION_ENTRY;
+        if (ordinal == 2U) return NAVI_VISION_SEGMENT_ACTION_END;
+        return 0U;
+    }
+    if (waypoint_type == WP_TYPE_BUMP)
+    {
+        if (ordinal == 0U) return NAVI_BUMP_ACTION_START;
+        if (ordinal == 1U) return NAVI_BUMP_ACTION_END;
+    }
+    return 0U;
+}
+
+uint8 Course3Segment_IsStartAction(uint8 waypoint_type, uint16 action_cmd)
+{
+    return (Course3Segment_PointCount(waypoint_type) > 0U &&
+            action_cmd == Course3Segment_ExpectedAction(waypoint_type, 0U)) ? 1U : 0U;
+}
+
 uint8 Course3Segment_ShouldQueueAction(uint8 vehicle_mode,
                                        uint8 waypoint_type,
                                        uint16 action_cmd)
 {
     return (vehicle_mode == COURSE3_BRIDGE_VEHICLE_MODE &&
             Course3Segment_IsPairedType(waypoint_type) &&
-            action_cmd == NAVI_SEGMENT_ACTION_START) ? 1U : 0U;
+            Course3Segment_IsStartAction(waypoint_type, action_cmd)) ? 1U : 0U;
 }
 
 uint8 Course3Segment_ShouldApproach(uint8 vehicle_mode,

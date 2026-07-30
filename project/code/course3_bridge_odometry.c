@@ -2,7 +2,6 @@
 
 #include <math.h>
 
-#define COURSE3_BRIDGE_PASS_DISTANCE_FACTOR (0.9f)
 #define COURSE3_BRIDGE_PI (3.1415926535898f)
 
 float Course3Bridge_ComputeLength(float start_x, float start_y,
@@ -28,8 +27,7 @@ void Course3BridgeOdometry_Begin(Course3BridgeOdometry_t *odometry,
                                  float end_x, float end_y)
 {
     odometry->fixed_yaw_deg = fixed_yaw_deg;
-    odometry->target_distance_m = COURSE3_BRIDGE_PASS_DISTANCE_FACTOR *
-                                  Course3Bridge_ComputeLength(start_x, start_y, end_x, end_y);
+    odometry->target_distance_m = Course3Bridge_ComputeLength(start_x, start_y, end_x, end_y);
     odometry->travelled_distance_m = 0.0f;
     odometry->completed = 0U;
 }
@@ -40,6 +38,7 @@ uint8 Course3BridgeOdometry_Update(Course3BridgeOdometry_t *odometry,
                                    float *dx, float *dy)
 {
     float distance = Course3Bridge_MinWheelSpeed(left_mps, right_mps) * dt;
+    float remaining_distance;
     float yaw_rad = odometry->fixed_yaw_deg * COURSE3_BRIDGE_PI / 180.0f;
 
     if (odometry->completed)
@@ -47,6 +46,12 @@ uint8 Course3BridgeOdometry_Update(Course3BridgeOdometry_t *odometry,
         *dx = 0.0f;
         *dy = 0.0f;
         return 1U;
+    }
+
+    remaining_distance = odometry->target_distance_m - odometry->travelled_distance_m;
+    if (distance > remaining_distance)
+    {
+        distance = remaining_distance;
     }
 
     *dx = distance * cosf(yaw_rad);
@@ -59,4 +64,35 @@ uint8 Course3BridgeOdometry_Update(Course3BridgeOdometry_t *odometry,
     }
 
     return odometry->completed;
+}
+
+void Course3TravelMeter_Begin(Course3TravelMeter_t *meter, float target_distance_m)
+{
+    meter->target_distance_m = (target_distance_m > 0.0f) ? target_distance_m : 0.0f;
+    meter->travelled_distance_m = 0.0f;
+    meter->completed = (meter->target_distance_m <= 0.0f) ? 1U : 0U;
+}
+
+uint8 Course3TravelMeter_Update(Course3TravelMeter_t *meter,
+                                float left_mps, float right_mps,
+                                float dt)
+{
+    float distance;
+
+    if (meter->completed)
+    {
+        return 1U;
+    }
+
+    distance = Course3Bridge_MinWheelSpeed(left_mps, right_mps) * dt;
+    if (distance > meter->target_distance_m - meter->travelled_distance_m)
+    {
+        distance = meter->target_distance_m - meter->travelled_distance_m;
+    }
+    meter->travelled_distance_m += distance;
+    if (meter->travelled_distance_m >= meter->target_distance_m)
+    {
+        meter->completed = 1U;
+    }
+    return meter->completed;
 }

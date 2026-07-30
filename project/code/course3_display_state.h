@@ -11,6 +11,12 @@ typedef enum
     COURSE3_DISPLAY_DONE
 } Course3DisplayState_t;
 
+#define COURSE3_VISION_PHASE_NONE          (0U)
+#define COURSE3_VISION_PHASE_CALIBRATING   (1U)
+#define COURSE3_VISION_PHASE_ENTRY_WAIT    (2U)
+#define COURSE3_VISION_PHASE_BRIDGE        (3U)
+#define COURSE3_VISION_PHASE_RAMP          (4U)
+
 const char *Course3DisplayState_Text(uint8_t state);
 const char *Course3TargetType_Text(uint8_t waypoint_type);
 uint8_t Course3Waypoint_RequiresAlign(uint8_t waypoint_type);

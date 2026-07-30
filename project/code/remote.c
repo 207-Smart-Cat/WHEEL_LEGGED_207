@@ -69,7 +69,7 @@ static uint8 Remote_Is_Navi_Record_Mode(void);
 static uint8 Remote_Is_Navi_Execute_Mode(void);
 static uint8 Remote_CheckNormalRecordTrigger(uint8 remote_drive_enabled);
 static void Remote_ResetNormalRecordTrigger(void);
-static void Remote_CheckRecordTrigger(uint8 remote_drive_enabled);
+static void Remote_CheckRecordTrigger(uint8 record_enabled);
 static void Remote_ResetRecordTrigger(void);
 static WayPoint_Type Remote_GetRecordPointType(void);
 
@@ -296,6 +296,12 @@ static WayPoint_Type Remote_GetRecordPointType(void)
     // Course 3: CH4 selects bridge/bump/stair-ramp; CH6 records the selected special point.
     if (mode == VEHICLE_MODE_COURSE_3)
     {
+        uint8 open_type = Navi_Record_Get_Open_Segment_Type();
+
+        if (open_type != 0xFFU)
+        {
+            return (WayPoint_Type)open_type;
+        }
         return (WayPoint_Type)Course3Remote_SelectSpecialType(Remote_GetChannelData(4));
     }
 
@@ -357,7 +363,7 @@ static uint8 Remote_CheckNormalRecordTrigger(uint8 remote_drive_enabled)
 //    else                     return WP_TYPE_STOP;        // 终点停车   (极高位)
 //}
 
-static void Remote_CheckRecordTrigger(uint8 remote_drive_enabled)
+static void Remote_CheckRecordTrigger(uint8 record_enabled)
 {
     uint8 ch6_high = (Remote_GetChannelData(6) > REMOTE_CH6_JUMP_THRESHOLD) ? 1 : 0;
 
@@ -381,7 +387,7 @@ static void Remote_CheckRecordTrigger(uint8 remote_drive_enabled)
         return;
     }
 
-    if (remote_drive_enabled && remote_record_armed)
+    if (record_enabled && remote_record_armed)
     {
         wifi_remote_type = Remote_GetRecordPointType();
         wifi_in_action = 0.0f;
@@ -546,7 +552,7 @@ void Remote_control_callback(void)
             {
                 Remote_ResetNormalRecordTrigger();
             }
-            Remote_CheckRecordTrigger((uint8)(remote_drive_enabled && !normal_recorded));
+            Remote_CheckRecordTrigger((uint8)(!normal_recorded));
         }
         else
         {

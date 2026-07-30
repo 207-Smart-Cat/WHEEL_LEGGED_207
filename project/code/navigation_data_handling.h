@@ -260,6 +260,13 @@ void Navi_Course3_Bridge_Odometry_Begin(float control_yaw_deg,
                                         float end_x, float end_y);
 void Navi_Course3_Bridge_Odometry_End(void);
 uint8_t Navi_Course3_Bridge_Odometry_Is_Complete(void);
+float Navi_Course3_Bridge_Odometry_Get_Travelled(void);
+float Navi_Course3_Bridge_Odometry_Get_Target(void);
+void Navi_Course3_Calibration_Meter_Begin(float target_distance_m);
+void Navi_Course3_Calibration_Meter_End(void);
+uint8_t Navi_Course3_Calibration_Meter_Is_Complete(void);
+float Navi_Course3_Calibration_Meter_Get_Travelled(void);
+float Navi_Course3_Calibration_Meter_Get_Target(void);
 
 //=================================================ÉùÃ÷  »ù´¡º¯Êý================================================
 

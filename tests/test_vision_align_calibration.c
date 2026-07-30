@@ -121,12 +121,35 @@ static void timeout_finishes_only_on_a_centered_frame(void)
     assert_close(VisionAlignCal_GetResultYaw(&cal), 33.0f);
 }
 
+static void continuous_mode_keeps_latest_result_and_starts_next_batch(void)
+{
+    VisionAlignCal_t cal;
+    uint32 frame = 1U;
+
+    VisionAlignCal_Reset(&cal);
+    for (uint8 i = 0U; i < VISION_ALIGN_STABLE_WINDOW_FRAMES; i++)
+    {
+        VisionAlignCal_UpdateContinuous(&cal, 1U, 1U, frame++, 0, 20.0f, 10U);
+    }
+    for (uint8 i = 0U; i < VISION_ALIGN_SAMPLE_COUNT_TARGET; i++)
+    {
+        VisionAlignCal_UpdateContinuous(&cal, 1U, 1U, frame++, 0, 21.0f, 10U);
+    }
+
+    assert(VisionAlignCal_ResultValid(&cal) == 1U);
+    assert(VisionAlignCal_GetResultGeneration(&cal) == 1U);
+    assert(VisionAlignCal_GetState(&cal) == VISION_ALIGN_CAL_STABLE_WAIT);
+    assert(VisionAlignCal_GetSampleCount(&cal) == 0U);
+    assert_close(VisionAlignCal_GetResultYaw(&cal), 21.0f);
+}
+
 int main(void)
 {
     stable_wait_requires_full_window();
     sampling_accepts_consecutive_centered_frames_from_one_side();
     sampling_requires_consecutive_centered_frames();
     timeout_finishes_only_on_a_centered_frame();
+    continuous_mode_keeps_latest_result_and_starts_next_batch();
     puts("vision_align_calibration tests passed");
     return 0;
 }

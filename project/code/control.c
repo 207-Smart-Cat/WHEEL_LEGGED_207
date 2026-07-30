@@ -794,7 +794,9 @@ void Vision_Align_Cal_Reset(void)
     Vision_Turn_Reset();
 }
 
-static void vision_apply_course3_calibration(uint8_t valid, float calibration_speed)
+static void vision_apply_course3_calibration(uint8_t valid,
+                                             float calibration_speed,
+                                             uint8_t continuous)
 {
     if (g_vision_stale_ticks > VISION_FRAME_TIMEOUT_TICKS)
     {
@@ -805,15 +807,18 @@ static void vision_apply_course3_calibration(uint8_t valid, float calibration_sp
         return;
     }
 
-    VisionAlignCal_Update(&g_vision_align_cal,
-                          1U,
-                          valid,
-                          core_b_cmd.vision_frame_seq,
-                          core_b_cmd.vision_lane_error_px,
-                          IMU_data.filter_result.yaw,
-                          (uint16)(COURSE3_VISION_CONTROL_DT_S * 1000.0f));
+    if (!continuous)
+    {
+        VisionAlignCal_Update(&g_vision_align_cal,
+                              1U,
+                              valid,
+                              core_b_cmd.vision_frame_seq,
+                              core_b_cmd.vision_lane_error_px,
+                              IMU_data.filter_result.yaw,
+                              (uint16)(COURSE3_VISION_CONTROL_DT_S * 1000.0f));
+    }
 
-    if (VisionAlignCal_ResultValid(&g_vision_align_cal))
+    if (!continuous && VisionAlignCal_ResultValid(&g_vision_align_cal))
     {
         target_velocity = 0.0f;
         target_angle = VisionAlignCal_GetResultYaw(&g_vision_align_cal);
@@ -821,7 +826,9 @@ static void vision_apply_course3_calibration(uint8_t valid, float calibration_sp
         return;
     }
 
-    target_velocity = calibration_speed;
+    target_velocity = (continuous &&
+                      (Navi_Action_Vision_Calibration_Waiting() || !valid)) ?
+                      0.0f : calibration_speed;
     if (valid)
     {
         target_angle = vision_wrap_angle(IMU_data.filter_result.yaw +
@@ -884,7 +891,8 @@ static void vision_mode_apply(void)
         // The menu Vision entry and the bridge/ramp start use this exact path.
         vision_apply_course3_calibration(valid,
                                          manual_cal_enabled ? VISION_MENU_CAL_SPEED :
-                                                              COURSE3_VISION_CAL_SPEED);
+                                                              COURSE3_VISION_CAL_SPEED,
+                                         bridge_cal_enabled);
         return;
     }
 
