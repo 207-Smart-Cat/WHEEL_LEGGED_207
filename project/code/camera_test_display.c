@@ -116,10 +116,10 @@ void CameraTestDisplay_DrawStatusText(void)
             abs((int)core_a_status.left_pwm_duty),
             abs((int)core_a_status.right_pwm_duty));
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
-    sprintf(line, "V:%3.0f P:%3.1f I:%3.1f",
-            core_a_status.target_velocity_status,
-            COURSE3_VISION_DIRECTION_P,
-            COURSE3_VISION_DIRECTION_I);
+    sprintf(line, "PID:%+4.0f %+4.0f %+4.1f",
+            core_a_status.vision_p_output,
+            core_a_status.vision_i_output,
+            core_a_status.vision_d_output);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 176U, line);
 }
 
@@ -270,14 +270,14 @@ void CameraTestDisplay_Render(void)
             core_a_status.vision_align_result_yaw,
             core_a_status.vision_align_result_valid ? "OK" : "--");
     camera_test_show_info(CAMERA_TEST_INFO_Y + 140U, line);
-    sprintf(line, "V:%3.0f P:%3.1f I:%3.1f",
-            core_a_status.target_velocity_status,
-            COURSE3_VISION_DIRECTION_P,
-            COURSE3_VISION_DIRECTION_I);
+    sprintf(line, "PID:%+4.0f %+4.0f %+4.1f",
+            core_a_status.vision_p_output,
+            core_a_status.vision_i_output,
+            core_a_status.vision_d_output);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
-    sprintf(line, "D:%3.1f PxP:%4.2f PxD:%4.2f",
-            COURSE3_VISION_DIRECTION_D,
-            VISION_PIXEL_TO_ANGLE_P_DEG_PER_PX,
-            VISION_PIXEL_TO_ANGLE_D_DEG_PER_PX);
+    sprintf(line, "Int:%5.2f R:%+4.1f V:%+4.1f",
+            core_a_status.vision_integral,
+            core_a_status.vision_raw_yaw_rate,
+            core_a_status.vision_yaw_rate);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 176U, line);
 }

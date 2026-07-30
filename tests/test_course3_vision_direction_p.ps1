@@ -1,49 +1,72 @@
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$tuningPath = Join-Path $repoRoot 'project/code/course3_tuning.h'
-$controlPath = Join-Path $repoRoot 'project/code/control.c'
+$tuning = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/course3_tuning.h') -Raw
+$control = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/control.c') -Raw
+$vision = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/vision_control.c') -Raw
+$camera = Get-Content -LiteralPath (Join-Path $repoRoot 'project/code/camera_assist.c') -Raw
+$main = Get-Content -LiteralPath (Join-Path $repoRoot 'project/user/main_cm7_0.c') -Raw
 
-$tuning = Get-Content -LiteralPath $tuningPath -Raw
-$control = Get-Content -LiteralPath $controlPath -Raw
+$requiredMacros = @(
+    'COURSE3_VISION_YAW_RATE_SIGN',
+    'COURSE3_VISION_DIRECTION_P',
+    'COURSE3_VISION_DIRECTION_I',
+    'COURSE3_VISION_DIRECTION_D',
+    'COURSE3_VISION_CONTROL_DT_S',
+    'COURSE3_VISION_I_ERROR_MIN_DEG',
+    'COURSE3_VISION_I_ERROR_MAX_DEG',
+    'COURSE3_VISION_I_YAW_RATE_MAX_DPS',
+    'COURSE3_VISION_I_OUTPUT_LIMIT',
+    'COURSE3_VISION_TURN_PWM_LIMIT',
+    'VISION_MAX_ANGLE_OFFSET_DEG'
+)
 
-if ($tuning -notmatch '#define\s+COURSE3_VISION_DIRECTION_P\s+\([0-9]+(?:\.[0-9]+)?f\)') {
-    throw 'COURSE3_VISION_DIRECTION_P is not defined in course3_tuning.h.'
+foreach ($macro in $requiredMacros) {
+    if ($tuning -notmatch "#define\s+$macro\s+\(") {
+        throw "$macro is not defined in course3_tuning.h."
+    }
 }
 
-if ($tuning -notmatch '#define\s+COURSE3_VISION_DIRECTION_I\s+\([0-9]+(?:\.[0-9]+)?f\)') {
-    throw 'COURSE3_VISION_DIRECTION_I is not defined in course3_tuning.h.'
+if ($tuning -match 'VISION_FILTER_(OLD|NEW)' -or $vision -match 'VISION_FILTER_(OLD|NEW)') {
+    throw 'The second Vision angle filter still exists.'
 }
 
-if ($tuning -notmatch '#define\s+COURSE3_VISION_DIRECTION_D\s+\([0-9]+(?:\.[0-9]+)?f\)') {
-    throw 'COURSE3_VISION_DIRECTION_D is not defined in course3_tuning.h.'
+if ($camera -notmatch 'vision_control_update\(&camera_vision_control,\s*camera_assist_status\.lane_error_px\)') {
+    throw 'Vision angle mapping does not use the filtered lane-center error.'
 }
 
-if ($tuning -notmatch '#define\s+COURSE3_VISION_TURN_PWM_LIMIT\s+\([0-9]+(?:\.[0-9]+)?f\)') {
-    throw 'COURSE3_VISION_TURN_PWM_LIMIT is not defined in course3_tuning.h.'
+if ($camera -match 'vision_control_update\(&camera_vision_control,\s*raw_lane_error_px\)') {
+    throw 'Raw lane error is still used as the control input.'
 }
 
-if ($control -match 'vision_control_pd_output\(yaw_error,\s*yaw_rate,\s*COURSE3_VISION_DIRECTION_P,\s*Direction_d,\s*2200\.0f\)') {
-    throw 'Vision PD control still hard-codes the PWM output limit.'
+if ($vision -notmatch 'state->filtered_offset_deg\s*=\s*state->raw_offset_deg' -or
+    $vision -notmatch 'return\s+state->raw_offset_deg\s*;') {
+    throw 'Vision angle output is not a direct bounded pixel mapping.'
 }
 
-if ($control -match 'vision_control_pd_output\(yaw_error,\s*yaw_rate,\s*COURSE3_VISION_DIRECTION_P,\s*Direction_d,\s*COURSE3_VISION_TURN_PWM_LIMIT\)') {
-    throw 'Vision direction control still uses global Direction_d.'
+if ($control -notmatch 'COURSE3_VISION_YAW_RATE_SIGN\s*\*\s*raw_yaw_rate') {
+    throw 'Vision yaw-rate sign is not controlled by the tuning macro.'
 }
 
-if ($control -notmatch 'COURSE3_VISION_DIRECTION_P\s*\*\s*yaw_error' -or
-    $control -notmatch 'COURSE3_VISION_DIRECTION_I\s*\*\s*g_turn_yaw_integral' -or
-    $control -notmatch 'vision_yaw_rate\s*=\s*-yaw_rate' -or
-    $control -notmatch 'COURSE3_VISION_DIRECTION_D\s*\*\s*vision_yaw_rate') {
-    throw 'Vision direction control does not use the dedicated vision PID constants.'
+if ($control -match 'COURSE3_VISION_DIRECTION_I\s*\*\s*g_turn_yaw_integral') {
+    throw 'Vision still reuses the ordinary navigation integral.'
 }
 
-if ($control -notmatch 'target_angle\s*=\s*vision_wrap_angle\(IMU_data\.filter_result\.yaw\s*\+\s*core_b_cmd\.vision_angle_offset_deg\)') {
-    throw 'Vision calibration does not apply the pixel correction relative to the current yaw.'
+if ($control -notmatch 'vision_turn_control_update\(&g_vision_turn_control') {
+    throw 'The independent conditional Vision PID is not connected.'
 }
 
-if ($control -match 'g_vision_reference_yaw') {
-    throw 'Vision calibration still uses a fixed entry yaw, which permits a non-centered visual equilibrium.'
+if ($main -notmatch 'pit_ms_init\(PIT_Balance,\s*1\)') {
+    throw 'The configured balance-control period is not 1 ms.'
 }
 
-Write-Output 'course3 vision Direction_P tuning test passed'
+if ($tuning -notmatch '#define\s+COURSE3_VISION_CONTROL_DT_S\s+\(0\.001f\)') {
+    throw 'Vision PID dt does not match the configured 1 ms balance period.'
+}
+
+$resetCount = ([regex]::Matches($control, 'Vision_Turn_Reset\(\)')).Count
+if ($resetCount -lt 8) {
+    throw "Vision reset coverage is incomplete: found $resetCount reset calls."
+}
+
+Write-Output 'course3 Vision PID and single-filter structure test passed'

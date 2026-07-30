@@ -285,7 +285,7 @@ static void camera_update_lane(uint8 threshold)
         }
         camera_assist_status.lane_valid = 1;
         camera_assist_status.vision_angle_offset_deg =
-            vision_control_update(&camera_vision_control, raw_lane_error_px);
+            vision_control_update(&camera_vision_control, camera_assist_status.lane_error_px);
         camera_assist_status.vision_angle_raw_deg = camera_vision_control.raw_offset_deg;
     }
     else

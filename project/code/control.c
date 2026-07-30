@@ -56,10 +56,21 @@ float out_gyro_l  = 0, out_gyro_r  = 0;
 static float balance_last_error = 0.0f;
 static float gyro_last_error = 0.0f;
 static float g_turn_yaw_integral = 0.0f;
+static VisionTurnControlState_t g_vision_turn_control;
 static uint8_t g_vision_last_enabled = 0U;
 static uint32_t g_vision_last_frame_seq = 0U;
 static uint8_t g_vision_stale_ticks = 0U;
+static uint8_t g_vision_control_valid = 0U;
+static uint8_t g_vision_last_vehicle_mode = 0U;
+static uint8_t g_vision_vehicle_mode_initialized = 0U;
 static VisionAlignCal_t g_vision_align_cal;
+float vision_dbg_yaw_error = 0.0f;
+float vision_dbg_raw_yaw_rate = 0.0f;
+float vision_dbg_yaw_rate = 0.0f;
+float vision_dbg_p_output = 0.0f;
+float vision_dbg_i_output = 0.0f;
+float vision_dbg_d_output = 0.0f;
+float vision_dbg_integral = 0.0f;
 extern IMU_t IMU_data;            // IMU数据
 float roll;              // 倾斜角度
 int engine_change = 600; // 发动机变化量
@@ -658,7 +669,7 @@ float Turn_target(float target_angle)
 static float turn_compute(float current_yaw, float target_yaw, uint8_t use_integral)
 {
     float yaw_error = target_yaw - current_yaw;
-    float yaw_rate = IMU_data.gyro[2];
+    float raw_yaw_rate = IMU_data.gyro[2];
     float control_output;
 
     while (yaw_error > 180.0f)  yaw_error -= 360.0f;
@@ -685,31 +696,24 @@ static float turn_compute(float current_yaw, float target_yaw, uint8_t use_integ
         integral_output = constrain_float(Direction_i * g_turn_yaw_integral,
                                           -turn_i_output_limit,
                                           turn_i_output_limit);
-        control_output = Direction_p * yaw_error + integral_output - Direction_d * yaw_rate;
+        control_output = Direction_p * yaw_error + integral_output - Direction_d * raw_yaw_rate;
     }
     else
     {
-        const float vision_i_state_limit = 15000.0f;
-        const float vision_yaw_rate = -yaw_rate;
+        float vision_yaw_rate = COURSE3_VISION_YAW_RATE_SIGN * raw_yaw_rate;
 
-        if (yaw_error == 0.0f)
-        {
-            g_turn_yaw_integral *= 0.995f;
-        }
-        else
-        {
-            g_turn_yaw_integral += yaw_error;
-            g_turn_yaw_integral = constrain_float(g_turn_yaw_integral,
-                                                  -vision_i_state_limit,
-                                                  vision_i_state_limit);
-        }
-
-        control_output = COURSE3_VISION_DIRECTION_P * yaw_error +
-                         COURSE3_VISION_DIRECTION_I * g_turn_yaw_integral -
-                         COURSE3_VISION_DIRECTION_D * vision_yaw_rate;
-        control_output = constrain_float(control_output,
-                                         -COURSE3_VISION_TURN_PWM_LIMIT,
-                                         COURSE3_VISION_TURN_PWM_LIMIT);
+        control_output = vision_turn_control_update(&g_vision_turn_control,
+                                                    yaw_error,
+                                                    vision_yaw_rate,
+                                                    COURSE3_VISION_CONTROL_DT_S,
+                                                    g_vision_control_valid);
+        vision_dbg_yaw_error = yaw_error;
+        vision_dbg_raw_yaw_rate = raw_yaw_rate;
+        vision_dbg_yaw_rate = vision_yaw_rate;
+        vision_dbg_p_output = g_vision_turn_control.p_output;
+        vision_dbg_i_output = g_vision_turn_control.i_output;
+        vision_dbg_d_output = g_vision_turn_control.d_output;
+        vision_dbg_integral = g_vision_turn_control.integral_deg_s;
     }
 
     return control_output;
@@ -728,6 +732,18 @@ static float Turn_PD(float current_yaw, float target_yaw)
 void Turn_Reset(void)
 {
     g_turn_yaw_integral = 0.0f;
+}
+
+static void Vision_Turn_Reset(void)
+{
+    vision_turn_control_reset(&g_vision_turn_control);
+    vision_dbg_yaw_error = 0.0f;
+    vision_dbg_raw_yaw_rate = 0.0f;
+    vision_dbg_yaw_rate = 0.0f;
+    vision_dbg_p_output = 0.0f;
+    vision_dbg_i_output = 0.0f;
+    vision_dbg_d_output = 0.0f;
+    vision_dbg_integral = 0.0f;
 }
 
 static float vision_wrap_angle(float angle)
@@ -775,6 +791,7 @@ float Vision_Align_Cal_Get_Result_Yaw(void)
 void Vision_Align_Cal_Reset(void)
 {
     VisionAlignCal_Reset(&g_vision_align_cal);
+    Vision_Turn_Reset();
 }
 
 static void vision_apply_course3_calibration(uint8_t valid, float calibration_speed)
@@ -784,7 +801,7 @@ static void vision_apply_course3_calibration(uint8_t valid, float calibration_sp
         VisionAlignCal_Reset(&g_vision_align_cal);
         target_velocity = 0.0f;
         target_angle = IMU_data.filter_result.yaw;
-        Turn_Reset();
+        Vision_Turn_Reset();
         return;
     }
 
@@ -799,6 +816,7 @@ static void vision_apply_course3_calibration(uint8_t valid, float calibration_sp
     {
         target_velocity = 0.0f;
         target_angle = VisionAlignCal_GetResultYaw(&g_vision_align_cal);
+        Vision_Turn_Reset();
         return;
     }
 
@@ -807,11 +825,12 @@ static void vision_apply_course3_calibration(uint8_t valid, float calibration_sp
     {
         target_angle = vision_wrap_angle(IMU_data.filter_result.yaw +
                                          core_b_cmd.vision_angle_offset_deg);
+        g_vision_control_valid = 1U;
     }
     else
     {
         target_angle = IMU_data.filter_result.yaw;
-        Turn_Reset();
+        Vision_Turn_Reset();
     }
 }
 
@@ -824,10 +843,19 @@ static void vision_mode_apply(void)
     uint8_t cal_enabled = (manual_cal_enabled || bridge_cal_enabled) ? 1U : 0U;
     uint8_t enabled = (page_enabled || action_enabled) ? 1U : 0U;
     uint8_t valid = core_b_cmd.vision_valid;
+    uint8_t vehicle_mode = Runtime_Get_Vehicle_Mode();
+
+    g_vision_control_valid = 0U;
+    if (!g_vision_vehicle_mode_initialized || vehicle_mode != g_vision_last_vehicle_mode)
+    {
+        Vision_Turn_Reset();
+        g_vision_last_vehicle_mode = vehicle_mode;
+        g_vision_vehicle_mode_initialized = 1U;
+    }
 
     if (!enabled)
     {
-        if (g_vision_last_enabled) Turn_Reset();
+        if (g_vision_last_enabled) Vision_Turn_Reset();
         g_vision_last_enabled = 0U;
         g_vision_stale_ticks = 0U;
         VisionAlignCal_Reset(&g_vision_align_cal);
@@ -846,7 +874,7 @@ static void vision_mode_apply(void)
 
     if (!g_vision_last_enabled)
     {
-        Turn_Reset();
+        Vision_Turn_Reset();
     }
     g_vision_last_enabled = 1U;
 
@@ -862,11 +890,12 @@ static void vision_mode_apply(void)
     if (valid && g_vision_stale_ticks <= VISION_FRAME_TIMEOUT_TICKS)
     {
         target_angle = vision_wrap_angle(IMU_data.filter_result.yaw + core_b_cmd.vision_angle_offset_deg);
+        g_vision_control_valid = 1U;
     }
     else
     {
         target_angle = IMU_data.filter_result.yaw;
-        Turn_Reset();
+        Vision_Turn_Reset();
     }
 }
 
@@ -885,6 +914,7 @@ void balance_control()
 
     if (Vehicle_Is_Emergency_Stop())
     {
+        Vision_Turn_Reset();
         Runtime_Set_Balance_Reason(RUNTIME_REASON_BALANCE_OFF);
         Balance_Pwm = 0.0f;
         Velocity_Angle_left = 0.0f;
@@ -896,6 +926,7 @@ void balance_control()
 
     if (IPC_CoreB_Wifi_Is_Connected() == 0)
     {
+        Vision_Turn_Reset();
         Runtime_Set_Balance_Reason(RUNTIME_REASON_WIFI_OFF);
         Balance_Pwm = 0.0f;
         Velocity_Angle_left = 0.0f;
@@ -917,6 +948,7 @@ void balance_control()
 
     if (jump_should_suspend_engine())
     {
+        Vision_Turn_Reset();
         Runtime_Set_Balance_Reason(RUNTIME_REASON_BALANCE_OFF);
         PidChange(&motor_speed, 0, 0, 0);
         PidChange(&motor_Stand, 0, 0, 0);

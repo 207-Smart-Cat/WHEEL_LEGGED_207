@@ -46,13 +46,13 @@ void pit0_ch2_isr() //
     pit_isr_flag_clear(PIT_CH2);
 }
 
-void pit0_ch10_isr() // 预留：主平衡控制已迁移到 5ms IMU 中断
+void pit0_ch10_isr() // Balance control, configured for 1 ms.
 {
     test_pit10_cnt++; // 每次进中断，计数器加 1
 //    PERF_PROBE_HIGH(PERF_PROBE_BALANCE);
     balance_control();
 //    PERF_PROBE_LOW(PERF_PROBE_BALANCE);
-    // balance_control() 已改为在 5ms IMU 中断中执行
+    // Keep COURSE3_VISION_CONTROL_DT_S synchronized with PIT_Balance.
 //    if (IMU_ready) {
 //        navi_ekf_update();
 //    }
