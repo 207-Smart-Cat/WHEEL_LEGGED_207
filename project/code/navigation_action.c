@@ -230,9 +230,9 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 // 单跳和三级跳使用同一基础速度，需要停车的状态在状态机中明确清零。
 #define NAVI_JUMP_ACTION_SPEED             (320.0f)
 #define NAVI_JUMP_RUNUP_SPEED              NAVI_JUMP_ACTION_SPEED
-#define NAVI_JUMP_SECOND_APPROACH_M        (0.00f)
+#define NAVI_JUMP_SECOND_APPROACH_M        (0.15f)
 #define NAVI_JUMP_SECOND_APPROACH_SPEED    NAVI_JUMP_ACTION_SPEED  
-#define NAVI_JUMP_THIRD_APPROACH_M         (0.00f)
+#define NAVI_JUMP_THIRD_APPROACH_M         (0.15f)
 #define NAVI_JUMP_THIRD_APPROACH_SPEED     NAVI_JUMP_ACTION_SPEED
 
 // ================== 跳跃接近与触边检测 ==================
@@ -244,7 +244,7 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 #define NAVI_JUMP_TOUCH_HIGH_SAMPLES         (6U)       // 高速状态确认次数
 #define NAVI_JUMP_TOUCH_LOW_CONFIRM          (4U)       // 低速状态确认次数
 
-#define NAVI_JUMP_TOUCH_SETTLE_MS            (500U)      // 碰撞后稳定等待
+#define NAVI_JUMP_TOUCH_SETTLE_MS            (300U)      // 碰撞后稳定等待
 #define NAVI_JUMP_TOUCH_INHIBIT_MIN_MS       (200U)     // 防止重复触边检测
 #define NAVI_JUMP_TOUCH_INHIBIT_FORWARD_M    (0.10f)    // 触边后最小前进距离
 
@@ -255,7 +255,7 @@ static void navi_bump_skip_and_complete(uint16_t target_idx,
 #define NAVI_JUMP_BACKOFF_FINE_ZONE_M        (0.15f)    // 后退末端减速距离
 
 // ================== 跳跃助跑阶段 ==================
-#define NAVI_JUMP_TAKEOFF_RESERVE_M          (0.25f)    // 起跳前保留距离
+#define NAVI_JUMP_TAKEOFF_RESERVE_M          (0.20f)    // 起跳前保留距离
 #define NAVI_JUMP_RUNUP_TARGET_M             \
         (NAVI_JUMP_BACKOFF_TARGET_M - NAVI_JUMP_TAKEOFF_RESERVE_M)
 #define NAVI_JUMP_TAKEOFF_SPEED              NAVI_JUMP_RUNUP_SPEED
