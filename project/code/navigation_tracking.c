@@ -86,6 +86,7 @@ static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd);
 static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points);
 static float navi_get_normal_speed_limit(void);
 static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_points);
+static uint8_t navi_is_course12_return_high_speed_segment(uint16_t target_idx, uint16_t total_points);
 static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t total_points, float distance);
 static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next_ordinal);
 static uint8_t navi_segment_validate_route(void);
@@ -508,7 +509,7 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
                    get_enum_name(target->type),
                    target_idx,
                    (double)NAVI_COURSE3_APPROACH_DISTANCE,
-                   (int)NAVI_COURSE3_APPROACH_SPEED);
+                   (int)(course2_rotate ? NAVI_COURSE2_MINE_APPROACH_SPEED : NAVI_COURSE3_APPROACH_SPEED));
     return 1U;
 }
 
@@ -682,19 +683,50 @@ static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_po
     return (progress >= 0.0f) ? 1U : 0U;
 }
 
+static uint8_t navi_is_course12_return_high_speed_segment(uint16_t target_idx, uint16_t total_points)
+{
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
+    uint16_t return_start_idx;
+
+    if ((mode != VEHICLE_MODE_COURSE_1 && mode != VEHICLE_MODE_COURSE_2) ||
+        total_points < NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS ||
+        NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS < 2U ||
+        target_idx >= total_points || target_idx >= NAVI_POINT_MAX ||
+        !point_map[target_idx].valid)
+    {
+        return 0U;
+    }
+
+    return_start_idx = total_points - (NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS - 1U);
+    if (target_idx < return_start_idx)
+    {
+        return 0U;
+    }
+
+    return (point_map[target_idx].type == WP_TYPE_NORMAL ||
+            point_map[target_idx].type == WP_TYPE_HIGH_SPEED ||
+            point_map[target_idx].type == WP_TYPE_HOME ||
+            point_map[target_idx].type == WP_TYPE_STOP) ? 1U : 0U;
+}
+
 static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t total_points, float distance)
 {
     float normal_limit = navi_get_normal_speed_limit();
     float high_limit = NAVI_HIGH_SPEED_MAX_VELOCITY;
 
-    if (!navi_is_high_speed_segment(target_idx, total_points))
-    {
-        return normal_limit;
-    }
-
     if (normal_limit > high_limit)
     {
         high_limit = normal_limit;
+    }
+
+    if (navi_is_course12_return_high_speed_segment(target_idx, total_points))
+    {
+        return high_limit;
+    }
+
+    if (!navi_is_high_speed_segment(target_idx, total_points))
+    {
+        return normal_limit;
     }
 
     if (target_idx + 1U >= total_points ||
@@ -1378,7 +1410,11 @@ void task_navigation_control(void) {
                 // 2. 速度赋值被完美收束在此处
                 if (course3_approach_active)
                 {
-                    target_velocity = nav_info_valid ? NAVI_COURSE3_APPROACH_SPEED : 0.0f;
+                    target_velocity = nav_info_valid ?
+                        ((Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_2 &&
+                          point_map[curr_idx].type == WP_TYPE_MINE_SWEEP) ?
+                         NAVI_COURSE2_MINE_APPROACH_SPEED : NAVI_COURSE3_APPROACH_SPEED) :
+                        0.0f;
                 }
                 else
                 {
