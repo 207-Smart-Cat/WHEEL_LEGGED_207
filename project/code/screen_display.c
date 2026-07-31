@@ -1511,8 +1511,16 @@ static void ui_draw_storage_state(uint16 x, uint16 y, uint8 state)
     ui_show_text(x, y, ui_storage_state_text(state));
 }
 
+static uint8_t ui_group_count(void)
+{
+    return (ui_group_action == UI_GROUP_ACTION_EXECUTE &&
+            Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3) ?
+           NAV_EXEC_GROUP_COUNT : NAV_GROUP_COUNT;
+}
+
 static void ui_group_keep_visible(void)
 {
+    uint8_t group_count = ui_group_count();
     if (ui_group_index < ui_group_top)
     {
         ui_group_top = ui_group_index;
@@ -1521,9 +1529,9 @@ static void ui_group_keep_visible(void)
     {
         ui_group_top = (uint8_t)(ui_group_index - 6U);
     }
-    if (ui_group_top > (NAV_GROUP_COUNT - 7U))
+    if (ui_group_top > (group_count - 7U))
     {
-        ui_group_top = NAV_GROUP_COUNT - 7U;
+        ui_group_top = group_count - 7U;
     }
 }
 
@@ -1710,6 +1718,7 @@ static void ui_draw_group_select(void)
 {
     char line[20];
     uint8 row;
+    uint8 group_count = ui_group_count();
 
     ui_draw_title_text(ui_group_title());
     for (row = 0; row < 7U; row++)
@@ -1718,7 +1727,7 @@ static void ui_draw_group_select(void)
         uint16 y = (uint16)(38U + row * 34U);
         const NavGroupSummary_t *summary;
 
-        if (group >= NAV_GROUP_COUNT)
+        if (group >= group_count)
         {
             break;
         }
@@ -1731,7 +1740,14 @@ static void ui_draw_group_select(void)
         sprintf(line, "%3d", summary != NULL ? (int)summary->count : 0);
         ui_show_string_safe(76, y, line);
         ui_show_text(104, y, UI_TEXT_T_POINT_WORD);
-        ui_draw_storage_state(132, y, summary != NULL ? summary->state : NAV_STORE_ERROR);
+        if (group == NAV_COURSE3_PRESET_GROUP)
+        {
+            ui_show_string_safe(132, y, "PRESET");
+        }
+        else
+        {
+            ui_draw_storage_state(132, y, summary != NULL ? summary->state : NAV_STORE_ERROR);
+        }
     }
 
     sprintf(line, "%d/2", ui_group_top == 0U ? 1 : 2);
@@ -2372,6 +2388,7 @@ static void ui_handle_mode_action(ui_key_event_t events[UI_KEY_COUNT])
 static void ui_handle_group_select(ui_key_event_t events[UI_KEY_COUNT])
 {
     const NavGroupSummary_t *summary;
+    uint8_t group_count = ui_group_count();
 
     if (ui_group_load_pending != 0U)
     {
@@ -2400,13 +2417,13 @@ static void ui_handle_group_select(ui_key_event_t events[UI_KEY_COUNT])
 
     if (events[UI_KEY_UP])
     {
-        ui_group_index = (ui_group_index == 0U) ? (NAV_GROUP_COUNT - 1U) : (uint8)(ui_group_index - 1U);
+        ui_group_index = (ui_group_index == 0U) ? (group_count - 1U) : (uint8)(ui_group_index - 1U);
         ui_group_keep_visible();
         ui_set_screen(UI_SCREEN_GROUP_SELECT);
     }
     else if (events[UI_KEY_DOWN])
     {
-        ui_group_index = (uint8)((ui_group_index + 1U) % NAV_GROUP_COUNT);
+        ui_group_index = (uint8)((ui_group_index + 1U) % group_count);
         ui_group_keep_visible();
         ui_set_screen(UI_SCREEN_GROUP_SELECT);
     }

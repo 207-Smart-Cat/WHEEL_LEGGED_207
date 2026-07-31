@@ -82,10 +82,10 @@ if ($calibration -match 'VISION_ALIGN_SIDE_SAMPLE_TARGET' -or
     throw 'Vision alignment completion logic still depends on side quotas or lacks consecutive/timeout handling.'
 }
 
-if (([regex]::Matches($display, 'Lim L:%\+5\.0f R:%\+5\.0f')).Count -ne 2 -or
-    ([regex]::Matches($display, 'COURSE3_VISION_TURN_PWM_LIMIT,\s*-COURSE3_VISION_TURN_PWM_LIMIT')).Count -ne 2 -or
-    $display -match 'Trn L:') {
-    throw 'Vision screen does not show the configured positive and negative turn limits.'
+if (([regex]::Matches($display, 'Turn L:%\+5\.0f R:%\+5\.0f')).Count -ne 2 -or
+    ([regex]::Matches($display, 'core_a_status\.pid_out_turn,\s*-core_a_status\.pid_out_turn')).Count -ne 2 -or
+    $display -match 'Lim L:') {
+    throw 'Vision screen does not show the live left/right steering-loop PWM values.'
 }
 
 $resetCount = ([regex]::Matches($control, 'Vision_Turn_Reset\(\)')).Count

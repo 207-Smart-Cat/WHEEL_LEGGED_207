@@ -624,10 +624,45 @@ static uint8 g_nav_store_local_dirty = 0;
 static uint32 g_nav_record_tx_seen = 0;
 static uint32 g_nav_load_seq_next = 0;
 static uint16 g_nav_load_start = 0;
+static uint16 g_nav_load_total = 0;
 static uint8 g_nav_load_group = 0;
 static uint8 g_nav_load_intent = NAV_GROUP_INTENT_NONE;
 static uint8 g_nav_load_busy = 0;
 static uint8 g_nav_load_wait_ack = 0;
+
+static const IpcNavFlashPoint_t g_course3_preset_points[NAV_COURSE3_PRESET_POINT_COUNT] = {
+    {  0.00f,  0.00f,    0.0f, 0U,                                   WP_TYPE_HOME,       1U},
+    {  0.37f,  0.00f,    2.1f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  1.00f, -0.92f,  -63.7f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  2.61f, -0.92f,    5.4f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  3.36f, -0.91f,    0.0f, NAVI_VISION_SEGMENT_ACTION_CALIBRATE, WP_TYPE_BRIDGE,     1U},
+    {  4.06f, -0.90f,   -0.2f, NAVI_VISION_SEGMENT_ACTION_ENTRY,     WP_TYPE_BRIDGE,     1U},
+    {  5.18f, -0.88f,   -3.0f, NAVI_VISION_SEGMENT_ACTION_END,       WP_TYPE_BRIDGE,     1U},
+    {  5.75f, -0.88f,   -0.2f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  6.60f, -1.73f,  -37.9f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  8.33f, -1.76f,   12.9f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    { 10.92f, -0.74f,   20.7f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    { 10.93f,  0.80f,   98.8f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  6.01f,  0.96f,  175.8f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  4.80f,  0.90f,  178.1f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  3.98f,  0.95f,  174.2f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  3.10f, -0.15f, -127.4f, 0U,                                   WP_TYPE_NORMAL,     1U},
+    {  2.48f, -0.15f,  179.4f, NAVI_VISION_SEGMENT_ACTION_CALIBRATE, WP_TYPE_STAIR_RAMP, 1U},
+    {  2.12f, -0.15f, -176.5f, NAVI_VISION_SEGMENT_ACTION_ENTRY,     WP_TYPE_STAIR_RAMP, 1U},
+    {  0.90f, -0.15f,  -97.0f, NAVI_VISION_SEGMENT_ACTION_END,       WP_TYPE_STAIR_RAMP, 1U},
+    { -0.43f, -0.03f,  169.3f, 0U,                                   WP_TYPE_NORMAL,     1U}
+};
+
+static const NavGroupSummary_t g_course3_preset_summary = {
+    NAV_COURSE3_PRESET_POINT_COUNT,
+    NAV_STORE_SAVED,
+    NAV_STORE_NO_BANK,
+    0U
+};
+
+typedef char nav_course3_preset_must_have_20_points[
+    (sizeof(g_course3_preset_points) / sizeof(g_course3_preset_points[0]) ==
+     NAV_COURSE3_PRESET_POINT_COUNT) ? 1 : -1];
 
 static uint32 nav_store_bank_base_page(uint8 group, uint8 bank)
 {
@@ -845,7 +880,11 @@ void NavStore_Init(void)
 
 const NavGroupSummary_t *NavStore_Get_Summary(uint8 group)
 {
-    return (group < NAV_GROUP_COUNT) ? &g_nav_group_summary[group] : NULL;
+    if (group < NAV_GROUP_COUNT)
+    {
+        return &g_nav_group_summary[group];
+    }
+    return (group == NAV_COURSE3_PRESET_GROUP) ? &g_course3_preset_summary : NULL;
 }
 
 uint8 NavStore_Select_For_View(uint8 group)
@@ -930,17 +969,30 @@ void NavStore_Tick50ms(void)
 
 uint8 NavStore_Request_Core0_Load(uint8 group, NavGroupIntent_t intent)
 {
-    if (group >= NAV_GROUP_COUNT || g_nav_load_busy)
+    if (g_nav_load_busy)
     {
         return 0;
     }
-    if (!NavStore_Select_For_View(group))
+    if (group == NAV_COURSE3_PRESET_GROUP)
     {
-        return 0;
+        if (intent != NAV_GROUP_INTENT_EXECUTE ||
+            Runtime_Get_Vehicle_Mode() != VEHICLE_MODE_COURSE_3)
+        {
+            return 0;
+        }
+        g_nav_load_total = NAV_COURSE3_PRESET_POINT_COUNT;
     }
-    if (intent == NAV_GROUP_INTENT_EXECUTE && g_nav_store_count < 2U)
+    else
     {
-        return 0;
+        if (group >= NAV_GROUP_COUNT || !NavStore_Select_For_View(group))
+        {
+            return 0;
+        }
+        if (intent == NAV_GROUP_INTENT_EXECUTE && g_nav_store_count < 2U)
+        {
+            return 0;
+        }
+        g_nav_load_total = g_nav_store_count;
     }
     g_nav_load_group = group;
     g_nav_load_intent = (uint8)intent;
@@ -1048,7 +1100,7 @@ void NavStore_Task(void)
         }
         else
         {
-            count = (g_nav_store_count > g_nav_load_start) ? (uint16)(g_nav_store_count - g_nav_load_start) : 0U;
+            count = (g_nav_load_total > g_nav_load_start) ? (uint16)(g_nav_load_total - g_nav_load_start) : 0U;
             if (count > NAV_GROUP_CHUNK_POINTS)
             {
                 count = NAV_GROUP_CHUNK_POINTS;
@@ -1057,11 +1109,14 @@ void NavStore_Task(void)
             core_b_cmd.nav_load_intent = g_nav_load_intent;
             core_b_cmd.nav_load_start = g_nav_load_start;
             core_b_cmd.nav_load_count = count;
-            core_b_cmd.nav_load_total = g_nav_store_count;
-            core_b_cmd.nav_load_final = ((uint32)g_nav_load_start + count >= g_nav_store_count) ? 1U : 0U;
+            core_b_cmd.nav_load_total = g_nav_load_total;
+            core_b_cmd.nav_load_final = ((uint32)g_nav_load_start + count >= g_nav_load_total) ? 1U : 0U;
             for (i = 0; i < count; i++)
             {
-                core_b_cmd.nav_load_points[i] = g_nav_store_points[g_nav_load_start + i];
+                core_b_cmd.nav_load_points[i] =
+                    (g_nav_load_group == NAV_COURSE3_PRESET_GROUP) ?
+                    g_course3_preset_points[g_nav_load_start + i] :
+                    g_nav_store_points[g_nav_load_start + i];
             }
             g_nav_load_seq_next++;
             if (g_nav_load_seq_next == 0U)
@@ -1144,7 +1199,10 @@ void IPC_Nav_Group_Core0_Task(void)
     if (core_b_cmd.nav_load_seq != 0U && core_b_cmd.nav_load_seq != load_seq_seen)
     {
         core_a_status.nav_load_result = 0;
-        if (core_b_cmd.nav_load_group < NAV_GROUP_COUNT &&
+        if ((core_b_cmd.nav_load_group < NAV_GROUP_COUNT ||
+             (core_b_cmd.nav_load_group == NAV_COURSE3_PRESET_GROUP &&
+              core_b_cmd.nav_load_intent == NAV_GROUP_INTENT_EXECUTE &&
+              Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3)) &&
             core_b_cmd.nav_load_count <= NAV_GROUP_CHUNK_POINTS &&
             core_b_cmd.nav_load_total <= NAV_GROUP_POINT_MAX &&
             (uint32)core_b_cmd.nav_load_start + core_b_cmd.nav_load_count <= NAV_GROUP_POINT_MAX)

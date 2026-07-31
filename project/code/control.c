@@ -171,7 +171,7 @@ static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float m
     const float ANTI_STALL_RECOVER_RATIO = 0.85f;
     const float ANTI_STALL_INTEGRAL_GAIN = 1.6f;
     const float ANTI_STALL_INTEGRAL_LIMIT = 50000.0f;
-    const float ANTI_STALL_PWM_GAIN = 0.04f;
+    const float ANTI_STALL_PWM_GAIN = 0.32f;
     const float ANTI_STALL_PWM_LIMIT = 4000.0f;
     float speed_error = target_velocity_cmd - measured_velocity;
 
