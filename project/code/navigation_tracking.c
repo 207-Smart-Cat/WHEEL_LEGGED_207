@@ -420,21 +420,26 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
                                             uint8_t nav_info_valid)
 {
     Navi_WayPoint_t *target;
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
+    uint8_t course2_rotate;
+    uint8_t course3_segment;
 
-    if (!Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()) ||
-        target_idx >= navi_ctrl.point_total_count ||
-        target_idx >= NAVI_POINT_MAX)
+    if (target_idx >= navi_ctrl.point_total_count || target_idx >= NAVI_POINT_MAX)
     {
         navi_course3_approach_reset(1U);
         return 0U;
     }
 
     target = &point_map[target_idx];
-    if (!target->valid ||
-        !Course3Segment_IsPairedType((uint8)target->type) ||
-        !Course3Segment_IsStartActionForMode(Runtime_Get_Vehicle_Mode(),
-                                                   (uint8)target->type,
-                                                   target->action_cmd))
+    course2_rotate = (mode == VEHICLE_MODE_COURSE_2 &&
+                      target->type == WP_TYPE_MINE_SWEEP) ? 1U : 0U;
+    course3_segment = (Course3Mode_IsCourse3(mode) &&
+                       Course3Segment_IsPairedType((uint8)target->type) &&
+                       Course3Segment_IsStartActionForMode(mode,
+                                                           (uint8)target->type,
+                                                           target->action_cmd)) ? 1U : 0U;
+
+    if (!target->valid || (!course2_rotate && !course3_segment))
     {
         navi_course3_approach_reset(1U);
         return 0U;
@@ -451,11 +456,22 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
         return 1U;
     }
 
-    if (!nav_info_valid ||
-        !Course3Segment_ShouldApproach(Runtime_Get_Vehicle_Mode(),
-                                       (uint8)target->type,
-                                       target->action_cmd,
-                                       distance))
+    if (!nav_info_valid)
+    {
+        return 0U;
+    }
+
+    if (course2_rotate)
+    {
+        if (distance > NAVI_COURSE3_APPROACH_DISTANCE)
+        {
+            return 0U;
+        }
+    }
+    else if (!Course3Segment_ShouldApproach(mode,
+                                             (uint8)target->type,
+                                             target->action_cmd,
+                                             distance))
     {
         return 0U;
     }
@@ -465,14 +481,13 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
     navi_course3_approach.type = target->type;
     Turn_Reset();
     navi_speed_profile_reset();
-    IPC_LOG_Printf("\r\n[NAVI_COURSE3] approach %s start point %d: distance <= %.2f m, speed=%d.\r\n",
+    IPC_LOG_Printf("\r\n[NAVI_APPROACH] %s point %d: distance <= %.2f m, speed=%d.\r\n",
                    get_enum_name(target->type),
                    target_idx,
                    (double)NAVI_COURSE3_APPROACH_DISTANCE,
                    (int)NAVI_COURSE3_APPROACH_SPEED);
     return 1U;
 }
-
 static void navi_course3_angle_slew_reset(void)
 {
     navi_course3_angle_slew_initialized = 0U;
@@ -523,7 +538,7 @@ static float navi_get_reach_threshold(uint16_t target_idx)
     switch (point_map[target_idx].type)
     {
         case WP_TYPE_MINE_SWEEP:
-            return DISTANCE_THRESHOLD * 0.5f;
+            return DISTANCE_THRESHOLD;
         case WP_TYPE_CONE_CONE:
         case WP_TYPE_BRIDGE:
         case WP_TYPE_JUMP:

@@ -36,13 +36,13 @@ extern void Vision_Align_Cal_Reset(void);
 // 动作参数
 // ******************************************************************************
 //--------------- 排雷旋转 ---------------
-#define MINE_ROTATE_TARGET_DEG      1080.0f
+#define MINE_ROTATE_BASE_DEG        720.0f
 #define MINE_ROTATE_LEAD_DEG        70.0f
 #define MINE_ROTATE_TIMEOUT_MS      15000U
 #define MINE_ROTATE_CCW_CMD         2U
 static float mine_rotate_start_yaw = 0.0f;
 static int8_t mine_rotate_dir = 1;
-static float mine_rotate_target_deg = MINE_ROTATE_TARGET_DEG;
+static float mine_rotate_target_deg = MINE_ROTATE_BASE_DEG;
 static uint8_t action_done_pending = 0;
 static uint16_t action_done_idx = 0;
 #if (NAVI_JUMP_ACTION_MODE == 2U)
@@ -1182,13 +1182,14 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             // 初始化排雷/测试旋转动作。
             mine_rotate_start_yaw = (float)robot_pose.cumulative_yaw;
             mine_rotate_dir = (point_map[target_idx].action_cmd == MINE_ROTATE_CCW_CMD) ? -1 : 1;
-            mine_rotate_target_deg = (point_map[target_idx].type == WP_TYPE_JUMP) ? 360.0f : MINE_ROTATE_TARGET_DEG;
+            mine_rotate_target_deg = (point_map[target_idx].type == WP_TYPE_JUMP) ?
+                                     360.0f : MINE_ROTATE_BASE_DEG;
             is_action_busy = 1;
             target_velocity = 0.0f;
             
             target_angle = navi_limit_angle180(IMU_data.filter_result.yaw - mine_rotate_dir * MINE_ROTATE_LEAD_DEG);
 
-            IPC_LOG_Printf("\r\n============= >>> [定点排雷] 已到达旋转点 [%d]，开始%s旋转三圈 <<< =============\r\n",
+            IPC_LOG_Printf("\r\n============= >>> [定点排雷] 旋转点[%d]，开始%s旋转两圈 <<< =============\r\n",
                    target_idx,
                    mine_rotate_dir > 0 ? "顺时针" : "逆时针");
             
@@ -1200,21 +1201,21 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
         case FSM_MINE_PROCESSING:
         {
             float rotated_deg;
-            float rotated_abs;
+            float rotated_progress;
             float remaining_deg;
             float rotate_lead_deg;
 
             target_velocity = 0.0f;
             
             rotated_deg = ((float)robot_pose.cumulative_yaw - mine_rotate_start_yaw) * mine_rotate_dir;
-            rotated_abs = fabsf(rotated_deg);
-            remaining_deg = mine_rotate_target_deg - rotated_abs;
+            rotated_progress = (rotated_deg > 0.0f) ? rotated_deg : 0.0f;
+            remaining_deg = mine_rotate_target_deg - rotated_progress;
             rotate_lead_deg = (remaining_deg < MINE_ROTATE_LEAD_DEG) ? remaining_deg : MINE_ROTATE_LEAD_DEG;
 
             // 旋转角度达到目标，动作完成。
-            if (rotated_abs >= mine_rotate_target_deg)
+            if (rotated_progress >= mine_rotate_target_deg)
             {
-                IPC_LOG_Printf(" [定点排雷] 三圈旋转完成，退出动作，回到休闲状态。\r\n");
+                IPC_LOG_Printf(" [定点排雷] 两圈旋转完成。\r\n");
                 
                 target_velocity = 0.0f;
                 target_angle = (float)IMU_data.filter_result.yaw;
@@ -1235,7 +1236,7 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             // 超时保护：避免动作永久接管。
             if (action_fsm.state_timer_ms > MINE_ROTATE_TIMEOUT_MS)
             {
-                IPC_LOG_Printf(" [定点排雷] 三圈旋转超时退出，安全回退到休闲状态。\r\n");
+                IPC_LOG_Printf(" [定点排雷] 两圈旋转超时退出。\r\n");
                 
                 // 超时同样认为动作结束，交还循迹层切点。
                 target_velocity = 0.0f;
