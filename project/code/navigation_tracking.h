@@ -70,12 +70,13 @@
 #define NAVI_COURSE3_LINE_LOOKAHEAD_DISTANCE 0.40f
 #define NAVI_COURSE3_APPROACH_DISTANCE       0.50f
 #define NAVI_COURSE3_APPROACH_SPEED          100.0f
-#define NAVI_COURSE2_MINE_APPROACH_SPEED      350.0f
+#define NAVI_COURSE2_MINE_APPROACH_SPEED      250.0f
 #define NAVI_COURSE3_ANGLE_SLEW_RATE_DEG_S   180.0f
 #define NAVI_NORMAL_MAX_VELOCITY              700.0f
 #define NAVI_HIGH_SPEED_MAX_VELOCITY          700.0f
 #define NAVI_HIGH_SPEED_EXIT_DISTANCE_M       2.0f
 #define NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS 3U
+#define NAVI_COURSE12_MIN_RUNNING_SPEED       150.0f
 
 
 //=================================================定义  结构体================================================

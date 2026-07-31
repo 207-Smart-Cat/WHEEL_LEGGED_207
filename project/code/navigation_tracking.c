@@ -87,6 +87,10 @@ static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_
 static float navi_get_normal_speed_limit(void);
 static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_points);
 static uint8_t navi_is_course12_return_high_speed_segment(uint16_t target_idx, uint16_t total_points);
+static uint8_t navi_is_course12_speed_through_point(uint16_t target_idx);
+static uint8_t navi_is_course12_unfinished_target(uint16_t target_idx, uint16_t total_points);
+static float navi_apply_course12_min_running_speed(float velocity, uint16_t target_idx, uint16_t total_points, uint8_t nav_valid);
+
 static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t total_points, float distance);
 static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next_ordinal);
 static uint8_t navi_segment_validate_route(void);
@@ -608,6 +612,45 @@ static float navi_get_reach_threshold(uint16_t target_idx)
     }
 }
 
+static uint8_t navi_is_course12_speed_through_point(uint16_t target_idx)
+{
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
+
+    if (mode != VEHICLE_MODE_COURSE_2 ||
+        target_idx >= navi_ctrl.point_total_count || target_idx >= NAVI_POINT_MAX ||
+        !point_map[target_idx].valid)
+    {
+        return 0U;
+    }
+
+    return (point_map[target_idx].type == WP_TYPE_MINE_SWEEP) ? 1U : 0U;
+}
+
+static uint8_t navi_is_course12_unfinished_target(uint16_t target_idx, uint16_t total_points)
+{
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
+
+    if ((mode != VEHICLE_MODE_COURSE_1 && mode != VEHICLE_MODE_COURSE_2) ||
+        target_idx >= total_points || target_idx >= NAVI_POINT_MAX ||
+        !point_map[target_idx].valid)
+    {
+        return 0U;
+    }
+
+    return (target_idx < (total_points - 1U) &&
+            point_map[target_idx].type != WP_TYPE_STOP) ? 1U : 0U;
+}
+
+static float navi_apply_course12_min_running_speed(float velocity, uint16_t target_idx, uint16_t total_points, uint8_t nav_valid)
+{
+    if (!nav_valid || !navi_is_course12_unfinished_target(target_idx, total_points))
+    {
+        return velocity;
+    }
+
+    return (velocity < NAVI_COURSE12_MIN_RUNNING_SPEED) ?
+           NAVI_COURSE12_MIN_RUNNING_SPEED : velocity;
+}
 static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_distance, uint16_t *speed_target_idx)
 {
     float path_distance = current_distance;
@@ -628,6 +671,7 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
            (point_map[idx].type == WP_TYPE_NORMAL ||
             point_map[idx].type == WP_TYPE_HIGH_SPEED ||
             point_map[idx].type == WP_TYPE_HOME ||
+            navi_is_course12_speed_through_point(idx) ||
             (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()) &&
              Course3Segment_IsPairedType((uint8)point_map[idx].type))))
     {
@@ -1415,6 +1459,8 @@ void task_navigation_control(void) {
                           point_map[curr_idx].type == WP_TYPE_MINE_SWEEP) ?
                          NAVI_COURSE2_MINE_APPROACH_SPEED : NAVI_COURSE3_APPROACH_SPEED) :
                         0.0f;
+                    target_velocity = navi_apply_course12_min_running_speed(
+                        target_velocity, curr_idx, total_points, nav_info_valid);
                 }
                 else
                 {
@@ -1446,6 +1492,8 @@ void task_navigation_control(void) {
                     turn_speed_limit,
                     smooth_speed_limit,
                     apply_smooth_speed_limit);
+                target_velocity = navi_apply_course12_min_running_speed(
+                    target_velocity, curr_idx, total_points, nav_info_valid);
 #endif
                 }
             }   else {
