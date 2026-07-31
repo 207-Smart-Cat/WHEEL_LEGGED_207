@@ -87,6 +87,7 @@ static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_
 static float navi_get_normal_speed_limit(void);
 static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_points);
 static uint8_t navi_is_course12_return_high_speed_segment(uint16_t target_idx, uint16_t total_points);
+static uint8_t navi_is_course12_return_final_target(uint16_t target_idx, uint16_t total_points);
 static uint8_t navi_is_course12_speed_through_point(uint16_t target_idx);
 static uint8_t navi_is_course12_unfinished_target(uint16_t target_idx, uint16_t total_points);
 static float navi_apply_course12_min_running_speed(float velocity, uint16_t target_idx, uint16_t total_points, uint8_t nav_valid);
@@ -750,6 +751,17 @@ static uint8_t navi_is_course12_return_high_speed_segment(uint16_t target_idx, u
     return (point_map[target_idx].type == WP_TYPE_NORMAL ||
             point_map[target_idx].type == WP_TYPE_HIGH_SPEED ||
             point_map[target_idx].type == WP_TYPE_HOME ||
+            point_map[target_idx].type == WP_TYPE_STOP) ? 1U : 0U;
+}
+
+static uint8_t navi_is_course12_return_final_target(uint16_t target_idx, uint16_t total_points)
+{
+    if (!navi_is_course12_return_high_speed_segment(target_idx, total_points))
+    {
+        return 0U;
+    }
+
+    return (target_idx >= (total_points - 1U) ||
             point_map[target_idx].type == WP_TYPE_STOP) ? 1U : 0U;
 }
 
@@ -1473,13 +1485,15 @@ void task_navigation_control(void) {
                 float segment_speed_limit = navi_resolve_segment_speed_limit(curr_idx, total_points, distance);
                 float speed_plan_distance = navi_calc_speed_plan_distance(curr_idx, distance, &speed_target_idx);
                 float speed_stop_threshold = navi_get_reach_threshold(speed_target_idx);
-                float speed_cmd = navi_update_tracking_velocity(
-                    speed_plan_distance,
-                    speed_stop_threshold,
-                    0,
-                    nav_info_valid,
-                    segment_speed_limit
-                );
+                float speed_cmd = navi_is_course12_return_final_target(curr_idx, total_points) ?
+                    (nav_info_valid ? segment_speed_limit : 0.0f) :
+                    navi_update_tracking_velocity(
+                        speed_plan_distance,
+                        speed_stop_threshold,
+                        0,
+                        nav_info_valid,
+                        segment_speed_limit
+                    );
                 float turn_speed_limit = navi_calc_turn_speed_limit(print_turn_angle, segment_speed_limit);
                 uint8_t high_speed_segment = navi_is_high_speed_segment(curr_idx, total_points);
                 uint8_t apply_smooth_speed_limit =

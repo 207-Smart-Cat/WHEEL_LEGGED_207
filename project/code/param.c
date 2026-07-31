@@ -67,8 +67,8 @@ const float Navi_Wifi_In_Action_init = 0.0f;
 const float Navi_Speed_Kp_init = 220.0f;
 const float Navi_Speed_Ki_init = 0.0f;
 const float Navi_Speed_Kd_init = 20.0f;
-const float Navi_Speed_Max_init = 700.0f;
-const float Navi_Speed_MaxStep_init = 12.0f;
+const float Navi_Speed_Max_init = 500.0f;
+const float Navi_Speed_MaxStep_init = 60.0f;
 
 // Magnetometer calibration defaults.
 const float Mag_offset_x_init = 10.0f, Mag_offset_y_init = 0.01f;
