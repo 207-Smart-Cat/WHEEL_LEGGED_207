@@ -774,13 +774,14 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                 course3_display_state = COURSE3_DISPLAY_ACTION;
             }
             else if (Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_3 &&
-                     (upcoming_type == WP_TYPE_JUMP ||
+                     ((upcoming_type == WP_TYPE_JUMP &&
+                       navi_isreach_target_point(target_idx)) ||
                       (Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),
-                                                       (uint8)upcoming_type,
-                                                       point_map[target_idx].action_cmd) &&
+                                                        (uint8)upcoming_type,
+                                                        point_map[target_idx].action_cmd) &&
                        Course3Segment_RequiresVisionForMode(Runtime_Get_Vehicle_Mode(),
-                                                           (uint8)upcoming_type))) &&
-                     navi_isreach_target_point(target_idx))
+                                                            (uint8)upcoming_type) &&
+                       Navi_Course3_Vision_Approach_Is_Complete(target_idx))))
             {
                 Course3Align_Reset(&course3_align_samples);
                 if (Course3Segment_ShouldQueueAction(Runtime_Get_Vehicle_Mode(),

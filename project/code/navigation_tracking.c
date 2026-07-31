@@ -57,6 +57,7 @@ static uint8_t navi_start_cal_pending = 0U;
 typedef struct
 {
     uint8_t active;
+    uint8_t meter_active;
     uint16_t target_idx;
     WayPoint_Type type;
 } NaviCourse3Approach_t;
@@ -97,6 +98,9 @@ static void navi_course3_approach_handoff(void);
 static uint8_t navi_course3_approach_update(uint16_t target_idx,
                                             float distance,
                                             uint8_t nav_info_valid);
+static uint8_t navi_course3_apply_visual_approach_heading(uint16_t target_idx,
+                                                            float *azimuth,
+                                                            float *turn_error);
 static void navi_course3_angle_slew_reset(void);
 static float navi_course3_angle_slew_apply(float desired_angle);
 
@@ -407,6 +411,10 @@ static uint8_t navi_course3_apply_line_lookahead(uint16_t target_idx,
 static void navi_course3_approach_reset(uint8_t restore_bridge_height)
 {
     (void)restore_bridge_height;
+    if (navi_course3_approach.meter_active)
+    {
+        Navi_Course3_Calibration_Meter_End();
+    }
     memset(&navi_course3_approach, 0, sizeof(navi_course3_approach));
 }
 
@@ -423,6 +431,12 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
     uint8_t mode = Runtime_Get_Vehicle_Mode();
     uint8_t course2_rotate;
     uint8_t course3_segment;
+    uint8_t visual_approach;
+
+    if (is_action_busy)
+    {
+        return 0U;
+    }
 
     if (target_idx >= navi_ctrl.point_total_count || target_idx >= NAVI_POINT_MAX)
     {
@@ -438,6 +452,10 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
                        Course3Segment_IsStartActionForMode(mode,
                                                            (uint8)target->type,
                                                            target->action_cmd)) ? 1U : 0U;
+    visual_approach = (Course3Mode_UsesVision(mode) &&
+                       course3_segment &&
+                       Course3Segment_RequiresVisionForMode(mode,
+                                                            (uint8)target->type)) ? 1U : 0U;
 
     if (!target->valid || (!course2_rotate && !course3_segment))
     {
@@ -477,8 +495,13 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
     }
 
     navi_course3_approach.active = 1U;
+    navi_course3_approach.meter_active = visual_approach;
     navi_course3_approach.target_idx = target_idx;
     navi_course3_approach.type = target->type;
+    if (visual_approach)
+    {
+        Navi_Course3_Calibration_Meter_Begin(NAVI_COURSE3_APPROACH_DISTANCE);
+    }
     Turn_Reset();
     navi_speed_profile_reset();
     IPC_LOG_Printf("\r\n[NAVI_APPROACH] %s point %d: distance <= %.2f m, speed=%d.\r\n",
@@ -486,6 +509,39 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
                    target_idx,
                    (double)NAVI_COURSE3_APPROACH_DISTANCE,
                    (int)NAVI_COURSE3_APPROACH_SPEED);
+    return 1U;
+}
+
+uint8_t Navi_Course3_Vision_Approach_Is_Complete(uint16_t target_idx)
+{
+    return (navi_course3_approach.active &&
+            navi_course3_approach.meter_active &&
+            navi_course3_approach.target_idx == target_idx &&
+            Navi_Course3_Calibration_Meter_Is_Complete()) ? 1U : 0U;
+}
+
+static uint8_t navi_course3_apply_visual_approach_heading(uint16_t target_idx,
+                                                           float *azimuth,
+                                                           float *turn_error)
+{
+    uint16_t entry_idx = (uint16_t)(target_idx + 1U);
+
+    if (!navi_course3_approach.active ||
+        !navi_course3_approach.meter_active ||
+        navi_course3_approach.target_idx != target_idx ||
+        azimuth == NULL || turn_error == NULL ||
+        entry_idx >= navi_ctrl.point_total_count || entry_idx >= NAVI_POINT_MAX ||
+        !point_map[entry_idx].valid ||
+        point_map[entry_idx].type != point_map[target_idx].type ||
+        point_map[entry_idx].action_cmd != NAVI_VISION_SEGMENT_ACTION_ENTRY)
+    {
+        return 0U;
+    }
+
+    *azimuth = navi_get_two_points_azimuth(robot_pose.x, robot_pose.y,
+                                           point_map[entry_idx].x,
+                                           point_map[entry_idx].y);
+    *turn_error = navi_limit_angle180(*azimuth - robot_pose.yaw);
     return 1U;
 }
 static void navi_course3_angle_slew_reset(void)
@@ -1245,6 +1301,12 @@ void task_navigation_control(void) {
             course3_approach_active = navi_course3_approach_update(curr_idx,
                                                                   distance,
                                                                   nav_info_valid);
+            if (course3_approach_active)
+            {
+                (void)navi_course3_apply_visual_approach_heading(curr_idx,
+                                                                  &azimuth,
+                                                                  &print_turn_angle);
+            }
 
             if (smooth_speed_hold_ticks > 0U)
             {
@@ -1385,7 +1447,7 @@ void task_navigation_control(void) {
            if (reached_current) {
                 if (action_seq.current_ptr < action_seq.total_count &&
                     action_seq.list[action_seq.current_ptr].wp_index == curr_idx &&
-                    (is_action_busy || action_fsm.state != FSM_IDLE ||
+                    (course3_approach_active || is_action_busy || action_fsm.state != FSM_IDLE ||
                      point_map[curr_idx].type == WP_TYPE_MINE_SWEEP ||
                      point_map[curr_idx].type == WP_TYPE_JUMP)) {
                     break;
