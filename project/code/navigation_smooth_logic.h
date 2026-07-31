@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define NAVI_SMOOTH_REACH_RADIUS_M 0.40f    // 平滑区域半径
-#define NAVI_SMOOTH_ZONE_SPEED_LIMIT 500.0f  // 平滑区域内限速
+#define NAVI_SMOOTH_ZONE_SPEED_LIMIT 550.0f  // 平滑区域内限速
 #define NAVI_SMOOTH_POST_ADVANCE_TICKS 3U
 
 uint8_t Navi_Smooth_Should_Advance(float distance,
