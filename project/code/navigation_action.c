@@ -37,7 +37,7 @@ extern void Vision_Align_Cal_Reset(void);
 // ******************************************************************************
 //--------------- 排雷旋转 ---------------
 #define MINE_ROTATE_BASE_DEG        720.0f
-#define MINE_ROTATE_LEAD_DEG        70.0f
+#define MINE_ROTATE_LEAD_DEG        90.0f
 #define MINE_ROTATE_TIMEOUT_MS      15000U
 #define MINE_ROTATE_CCW_CMD         2U
 static float mine_rotate_start_yaw = 0.0f;
