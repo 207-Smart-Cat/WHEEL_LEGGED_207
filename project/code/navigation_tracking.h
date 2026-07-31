@@ -71,6 +71,9 @@
 #define NAVI_COURSE3_APPROACH_DISTANCE       0.50f
 #define NAVI_COURSE3_APPROACH_SPEED          100.0f
 #define NAVI_COURSE3_ANGLE_SLEW_RATE_DEG_S   180.0f
+#define NAVI_NORMAL_MAX_VELOCITY              300.0f
+#define NAVI_HIGH_SPEED_MAX_VELOCITY          500.0f
+#define NAVI_HIGH_SPEED_EXIT_DISTANCE_M       3.0f
 
 
 //=================================================定义  结构体================================================
@@ -93,7 +96,9 @@ typedef enum {
     
     WP_TYPE_HOME = 7,          // 原点
 
-    WP_TYPE_STAIR_RAMP = 8     // 台阶斜坡
+    WP_TYPE_STAIR_RAMP = 8,     // 台阶斜坡
+
+    WP_TYPE_HIGH_SPEED = 9     // 高速航点
 } WayPoint_Type;
 
 

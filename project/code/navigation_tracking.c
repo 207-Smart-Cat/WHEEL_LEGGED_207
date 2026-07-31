@@ -79,10 +79,13 @@ static void navi_record_undo_last(void);
 static void navi_speed_profile_reset(void);
 static float navi_get_reach_threshold(uint16_t target_idx);
 static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_distance, uint16_t *speed_target_idx);
-static float navi_calc_turn_speed_limit(float turn_error_deg);
-static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid);
+static float navi_calc_turn_speed_limit(float turn_error_deg, float straight_speed_limit);
+static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid, float max_velocity);
 static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd);
 static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points);
+static float navi_get_normal_speed_limit(void);
+static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_points);
+static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t total_points, float distance);
 static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next_ordinal);
 static uint8_t navi_segment_validate_route(void);
 static void navi_bridge_reset(uint8_t restore_low_height);
@@ -524,6 +527,7 @@ static float navi_get_reach_threshold(uint16_t target_idx)
         case WP_TYPE_CONE_CONE:
         case WP_TYPE_BRIDGE:
         case WP_TYPE_JUMP:
+        case WP_TYPE_HIGH_SPEED:
         case WP_TYPE_NORMAL:
         case WP_TYPE_STOP:
         case WP_TYPE_HOME:
@@ -550,6 +554,7 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
     idx = curr_idx;
     while (idx < (navi_ctrl.point_total_count - 1U) &&
            (point_map[idx].type == WP_TYPE_NORMAL ||
+            point_map[idx].type == WP_TYPE_HIGH_SPEED ||
             point_map[idx].type == WP_TYPE_HOME ||
             (Course3Mode_IsCourse3(Runtime_Get_Vehicle_Mode()) &&
              Course3Segment_IsPairedType((uint8)point_map[idx].type))))
@@ -568,28 +573,109 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
     return path_distance;
 }
 
-static float navi_calc_turn_speed_limit(float turn_error_deg)
+static float navi_get_normal_speed_limit(void)
+{
+    float configured_limit = (navi_speed_max > 0.0f) ? navi_speed_max : Navi_Speed_Max_init;
+    return (configured_limit < NAVI_NORMAL_MAX_VELOCITY) ?
+           configured_limit : NAVI_NORMAL_MAX_VELOCITY;
+}
+
+static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_points)
+{
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
+    float segment_x;
+    float segment_y;
+    float segment_length_sq;
+    float progress;
+
+    if ((mode != VEHICLE_MODE_COURSE_1 && mode != VEHICLE_MODE_COURSE_2) ||
+        target_idx == 0U || target_idx >= total_points || target_idx >= NAVI_POINT_MAX ||
+        !point_map[target_idx - 1U].valid || !point_map[target_idx].valid ||
+        point_map[target_idx - 1U].type != WP_TYPE_HIGH_SPEED ||
+        point_map[target_idx].type != WP_TYPE_HIGH_SPEED)
+    {
+        return 0U;
+    }
+
+    segment_x = point_map[target_idx].x - point_map[target_idx - 1U].x;
+    segment_y = point_map[target_idx].y - point_map[target_idx - 1U].y;
+    segment_length_sq = segment_x * segment_x + segment_y * segment_y;
+    if (segment_length_sq < 0.0001f)
+    {
+        return 0U;
+    }
+
+    progress = ((robot_pose.x - point_map[target_idx - 1U].x) * segment_x +
+                (robot_pose.y - point_map[target_idx - 1U].y) * segment_y) /
+               segment_length_sq;
+    return (progress >= 0.0f) ? 1U : 0U;
+}
+
+static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t total_points, float distance)
+{
+    float normal_limit = navi_get_normal_speed_limit();
+    float high_limit = NAVI_HIGH_SPEED_MAX_VELOCITY;
+
+    if (!navi_is_high_speed_segment(target_idx, total_points))
+    {
+        return normal_limit;
+    }
+
+    if (normal_limit > high_limit)
+    {
+        high_limit = normal_limit;
+    }
+
+    if (target_idx + 1U >= total_points ||
+        !point_map[target_idx + 1U].valid ||
+        point_map[target_idx + 1U].type != WP_TYPE_HIGH_SPEED)
+    {
+        float ratio = constrain_float(distance / NAVI_HIGH_SPEED_EXIT_DISTANCE_M, 0.0f, 1.0f);
+        return normal_limit + (high_limit - normal_limit) * ratio;
+    }
+
+    return high_limit;
+}
+
+static float navi_calc_turn_speed_limit(float turn_error_deg, float straight_speed_limit)
 {
     float abs_turn = fabsf(turn_error_deg);
+    const float turn_min_speed = 100.0f;
+    float corner_entry_speed = (straight_speed_limit < NAVI_NORMAL_MAX_VELOCITY) ?
+                               straight_speed_limit : NAVI_NORMAL_MAX_VELOCITY;
 
+    if (straight_speed_limit < turn_min_speed)
+    {
+        return straight_speed_limit;
+    }
+    if (abs_turn <= 5.0f)
+    {
+        return straight_speed_limit;
+    }
+    if (abs_turn < 20.0f && straight_speed_limit > corner_entry_speed)
+    {
+        return straight_speed_limit -
+               (abs_turn - 5.0f) * ((straight_speed_limit - corner_entry_speed) / 15.0f);
+    }
     if (abs_turn <= 20.0f)
     {
-        return 300.0f;
+        return corner_entry_speed;
     }
     if (abs_turn >= 90.0f)
     {
-        return 100.0f;
+        return turn_min_speed;
     }
 
-    return 300.0f - (abs_turn - 20.0f) * (200.0f / 70.0f);
+    return corner_entry_speed -
+           (abs_turn - 20.0f) * ((corner_entry_speed - turn_min_speed) / 70.0f);
 }
 
-static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached, uint8_t nav_valid)
+static float navi_update_tracking_velocity(float distance, float stop_threshold, uint8_t reached,
+                                           uint8_t nav_valid, float max_velocity)
 {
     float speed_kp = navi_speed_kp ? navi_speed_kp : Navi_Speed_Kp_init;
     float speed_ki = navi_speed_ki ? navi_speed_ki : Navi_Speed_Ki_init;
     float speed_kd = navi_speed_kd ? navi_speed_kd : Navi_Speed_Kd_init;
-    float max_velocity = navi_speed_max > 0.0f ? navi_speed_max : Navi_Speed_Max_init;
     float max_step = navi_speed_max_step > 0.0f ? navi_speed_max_step : Navi_Speed_MaxStep_init;
     float raw_output;
     float delta;
@@ -627,8 +713,18 @@ static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_
         return 0U;
     }
 
+    if (point_map[target_idx].type == WP_TYPE_HIGH_SPEED &&
+        (target_idx == 0U || !point_map[target_idx - 1U].valid ||
+         point_map[target_idx - 1U].type != WP_TYPE_HIGH_SPEED ||
+         !point_map[target_idx + 1U].valid ||
+         point_map[target_idx + 1U].type != WP_TYPE_HIGH_SPEED))
+    {
+        return 0U;
+    }
+
     return (point_map[target_idx].type == WP_TYPE_HOME ||
-            point_map[target_idx].type == WP_TYPE_NORMAL) ? 1U : 0U;
+            (point_map[target_idx].type == WP_TYPE_NORMAL ||
+             point_map[target_idx].type == WP_TYPE_HIGH_SPEED)) ? 1U : 0U;
 }
 
 //==================================================== function implementation =============================================
@@ -1215,22 +1311,27 @@ void task_navigation_control(void) {
                     
 #elif (USE_HOST_TARGET_VELOCITY == 2)              // PID ????滮???
                 uint16_t speed_target_idx = curr_idx;
+                float segment_speed_limit = navi_resolve_segment_speed_limit(curr_idx, total_points, distance);
                 float speed_plan_distance = navi_calc_speed_plan_distance(curr_idx, distance, &speed_target_idx);
                 float speed_stop_threshold = navi_get_reach_threshold(speed_target_idx);
                 float speed_cmd = navi_update_tracking_velocity(
                     speed_plan_distance,
                     speed_stop_threshold,
                     0,
-                    nav_info_valid
+                    nav_info_valid,
+                    segment_speed_limit
                 );
-                float turn_speed_limit = navi_calc_turn_speed_limit(print_turn_angle);
+                float turn_speed_limit = navi_calc_turn_speed_limit(print_turn_angle, segment_speed_limit);
+                uint8_t high_speed_segment = navi_is_high_speed_segment(curr_idx, total_points);
                 uint8_t apply_smooth_speed_limit =
                     (smooth_zone_active || smooth_switch_triggered) ? 1U : 0U;
+                float smooth_speed_limit = high_speed_segment ?
+                    segment_speed_limit : NAVI_SMOOTH_ZONE_SPEED_LIMIT;
 
                 target_velocity = Navi_Smooth_Resolve_Target_Velocity(
                     speed_cmd,
                     turn_speed_limit,
-                    NAVI_SMOOTH_ZONE_SPEED_LIMIT,
+                    smooth_speed_limit,
                     apply_smooth_speed_limit);
 #endif
                 }
@@ -1552,6 +1653,7 @@ void Navigation_Pose_Monitor_Task(void)
 // 将航点类型枚举转换为对应的中文字符串
 const char* get_enum_name(WayPoint_Type type) {
     switch (type) {
+        case WP_TYPE_HIGH_SPEED:  return "高速航点";
         case WP_TYPE_NORMAL:      return "普通循迹";
         case WP_TYPE_MINE_SWEEP:  return "定点排雷";
         case WP_TYPE_JUMP:        return "三级跳";

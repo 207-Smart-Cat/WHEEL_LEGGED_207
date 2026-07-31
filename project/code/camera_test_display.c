@@ -19,9 +19,9 @@
 #define CAMERA_TEST_IMAGE_HEIGHT     (MT9V03X_H)
 #define CAMERA_TEST_INFO_Y           (4U)
 #define CAMERA_TEST_RENDER_INTERVAL  (3U)
-#define CAMERA_TEST_EXPOSURE_MIN      (40U)
-#define CAMERA_TEST_EXPOSURE_MAX      (1000U)
-#define CAMERA_TEST_EXPOSURE_STEP     (25U)
+#define CAMERA_TEST_EXPOSURE_COARSE_STEP (25U)
+#define CAMERA_TEST_EXPOSURE_MEDIUM_STEP (5U)
+#define CAMERA_TEST_EXPOSURE_FINE_STEP   (1U)
 
 static uint32 camera_test_last_frame;
 
@@ -179,26 +179,68 @@ void CameraTestDisplay_AdjustExposure(int16 delta)
 
     if (delta < 0)
     {
-        if (exposure > (CAMERA_TEST_EXPOSURE_MIN + CAMERA_TEST_EXPOSURE_STEP))
+        if (exposure > CAMERA_ASSIST_EXPOSURE_MEDIUM_THRESHOLD)
         {
-            exposure = (uint16)(exposure - CAMERA_TEST_EXPOSURE_STEP);
+            if (exposure >= (CAMERA_ASSIST_EXPOSURE_MEDIUM_THRESHOLD +
+                             CAMERA_TEST_EXPOSURE_COARSE_STEP))
+            {
+                exposure = (uint16)(exposure - CAMERA_TEST_EXPOSURE_COARSE_STEP);
+            }
+            else
+            {
+                exposure = CAMERA_ASSIST_EXPOSURE_MEDIUM_THRESHOLD;
+            }
+        }
+        else if (exposure > CAMERA_ASSIST_EXPOSURE_FINE_THRESHOLD)
+        {
+            if (exposure >= (CAMERA_ASSIST_EXPOSURE_FINE_THRESHOLD +
+                             CAMERA_TEST_EXPOSURE_MEDIUM_STEP))
+            {
+                exposure = (uint16)(exposure - CAMERA_TEST_EXPOSURE_MEDIUM_STEP);
+            }
+            else
+            {
+                exposure = CAMERA_ASSIST_EXPOSURE_FINE_THRESHOLD;
+            }
+        }
+        else if (exposure > CAMERA_ASSIST_EXPOSURE_MIN)
+        {
+            exposure = (uint16)(exposure - CAMERA_TEST_EXPOSURE_FINE_STEP);
         }
         else
         {
-            exposure = CAMERA_TEST_EXPOSURE_MIN;
+            exposure = CAMERA_ASSIST_EXPOSURE_MIN;
         }
     }
-    else if (exposure < (CAMERA_TEST_EXPOSURE_MAX - CAMERA_TEST_EXPOSURE_STEP))
+    else if (exposure < CAMERA_ASSIST_EXPOSURE_FINE_THRESHOLD)
     {
-        exposure = (uint16)(exposure + CAMERA_TEST_EXPOSURE_STEP);
+        exposure = (uint16)(exposure + CAMERA_TEST_EXPOSURE_FINE_STEP);
+    }
+    else if (exposure < CAMERA_ASSIST_EXPOSURE_MEDIUM_THRESHOLD)
+    {
+        if (exposure <= (CAMERA_ASSIST_EXPOSURE_MEDIUM_THRESHOLD -
+                         CAMERA_TEST_EXPOSURE_MEDIUM_STEP))
+        {
+            exposure = (uint16)(exposure + CAMERA_TEST_EXPOSURE_MEDIUM_STEP);
+        }
+        else
+        {
+            exposure = CAMERA_ASSIST_EXPOSURE_MEDIUM_THRESHOLD;
+        }
+    }
+    else if (exposure <= (CAMERA_ASSIST_EXPOSURE_MAX -
+                          CAMERA_TEST_EXPOSURE_COARSE_STEP))
+    {
+        exposure = (uint16)(exposure + CAMERA_TEST_EXPOSURE_COARSE_STEP);
     }
     else
     {
-        exposure = CAMERA_TEST_EXPOSURE_MAX;
+        exposure = CAMERA_ASSIST_EXPOSURE_MAX;
     }
 
     if (CameraAssist_SetExposureTime(exposure) == 0U)
     {
+        CameraAssist_RequestExposureSave();
         mt9v03x_finish_flag = 0U;
         camera_test_last_frame = camera_assist_status.frame_count;
     }
@@ -279,9 +321,12 @@ void CameraTestDisplay_Render(void)
             core_a_status.vision_i_output,
             core_a_status.vision_d_output);
     camera_test_show_info(CAMERA_TEST_INFO_Y + 160U, line);
-    sprintf(line, "Int:%5.2f R:%+4.1f V:%+4.1f",
-            core_a_status.vision_integral,
-            core_a_status.vision_raw_yaw_rate,
-            core_a_status.vision_yaw_rate);
+    {
+        const char *save_text = "DEF";
+        if (status->exposure_save_state == CAMERA_EXPOSURE_SAVE_PENDING) save_text = "PEND";
+        else if (status->exposure_save_state == CAMERA_EXPOSURE_SAVE_SAVED) save_text = "SAVED";
+        else if (status->exposure_save_state == CAMERA_EXPOSURE_SAVE_ERROR) save_text = "ERR";
+        sprintf(line, "EXP:%4u %-5s", status->exposure_time, save_text);
+    }
     camera_test_show_info(CAMERA_TEST_INFO_Y + 176U, line);
 }

@@ -279,15 +279,15 @@ static WayPoint_Type Remote_GetRecordPointType(void)
 {
     uint8 mode = Runtime_Get_Vehicle_Mode();
 
-    if (mode == VEHICLE_MODE_COURSE_2)
+    if (mode == VEHICLE_MODE_COURSE_1 || mode == VEHICLE_MODE_COURSE_2)
     {
         int32_t ch4 = Remote_GetChannelData(4);
 
         if (ch4 > REMOTE_CH4_HIGH_THRESHOLD)
         {
-            return WP_TYPE_JUMP;
+            return WP_TYPE_HIGH_SPEED;
         }
-        if (ch4 > REMOTE_CH4_MID_THRESHOLD)
+        if (mode == VEHICLE_MODE_COURSE_2 && ch4 > REMOTE_CH4_MID_THRESHOLD)
         {
             return WP_TYPE_MINE_SWEEP;
         }

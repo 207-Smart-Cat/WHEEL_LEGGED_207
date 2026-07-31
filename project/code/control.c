@@ -796,7 +796,7 @@ void Vision_Align_Cal_Reset(void)
 
 static void vision_apply_course3_calibration(uint8_t valid,
                                              float calibration_speed,
-                                             uint8_t continuous)
+                                             uint8_t stop_at_course3_entry)
 {
     if (g_vision_stale_ticks > VISION_FRAME_TIMEOUT_TICKS)
     {
@@ -807,27 +807,9 @@ static void vision_apply_course3_calibration(uint8_t valid,
         return;
     }
 
-    if (!continuous)
-    {
-        VisionAlignCal_Update(&g_vision_align_cal,
-                              1U,
-                              valid,
-                              core_b_cmd.vision_frame_seq,
-                              core_b_cmd.vision_lane_error_px,
-                              IMU_data.filter_result.yaw,
-                              (uint16)(COURSE3_VISION_CONTROL_DT_S * 1000.0f));
-    }
-
-    if (!continuous && VisionAlignCal_ResultValid(&g_vision_align_cal))
-    {
-        target_velocity = 0.0f;
-        target_angle = VisionAlignCal_GetResultYaw(&g_vision_align_cal);
-        Vision_Turn_Reset();
-        return;
-    }
-
-    target_velocity = (continuous &&
-                      (Navi_Action_Vision_Calibration_Waiting() || !valid)) ?
+    target_velocity = (!valid ||
+                      (stop_at_course3_entry &&
+                       Navi_Action_Vision_Calibration_Waiting())) ?
                       0.0f : calibration_speed;
     if (valid)
     {

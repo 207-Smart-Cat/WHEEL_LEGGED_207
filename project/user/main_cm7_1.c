@@ -71,6 +71,7 @@ int main(void)
         static uint8_t ipc_coreb_update_div = 0;
 
         CameraAssist_ProcessFrame();
+        CameraAssist_ConfigTask();
         screen_display_process();
         NavStore_Task();
         wifi_process_loop();

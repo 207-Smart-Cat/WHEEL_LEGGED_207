@@ -3,6 +3,7 @@
 
 #include "cy_device_headers.h"
 #include "zf_device_mt9v03x.h"
+#include "zf_driver_flash.h"
 
 #include <string.h>
 
@@ -14,9 +15,35 @@
 #define CAMERA_ASSIST_THRESHOLD_MIN     (80U)
 #define CAMERA_ASSIST_THRESHOLD_MAX     (235U)
 #define CAMERA_ASSIST_DARK_OFFSET       (28U)
+#define CAMERA_CONFIG_MAGIC             (0x43414D45UL)
+#define CAMERA_CONFIG_VERSION           (1UL)
+#define CAMERA_CONFIG_PAGE_A            (93U)
+#define CAMERA_CONFIG_PAGE_B            (94U)
+#define CAMERA_CONFIG_NO_PAGE           (0xFFU)
+#define CAMERA_CONFIG_WORD_COUNT        (5U)
+#define CAMERA_CONFIG_SAVE_DELAY_TICKS  (1000U)
+#define CAMERA_CONFIG_CHECK_XOR         (0xA55A3CC3UL)
+
+typedef struct
+{
+    uint32 magic;
+    uint32 version;
+    uint32 sequence;
+    uint32 exposure;
+    uint32 checksum;
+} CameraConfigRecord_t;
+
+typedef char camera_config_record_must_be_20_bytes[
+    (sizeof(CameraConfigRecord_t) == CAMERA_CONFIG_WORD_COUNT * sizeof(uint32)) ? 1 : -1];
+typedef char camera_config_pages_must_be_reserved[
+    (CAMERA_CONFIG_PAGE_A >= 80U && CAMERA_CONFIG_PAGE_B < 95U) ? 1 : -1];
 
 CameraAssistStatus_t camera_assist_status;
 static VisionControlState_t camera_vision_control;
+static uint8 camera_config_active_page = CAMERA_CONFIG_NO_PAGE;
+static uint32 camera_config_sequence;
+static uint16 camera_config_save_delay;
+static uint8 camera_config_dirty;
 
 static uint8 camera_frame_snapshot[MT9V03X_H][MT9V03X_W];
 static uint32 camera_histogram[256];
@@ -24,12 +51,120 @@ static uint8 camera_boundary_left[MT9V03X_H];
 static uint8 camera_boundary_right[MT9V03X_H];
 static uint8 camera_boundary_valid[MT9V03X_H];
 
+static uint32 camera_config_checksum(const CameraConfigRecord_t *record)
+{
+    return record->magic ^ record->version ^ record->sequence ^
+           record->exposure ^ CAMERA_CONFIG_CHECK_XOR;
+}
+
+static uint8 camera_config_read(uint32 page, CameraConfigRecord_t *record)
+{
+    flash_read_page_to_buffer(0U, page, CAMERA_CONFIG_WORD_COUNT);
+    memcpy(record, flash_union_buffer, sizeof(*record));
+
+    if (record->magic != CAMERA_CONFIG_MAGIC ||
+        record->version != CAMERA_CONFIG_VERSION ||
+        record->exposure < CAMERA_ASSIST_EXPOSURE_MIN ||
+        record->exposure > CAMERA_ASSIST_EXPOSURE_MAX ||
+        record->checksum != camera_config_checksum(record))
+    {
+        return 0U;
+    }
+    return 1U;
+}
+
+static uint8 camera_config_load(uint16 *exposure)
+{
+    CameraConfigRecord_t record_a;
+    CameraConfigRecord_t record_b;
+    uint8 valid_a = camera_config_read(CAMERA_CONFIG_PAGE_A, &record_a);
+    uint8 valid_b = camera_config_read(CAMERA_CONFIG_PAGE_B, &record_b);
+    const CameraConfigRecord_t *selected;
+
+    if (!valid_a && !valid_b)
+    {
+        camera_config_active_page = CAMERA_CONFIG_NO_PAGE;
+        camera_config_sequence = 0U;
+        return 0U;
+    }
+
+    if (valid_a && valid_b)
+    {
+        selected = ((int32)(record_b.sequence - record_a.sequence) > 0) ?
+                   &record_b : &record_a;
+        camera_config_active_page = (selected == &record_b) ? 1U : 0U;
+    }
+    else if (valid_b)
+    {
+        selected = &record_b;
+        camera_config_active_page = 1U;
+    }
+    else
+    {
+        selected = &record_a;
+        camera_config_active_page = 0U;
+    }
+
+    camera_config_sequence = selected->sequence;
+    *exposure = (uint16)selected->exposure;
+    return 1U;
+}
+
+static uint8 camera_config_write(void)
+{
+    CameraConfigRecord_t record;
+    CameraConfigRecord_t verify;
+    uint32 target_page =
+        (camera_config_active_page == 0U) ? CAMERA_CONFIG_PAGE_B : CAMERA_CONFIG_PAGE_A;
+    uint8 target_index = (target_page == CAMERA_CONFIG_PAGE_B) ? 1U : 0U;
+    uint32 interrupt_mask;
+
+    memset(&record, 0, sizeof(record));
+    record.magic = CAMERA_CONFIG_MAGIC;
+    record.version = CAMERA_CONFIG_VERSION;
+    record.sequence = camera_config_sequence + 1U;
+    if (record.sequence == 0U)
+    {
+        record.sequence = 1U;
+    }
+    record.exposure = camera_assist_status.exposure_time;
+    record.checksum = camera_config_checksum(&record);
+
+    interrupt_mask = __get_PRIMASK();
+    __disable_irq();
+    flash_buffer_clear();
+    memcpy(flash_union_buffer, &record, sizeof(record));
+    flash_write_page_from_buffer(0U, target_page, CAMERA_CONFIG_WORD_COUNT);
+    if (!interrupt_mask)
+    {
+        __enable_irq();
+    }
+
+    if (!camera_config_read(target_page, &verify) ||
+        verify.sequence != record.sequence ||
+        verify.exposure != record.exposure)
+    {
+        camera_config_dirty = 0U;
+        camera_config_save_delay = 0U;
+        camera_assist_status.exposure_save_state = CAMERA_EXPOSURE_SAVE_ERROR;
+        return 0U;
+    }
+
+    camera_config_active_page = target_index;
+    camera_config_sequence = record.sequence;
+    camera_config_dirty = 0U;
+    camera_config_save_delay = 0U;
+    camera_assist_status.exposure_save_state = CAMERA_EXPOSURE_SAVE_SAVED;
+    return 1U;
+}
+
 static void camera_reset_status(void)
 {
     memset(&camera_assist_status, 0, sizeof(camera_assist_status));
     camera_assist_status.lane_center_x = CAMERA_ASSIST_TARGET_X;
     camera_assist_status.mode = CAMERA_ASSIST_MODE_CENTER;
     camera_assist_status.exposure_time = MT9V03X_EXP_TIME_DEF;
+    camera_assist_status.exposure_save_state = CAMERA_EXPOSURE_SAVE_DEFAULT;
     CameraAssist_ResetVisionControl();
 }
 
@@ -299,8 +434,23 @@ static void camera_update_lane(uint8 threshold)
 
 void CameraAssist_Init(void)
 {
+    uint16 saved_exposure;
+
+    camera_config_dirty = 0U;
+    camera_config_save_delay = 0U;
     camera_reset_status();
     camera_assist_status.ready = (mt9v03x_init() == 0U) ? 1U : 0U;
+    if (camera_assist_status.ready && camera_config_load(&saved_exposure))
+    {
+        if (CameraAssist_SetExposureTime(saved_exposure) == 0U)
+        {
+            camera_assist_status.exposure_save_state = CAMERA_EXPOSURE_SAVE_SAVED;
+        }
+        else
+        {
+            camera_assist_status.exposure_save_state = CAMERA_EXPOSURE_SAVE_ERROR;
+        }
+    }
 }
 
 void CameraAssist_AttachToInitializedCamera(void)
@@ -323,6 +473,22 @@ void CameraAssist_ProcessFrame(void)
     camera_assist_status.frame_count++;
 }
 
+void CameraAssist_ConfigTask(void)
+{
+    if (!camera_config_dirty)
+    {
+        return;
+    }
+
+    if (camera_config_save_delay > 0U)
+    {
+        camera_config_save_delay--;
+        return;
+    }
+
+    (void)camera_config_write();
+}
+
 void CameraAssist_SetMode(CameraAssistMode_t mode)
 {
     if (mode > CAMERA_ASSIST_MODE_STEP)
@@ -336,7 +502,9 @@ uint8 CameraAssist_SetExposureTime(uint16 exposure_time)
 {
     uint8 result;
 
-    if (!camera_assist_status.ready)
+    if (!camera_assist_status.ready ||
+        exposure_time < CAMERA_ASSIST_EXPOSURE_MIN ||
+        exposure_time > CAMERA_ASSIST_EXPOSURE_MAX)
     {
         return 1U;
     }
@@ -347,6 +515,22 @@ uint8 CameraAssist_SetExposureTime(uint16 exposure_time)
         camera_assist_status.exposure_time = exposure_time;
     }
     return result;
+}
+
+void CameraAssist_RequestExposureSave(void)
+{
+    camera_config_dirty = 1U;
+    camera_config_save_delay = CAMERA_CONFIG_SAVE_DELAY_TICKS;
+    camera_assist_status.exposure_save_state = CAMERA_EXPOSURE_SAVE_PENDING;
+}
+
+uint8 CameraAssist_FlushExposureConfig(void)
+{
+    if (!camera_config_dirty)
+    {
+        return 1U;
+    }
+    return camera_config_write();
 }
 
 uint8 CameraAssist_GetLateralError(float *error_px)
