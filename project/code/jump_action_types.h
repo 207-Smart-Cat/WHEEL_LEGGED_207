@@ -1,0 +1,18 @@
+#ifndef JUMP_ACTION_TYPES_H
+#define JUMP_ACTION_TYPES_H
+
+typedef enum
+{
+    JUMP_ACTION_PROFILE_FIRST = 0,
+    JUMP_ACTION_PROFILE_FOLLOWUP
+} JumpActionProfile_e;
+
+typedef enum
+{
+    JUMP_ACTION_RESULT_NONE = 0,
+    JUMP_ACTION_RESULT_LANDED,
+    JUMP_ACTION_RESULT_COMPLETE,
+    JUMP_ACTION_RESULT_FAULT
+} JumpActionResult_e;
+
+#endif
