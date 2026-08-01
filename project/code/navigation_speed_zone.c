@@ -4,33 +4,43 @@
 #include "runtime_status.h"
 #include <math.h>
 
+#define NAVI_SPEED_ZONE_INDEX_RETURN     (0xFEU)
 #define NAVI_SPEED_ZONE_INDEX_NONE       (0xFFU)
 #define NAVI_SPEED_ZONE_MAX_TURN_DEG     (8.0f)
 #define NAVI_SPEED_ZONE_MIN_LENGTH_M     (1.5f)
 #define NAVI_SPEED_ZONE_RAD_TO_DEG       (57.2957795f)
 
 /*
- * Add per-map arrays above this table when the waypoint indexes are known:
+ * One UI map owns one profile, and one profile may contain multiple zones:
  * static const NaviSpeedZone_t map01_speed_zones[] =
  * {
- *     {2U, 4U, 950.0f},
+ *     {2U, 4U, 900.0f},
+ *     {7U, 9U, 850.0f},
  * };
- * Then replace map 1's {NULL, 0U} entry below.
+ * static const NaviSpeedZone_t map02_speed_zones[] =
+ * {
+ *     {1U, 3U, 800.0f},
+ *     {5U, 8U, 920.0f},
+ * };
+ * Then replace the corresponding entries with, for example:
+ * {map01_speed_zones, 2U, 3U},
+ * {map02_speed_zones, 2U, 3U}.
+ * The third member enables the original last-three-point return sprint.
  */
 static const NaviMapSpeedZoneProfile_t
 navi_speed_zone_profiles[NAV_EXEC_GROUP_COUNT] =
 {
-    {NULL, 0U}, /* UI map 1, Flash group 0 */
-    {NULL, 0U}, /* UI map 2, Flash group 1 */
-    {NULL, 0U}, /* UI map 3, Flash group 2 */
-    {NULL, 0U}, /* UI map 4, Flash group 3 */
-    {NULL, 0U}, /* UI map 5, Flash group 4 */
-    {NULL, 0U}, /* UI map 6, Flash group 5 */
-    {NULL, 0U}, /* UI map 7, Flash group 6 */
-    {NULL, 0U}, /* UI map 8, Flash group 7 */
-    {NULL, 0U}, /* UI map 9, Flash group 8 */
-    {NULL, 0U}, /* UI map 10, Flash group 9 */
-    {NULL, 0U}  /* UI map 11, Course 3 preset group 10 */
+    {NULL, 0U, 3U}, /* UI map 1, Flash group 0 */
+    {NULL, 0U, 3U}, /* UI map 2, Flash group 1 */
+    {NULL, 0U, 0U}, /* UI map 3, Flash group 2 */
+    {NULL, 0U, 0U}, /* UI map 4, Flash group 3 */
+    {NULL, 0U, 0U}, /* UI map 5, Flash group 4 */
+    {NULL, 0U, 3U}, /* UI map 6, Flash group 5 */
+    {NULL, 0U, 3U}, /* UI map 7, Flash group 6 */
+    {NULL, 0U, 0U}, /* UI map 8, Flash group 7 */
+    {NULL, 0U, 0U}, /* UI map 9, Flash group 8 */
+    {NULL, 0U, 0U}, /* UI map 10, Flash group 9 */
+    {NULL, 0U, 0U}  /* UI map 11, Course 3 preset group 10 */
 };
 
 typedef char navi_speed_zone_map_count_must_match[
@@ -154,6 +164,28 @@ static uint8 navi_speed_zone_profiles_overlap(const NaviSpeedZone_t *left,
             right->start_point_idx < left->end_point_idx) ? 1U : 0U;
 }
 
+static uint8 navi_speed_zone_get_return_range(uint16 *start_point_idx,
+                                               uint16 *end_point_idx)
+{
+    uint8 last_n;
+
+    if (navi_speed_zone_selected_profile == NULL ||
+        start_point_idx == NULL || end_point_idx == NULL)
+    {
+        return 0U;
+    }
+
+    last_n = navi_speed_zone_selected_profile->return_high_speed_last_n_points;
+    if (last_n < 2U || navi_speed_zone_selected_count < (uint16)last_n)
+    {
+        return 0U;
+    }
+
+    *start_point_idx = (uint16)(navi_speed_zone_selected_count - (uint16)last_n);
+    *end_point_idx = (uint16)(navi_speed_zone_selected_count - 1U);
+    return 1U;
+}
+
 void Navi_SpeedZone_Reset(void)
 {
     navi_speed_zone_selected_profile = NULL;
@@ -180,7 +212,13 @@ uint8 Navi_SpeedZone_Select_Profile(uint8 map_group,
 
     navi_speed_zone_selected_group = map_group;
     profile = &navi_speed_zone_profiles[map_group];
-    if (profile->zone_count == 0U)
+    if (profile->return_high_speed_last_n_points == 1U)
+    {
+        Navi_SpeedZone_Reset();
+        return 0U;
+    }
+    if (profile->zone_count == 0U &&
+        profile->return_high_speed_last_n_points == 0U)
     {
         navi_speed_zone_selected_profile = profile;
         navi_speed_zone_selected_map = map;
@@ -189,7 +227,7 @@ uint8 Navi_SpeedZone_Select_Profile(uint8 map_group,
                        (int)(map_group + 1U));
         return 1U;
     }
-    if (profile->zones == NULL)
+    if (profile->zone_count > 0U && profile->zones == NULL)
     {
         Navi_SpeedZone_Reset();
         return 0U;
@@ -225,9 +263,10 @@ uint8 Navi_SpeedZone_Select_Profile(uint8 map_group,
     navi_speed_zone_selected_profile = profile;
     navi_speed_zone_selected_map = map;
     navi_speed_zone_selected_count = count;
-    IPC_LOG_Printf("[NAVI_ZONE] map %d selected, zones=%d.\r\n",
+    IPC_LOG_Printf("[NAVI_ZONE] map %d selected, zones=%d, return-last-n=%d.\r\n",
                    (int)(map_group + 1U),
-                   (int)profile->zone_count);
+                   (int)profile->zone_count,
+                   (int)profile->return_high_speed_last_n_points);
     return 1U;
 }
 
@@ -249,6 +288,8 @@ float Navi_SpeedZone_Get_Passage_Speed(uint16 start_point_idx,
 float Navi_SpeedZone_Get_Speed(uint16 current_target_idx)
 {
     uint8 idx;
+    uint16 return_start_idx;
+    uint16 return_end_idx;
 
     navi_speed_zone_active_index = NAVI_SPEED_ZONE_INDEX_NONE;
     if (navi_speed_zone_selected_profile == NULL ||
@@ -271,6 +312,26 @@ float Navi_SpeedZone_Get_Speed(uint16 current_target_idx)
         }
     }
 
+    if (navi_speed_zone_get_return_range(&return_start_idx, &return_end_idx) &&
+        navi_speed_zone_type_is_allowed(
+            navi_speed_zone_selected_map[current_target_idx].type,
+            current_target_idx,
+            return_end_idx,
+            navi_speed_zone_selected_count))
+    {
+        float speed = Navi_SpeedZone_Get_Passage_Speed(
+            return_start_idx,
+            return_end_idx,
+            Navi_CourseSpeed_Get_Profile(
+                Runtime_Get_Vehicle_Mode())->high_speed_max_velocity,
+            current_target_idx);
+        if (speed >= 0.0f)
+        {
+            navi_speed_zone_active_index = NAVI_SPEED_ZONE_INDEX_RETURN;
+            return speed;
+        }
+    }
+
     return NAVI_SPEED_ZONE_INACTIVE;
 }
 
@@ -283,13 +344,32 @@ uint8 Navi_SpeedZone_Is_Final_Target_Hold(uint16 current_target_idx,
                                           uint16 total_points)
 {
     const NaviSpeedZone_t *zone;
+    uint16 return_start_idx;
+    uint16 return_end_idx;
 
     if (!Navi_SpeedZone_Is_Active() ||
         navi_speed_zone_selected_profile == NULL ||
         navi_speed_zone_selected_map == NULL ||
-        navi_speed_zone_active_index >= navi_speed_zone_selected_profile->zone_count ||
         current_target_idx >= total_points ||
         current_target_idx >= navi_speed_zone_selected_count)
+    {
+        return 0U;
+    }
+
+    if (navi_speed_zone_active_index == NAVI_SPEED_ZONE_INDEX_RETURN)
+    {
+        if (!navi_speed_zone_get_return_range(&return_start_idx,
+                                               &return_end_idx))
+        {
+            return 0U;
+        }
+        return (current_target_idx > return_start_idx &&
+                current_target_idx <= return_end_idx &&
+                (current_target_idx >= (uint16)(total_points - 1U) ||
+                 navi_speed_zone_selected_map[current_target_idx].type == WP_TYPE_STOP)) ? 1U : 0U;
+    }
+
+    if (navi_speed_zone_active_index >= navi_speed_zone_selected_profile->zone_count)
     {
         return 0U;
     }

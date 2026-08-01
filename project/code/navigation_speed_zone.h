@@ -17,6 +17,7 @@ typedef struct
 {
     const NaviSpeedZone_t *zones;
     uint8 zone_count;
+    uint8 return_high_speed_last_n_points;
 } NaviMapSpeedZoneProfile_t;
 
 void Navi_SpeedZone_Reset(void);

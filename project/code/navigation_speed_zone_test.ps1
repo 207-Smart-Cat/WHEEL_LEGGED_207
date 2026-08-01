@@ -25,10 +25,18 @@ $trackingHeader = Read-ProjectText "navigation_tracking.h"
 $trackingSource = Read-ProjectText "navigation_tracking.c"
 $ipcHeader = Read-ProjectText "ipc_shared_data.h"
 $ipcSource = Read-ProjectText "ipc_shared_data.c"
+$screenSource = Read-ProjectText "screen_display.c"
 
 Require-Text $zoneHeader "NaviMapSpeedZoneProfile_t" "Missing per-map zone profile."
+Require-Text $zoneHeader "return_high_speed_last_n_points" "Per-map return sprint setting is missing."
 Require-Text $zoneSource "navi_speed_zone_profiles[NAV_EXEC_GROUP_COUNT]" "Map groups are not indexed directly."
 Require-Text $zoneSource "UI map 11, Course 3 preset group 10" "Map 11 preset entry is missing."
+Require-Text $zoneSource "{NULL, 0U, 3U}, /* UI map 1, Flash group 0 */" "UI map 1 return sprint is not enabled."
+Require-Text $zoneSource "{NULL, 0U, 3U}, /* UI map 2, Flash group 1 */" "UI map 2 return sprint is not enabled."
+Require-Text $zoneSource "{NULL, 0U, 3U}, /* UI map 6, Flash group 5 */" "UI map 6 return sprint is not enabled."
+Require-Text $zoneSource "{NULL, 0U, 3U}, /* UI map 7, Flash group 6 */" "UI map 7 return sprint is not enabled."
+Require-Text $zoneSource "navi_speed_zone_selected_count - (uint16)last_n" "Return sprint start is not derived from the loaded map length."
+Require-Text $zoneSource "NAVI_SPEED_ZONE_INDEX_RETURN" "Return sprint activity is not tracked separately."
 Require-Text $zoneSource "current_target_idx > start_point_idx" "Passage start must be exclusive."
 Require-Text $zoneSource "current_target_idx <= end_point_idx" "Passage end must be inclusive."
 Require-Text $zoneSource "for (idx = 0U; idx < navi_speed_zone_selected_profile->zone_count; idx++)" "A map cannot hold multiple zones."
@@ -37,6 +45,8 @@ Require-Text $zoneSource "navi_speed_zone_profiles_overlap" "Zone overlap valida
 Require-Text $zoneSource "navi_speed_zone_type_is_allowed" "Action-point validation is missing."
 Require-Text $ipcHeader "IPC_Nav_Get_Active_Group" "Active map group getter is missing."
 Require-Text $ipcSource "return g_nav_record_active_group" "The selected Flash group is not exposed to Core0."
+Require-Text $screenSource 'sprintf(line, "%02d", (int)(group + 1U))' "Screen map number is not displayed as Flash group plus one."
+Require-Text $screenSource "NavStore_Request_Core0_Load(ui_selected_group, NAV_GROUP_INTENT_EXECUTE)" "The selected screen map is not passed directly to Flash loading."
 Require-Text $trackingSource "Navi_SpeedZone_Select_Profile(IPC_Nav_Get_Active_Group()" "Tracking does not bind the loaded map group."
 Require-Text $trackingSource "zone_speed = Navi_SpeedZone_Get_Speed(target_idx)" "Tracking does not query map speed zones."
 Require-Text $trackingSource "profile->high_speed_max_velocity" "Zone speed is not capped by the current course."
@@ -61,5 +71,15 @@ if ((Passage-Speed 2 4 950 2) -ge 0.0) { throw "Zone activated while driving to 
 if ((Passage-Speed 2 4 950 3) -ne 950) { throw "Zone did not activate after start point." }
 if ((Passage-Speed 2 4 950 4) -ne 950) { throw "Zone did not include end point." }
 if ((Passage-Speed 2 4 950 5) -ge 0.0) { throw "Zone remained active after end point." }
+
+# The original last-three-point setting starts after the third point from the end.
+# With ten points it therefore accelerates toward targets 8 and 9 (zero based).
+$totalPoints = 10
+$lastN = 3
+$returnStart = $totalPoints - $lastN
+$returnEnd = $totalPoints - 1
+if ((Passage-Speed $returnStart $returnEnd 950 7) -ge 0.0) { throw "Return sprint started one point too early." }
+if ((Passage-Speed $returnStart $returnEnd 950 8) -ne 950) { throw "Return sprint did not start after the third-last point." }
+if ((Passage-Speed $returnStart $returnEnd 950 9) -ne 950) { throw "Return sprint did not include the final point." }
 
 Write-Output "navigation map speed-zone checks passed"
