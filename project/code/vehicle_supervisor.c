@@ -4,6 +4,7 @@
 #include "jump_control.h"
 #include "runtime_status.h"
 #include "small_driver_uart_control.h"
+#include "triple_jump_runtime.h"
 
 static volatile uint8 g_vehicle_emergency_stop = 0;
 static volatile vehicle_event_source_t g_vehicle_emergency_source = VEHICLE_EVENT_SOURCE_NONE;
@@ -22,6 +23,7 @@ void Vehicle_Emergency_Stop(vehicle_event_source_t source)
     Runtime_Set_Servo_Reason(RUNTIME_REASON_SERVO_OFF);
 
     small_driver_set_duty(0, 0);
+    TripleJumpRuntime_ForceStop();
     jump_force_idle();
     engine_servo_disable();
 }
@@ -41,6 +43,7 @@ void Vehicle_Emergency_Recover(vehicle_event_source_t source)
 
     small_driver_set_duty(0, 0);
     small_driver_request_startup_ramp_reset();
+    TripleJumpRuntime_ForceStop();
     jump_force_idle();
 }
 /* Vehicle_Is_Emergency_Stop: return whether emergency stop is active. */

@@ -1161,6 +1161,33 @@
             <name>$PROJ_DIR$\..\..\code\jump_control.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\jump_action_types.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\jump_action_profile.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\jump_action_profile.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\landing_detector.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\landing_detector.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\triple_jump.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\triple_jump.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\triple_jump_runtime.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\triple_jump_runtime.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\vehicle_supervisor.c</name>
         </file>
         <file>

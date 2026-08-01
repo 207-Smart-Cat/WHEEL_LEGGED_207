@@ -12,6 +12,7 @@
 #include "remote.h"
 #include "vofa_protocol.h"
 #include "runtime_status.h"
+#include "triple_jump_runtime.h"
 #include "small_driver_uart_control.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -92,6 +93,32 @@ void IPC_Request_Nav_Jump(void)
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
     __enable_irq();
 }
+void IPC_Request_Triple_Jump_Start(const TripleJumpConfig_t *config)
+{
+    if (!TripleJump_ConfigIsValid(config))
+    {
+        return;
+    }
+
+    __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    core_b_cmd.triple_jump_x1_m = config->x1_m;
+    core_b_cmd.triple_jump_x2_m = config->x2_m;
+    core_b_cmd.triple_jump_x3_m = config->x3_m;
+    core_b_cmd.triple_jump_speed = config->speed;
+    core_b_cmd.triple_jump_start_seq++;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    __enable_irq();
+}
+
+void IPC_Request_Triple_Jump_Stop(void)
+{
+    __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    core_b_cmd.triple_jump_stop_seq++;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    __enable_irq();
+}
 
 uint8 IPC_Consume_Motor_Zero_Request_Core0(void)
 {
@@ -121,6 +148,40 @@ uint8 IPC_Consume_Nav_Jump_Request_Core0(void)
     }
 
     return request;
+}
+uint8 IPC_Consume_Triple_Jump_Start_Core0(TripleJumpConfig_t *config)
+{
+    static uint32 start_seq_seen = 0U;
+
+    if (config == 0)
+    {
+        return 0U;
+    }
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (core_b_cmd.triple_jump_start_seq == start_seq_seen)
+    {
+        return 0U;
+    }
+
+    start_seq_seen = core_b_cmd.triple_jump_start_seq;
+    config->x1_m = core_b_cmd.triple_jump_x1_m;
+    config->x2_m = core_b_cmd.triple_jump_x2_m;
+    config->x3_m = core_b_cmd.triple_jump_x3_m;
+    config->speed = core_b_cmd.triple_jump_speed;
+    return 1U;
+}
+
+uint8 IPC_Consume_Triple_Jump_Stop_Core0(void)
+{
+    static uint32 stop_seq_seen = 0U;
+
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (core_b_cmd.triple_jump_stop_seq == stop_seq_seen)
+    {
+        return 0U;
+    }
+    stop_seq_seen = core_b_cmd.triple_jump_stop_seq;
+    return 1U;
 }
 
 void IPC_Set_Nav_Record_Preview_Start(uint16 start)

@@ -2,6 +2,7 @@
 #define _IPC_SHARED_DATA_H
 
 #include "zf_common_headfile.h"
+#include "triple_jump.h"
 
 // IPC shared memory limits. Keep PARAM_COUNT <= 63 because update_mask uses bit 0..62 safely.
 #define IPC_PARAM_MAX_COUNT        (63U)
@@ -143,6 +144,12 @@ typedef struct {
     int16 vision_lane_error_px;
     uint8 vision_enabled;
     uint8 vision_valid;
+    float triple_jump_x1_m;
+    float triple_jump_x2_m;
+    float triple_jump_x3_m;
+    float triple_jump_speed;
+    uint32 triple_jump_start_seq;
+    uint32 triple_jump_stop_seq;
 } CoreB_Command_t;
 
 // ==========================================================
@@ -180,9 +187,13 @@ void IPC_Request_Param_Update(ParamID_e id, float value);
 void IPC_Request_All_Params_Update(void);
 void IPC_Request_Motor_Zero_Calibration(void);
 void IPC_Request_Nav_Jump(void);
+void IPC_Request_Triple_Jump_Start(const TripleJumpConfig_t *config);
+void IPC_Request_Triple_Jump_Stop(void);
 void IPC_Set_Nav_Record_Preview_Start(uint16 start);
 uint8 IPC_Consume_Motor_Zero_Request_Core0(void);
 uint8 IPC_Consume_Nav_Jump_Request_Core0(void);
+uint8 IPC_Consume_Triple_Jump_Start_Core0(TripleJumpConfig_t *config);
+uint8 IPC_Consume_Triple_Jump_Stop_Core0(void);
 void IPC_Update_Motor_Zero_State_From_Core0(uint8 state);
 void IPC_Nav_Group_Core0_Task(void);
 void IPC_Nav_Group_Core0_Tick10ms(void);

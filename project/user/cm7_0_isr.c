@@ -91,17 +91,21 @@ void pit0_ch13_isr() // Servo control, fixed period
     pit_isr_flag_clear(PIT_CH13);
 }
 
-void pit0_ch14_isr() // ÌøÔ¾¶¯×÷×´Ì¬»ú 1ms
+void pit0_ch14_isr() // Triple-jump runtime base tick, 1ms
 {
-    extern float x_current, y_current;
+    static uint8_t triple_jump_divider = 0U;
 
     if (!Vehicle_Is_Emergency_Stop())
     {
-        jump_process_control(&x_current, &y_current);
+        triple_jump_divider++;
+        if (triple_jump_divider >= 5U)
+        {
+            triple_jump_divider = 0U;
+            TripleJumpRuntime_Task5ms();
+        }
     }
     pit_isr_flag_clear(PIT_CH14);
 }
-
 void pit0_ch15_isr() // Navigation EKF positioning and jump action, 5ms
 {
     static uint8_t nav_origin_ready = 0;

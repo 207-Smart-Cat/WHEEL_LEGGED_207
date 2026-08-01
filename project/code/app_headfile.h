@@ -35,6 +35,7 @@
 #include "FiveBarLinkageData.h"
 #include "control.h"
 #include "jump_control.h"
+#include "triple_jump_runtime.h"
 #include "bumpy_control.h"
 
 // Communication and display
