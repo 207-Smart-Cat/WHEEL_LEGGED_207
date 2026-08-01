@@ -9,6 +9,7 @@
 #include "navigation_action.h"
 #include "ipc_shared_data.h"
 #include "course3_bridge_logic.h"
+#include "bump_mode_logic.h"
 extern IMU_t IMU_data;            // IMU数据
 extern float target_angle;        // 目标角度
 extern float target_velocity;
@@ -34,6 +35,7 @@ static Remote_CtrlData_t s_RemoteData = {
                 REMOTE_SAFE_VALUE_OTHER, REMOTE_SAFE_VALUE_OTHER, REMOTE_SAFE_VALUE_OTHER}};
 
 static bool remote_drive_active = false;
+static uint8 bump_manual_was_active = 0U;
 static uint8 remote_ch3_initialized = 0;
 static uint8 remote_ch3_last_high = 0;
 static uint16 remote_ch3_emergency_frames = 0;
@@ -475,14 +477,50 @@ static void Remote_CheckJumpTrigger(uint8 remote_drive_enabled)
 void Remote_control_callback(void)
 {
     float yaw_stick;
+    float bump_target_command;
     uint8 navigation_execute_active;
     uint8 manual_test_active;
     uint8 target_control_active;
+    uint8 bump_safety_ready;
+    ManualTestMode_t manual_test_mode;
 
     Remote_Update();
     navigation_execute_active = Remote_Is_Navi_Execute_Mode();
-    manual_test_active = (IPC_Get_Manual_Test_Mode() != MANUAL_TEST_MODE_NONE) ? 1U : 0U;
+    manual_test_mode = IPC_Get_Manual_Test_Mode();
+    manual_test_active = (manual_test_mode != MANUAL_TEST_MODE_NONE) ? 1U : 0U;
     target_control_active = (navigation_execute_active || manual_test_active) ? 1U : 0U;
+
+    if (manual_test_mode == MANUAL_TEST_MODE_BUMP)
+    {
+        if (Remote_GetStatus() == REMOTE_CONNECTED)
+        {
+            Remote_CheckEmergencyStop();
+        }
+        bump_safety_ready = (Runtime_Is_Module_Enabled(RUNTIME_MODULE_MOTOR) &&
+                             Runtime_Is_Module_Enabled(RUNTIME_MODULE_BALANCE) &&
+                             Runtime_Get_Wifi_Connected()) ? 1U : 0U;
+        (void)BumpMode_ResolveTarget(1U,
+                                     IPC_Bump_Get_Run(),
+                                     Vehicle_Is_Emergency_Stop(),
+                                     bump_safety_ready,
+                                     core_b_cmd.bump_target_speed,
+                                     &bump_target_command);
+        target_velocity = bump_target_command;
+        bump_manual_was_active = 1U;
+        remote_drive_active = false;
+        Remote_ResetJumpTrigger();
+        Remote_ResetRecordTrigger();
+        Remote_ResetNormalRecordTrigger();
+        Runtime_Set_Remote_Reason(RUNTIME_REASON_NORMAL);
+        return;
+    }
+
+    if (bump_manual_was_active)
+    {
+        target_velocity = 0.0f;
+        bump_manual_was_active = 0U;
+    }
+
     if (!Runtime_Is_Module_Enabled(RUNTIME_MODULE_REMOTE))
     {
         Runtime_Set_Remote_Reason(RUNTIME_REASON_REMOTE_OFF);

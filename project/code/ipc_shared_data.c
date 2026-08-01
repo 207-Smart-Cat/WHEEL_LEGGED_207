@@ -13,6 +13,7 @@
 #include "vofa_protocol.h"
 #include "runtime_status.h"
 #include "small_driver_uart_control.h"
+#include "bump_mode_logic.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -79,7 +80,7 @@ void IPC_Request_All_Params_Update(void)
 
 void IPC_Set_Manual_Test_Mode(ManualTestMode_t mode)
 {
-    if (mode > MANUAL_TEST_MODE_BRIDGE)
+    if (mode > MANUAL_TEST_MODE_BUMP)
     {
         mode = MANUAL_TEST_MODE_NONE;
     }
@@ -94,11 +95,64 @@ void IPC_Set_Manual_Test_Mode(ManualTestMode_t mode)
 ManualTestMode_t IPC_Get_Manual_Test_Mode(void)
 {
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
-    if (core_b_cmd.manual_test_mode > (uint8)MANUAL_TEST_MODE_BRIDGE)
+    if (core_b_cmd.manual_test_mode > (uint8)MANUAL_TEST_MODE_BUMP)
     {
         return MANUAL_TEST_MODE_NONE;
     }
     return (ManualTestMode_t)core_b_cmd.manual_test_mode;
+}
+
+void IPC_Bump_Set_Config(float pwm_gain, float target_speed)
+{
+    BumpConfig_t config;
+    uint32 interrupt_mask;
+    config.pwm_gain = pwm_gain;
+    config.target_speed = target_speed;
+    config = BumpMode_SanitizeConfig(config);
+
+    interrupt_mask = __get_PRIMASK();
+    __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    core_b_cmd.bump_pwm_gain = config.pwm_gain;
+    core_b_cmd.bump_target_speed = config.target_speed;
+    core_b_cmd.bump_config_seq++;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (!interrupt_mask)
+    {
+        __enable_irq();
+    }
+}
+
+void IPC_Bump_Get_Config(float *pwm_gain, float *target_speed)
+{
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (pwm_gain != NULL)
+    {
+        *pwm_gain = core_b_cmd.bump_pwm_gain;
+    }
+    if (target_speed != NULL)
+    {
+        *target_speed = core_b_cmd.bump_target_speed;
+    }
+}
+
+void IPC_Bump_Set_Run(uint8 enabled)
+{
+    uint32 interrupt_mask = __get_PRIMASK();
+    __disable_irq();
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    core_b_cmd.bump_run = enabled ? 1U : 0U;
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    if (!interrupt_mask)
+    {
+        __enable_irq();
+    }
+}
+
+uint8 IPC_Bump_Get_Run(void)
+{
+    SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+    return core_b_cmd.bump_run ? 1U : 0U;
 }
 
 void IPC_Request_Motor_Zero_Calibration(void)
@@ -162,6 +216,7 @@ void IPC_Update_Motor_Zero_State_From_Core0(uint8 state)
 }
 // --- 初始化函数 ---
 void IPC_Init_Shared_Memory(void) {
+    BumpConfig_t bump_config = BumpMode_DefaultConfig();
     memset(&core_a_status, 0, sizeof(CoreA_Status_t));
     memset(&ipc_log_box, 0, sizeof(IpcLogBox_t));
     memset(&core_b_cmd, 0, sizeof(CoreB_Command_t));
@@ -176,6 +231,10 @@ void IPC_Init_Shared_Memory(void) {
     core_b_cmd.runtime_module_enable_mask = RUNTIME_DEFAULT_MODULE_MASK;
     core_b_cmd.vehicle_mode = 0;
     core_b_cmd.runtime_status_valid = 1;
+    core_b_cmd.bump_pwm_gain = bump_config.pwm_gain;
+    core_b_cmd.bump_target_speed = bump_config.target_speed;
+    core_b_cmd.bump_config_seq = 1U;
+    core_b_cmd.bump_run = 0U;
 
     SCB_CleanInvalidateDCache_by_Addr(&core_a_status, sizeof(core_a_status));
     SCB_CleanInvalidateDCache_by_Addr(&ipc_log_box, sizeof(ipc_log_box));
@@ -323,8 +382,17 @@ uint8 IPC_CoreB_Wifi_Is_Connected(void) {
     return g_runtime_status.wifi_connected;
 }
 void IPC_Check_And_Apply_Params_To_Core0(void) {
+    BumpConfig_t bump_config;
     Runtime_Sync_From_IPC();
     SCB_CleanInvalidateDCache_by_Addr(&core_b_cmd, sizeof(core_b_cmd));
+
+    bump_config.pwm_gain = core_b_cmd.bump_pwm_gain;
+    bump_config.target_speed = core_b_cmd.bump_target_speed;
+    bump_config = BumpMode_SanitizeConfig(bump_config);
+    anti_stall_pwm_gain = bump_config.pwm_gain;
+    bump_control_target_speed = bump_config.target_speed;
+    bump_control_run_enabled = core_b_cmd.bump_run ? 1U : 0U;
+    bump_control_mode_active = (core_b_cmd.manual_test_mode == (uint8)MANUAL_TEST_MODE_BUMP) ? 1U : 0U;
 
     if(core_b_cmd.param_update_flag == 1) {
         for(int i = 0; i < PARAM_COUNT; i++) {
@@ -346,8 +414,60 @@ void IPC_Check_And_Apply_Params_To_Core0(void) {
 // ====================================================================
 #define PARAM_FLASH_SECTION  (0)  // 选用靠后的扇区
 #define PARAM_FLASH_PAGE     (95)
+#define BUMP_FLASH_PAGE      (92U)
+#define BUMP_FLASH_WORDS     ((uint32)((sizeof(BumpConfigRecord_t) + sizeof(uint32) - 1U) / sizeof(uint32)))
 #define PARAM_FLASH_LEGACY_COUNT_BEFORE_JUMP (45)
 #define PARAM_FLASH_LEGACY_COUNT_BEFORE_NAVI_CTRL (50)
+
+typedef char bump_flash_page_must_not_overlap[
+    (BUMP_FLASH_PAGE >= 80U && BUMP_FLASH_PAGE < 93U) ? 1 : -1];
+
+void IPC_Bump_Load_Config_From_Flash(void)
+{
+    BumpConfigRecord_t record;
+    BumpConfig_t config;
+
+    flash_read_page_to_buffer(PARAM_FLASH_SECTION, BUMP_FLASH_PAGE, BUMP_FLASH_WORDS);
+    memcpy(&record, flash_union_buffer, sizeof(record));
+    (void)BumpMode_LoadRecord(&record, &config);
+    IPC_Bump_Set_Config(config.pwm_gain, config.target_speed);
+    IPC_Bump_Set_Run(0U);
+}
+
+uint8 IPC_Bump_Save_Config_To_Flash(void)
+{
+    BumpConfigRecord_t record;
+    BumpConfigRecord_t verify;
+    BumpConfig_t config;
+    BumpConfig_t verified_config;
+    uint32 interrupt_mask;
+
+    IPC_Bump_Get_Config(&config.pwm_gain, &config.target_speed);
+    BumpMode_BuildRecord(&record, config);
+
+    interrupt_mask = __get_PRIMASK();
+    __disable_irq();
+    flash_buffer_clear();
+    memcpy(flash_union_buffer, &record, sizeof(record));
+    flash_write_page_from_buffer(PARAM_FLASH_SECTION, BUMP_FLASH_PAGE, BUMP_FLASH_WORDS);
+    if (!interrupt_mask)
+    {
+        __enable_irq();
+    }
+
+    flash_read_page_to_buffer(PARAM_FLASH_SECTION, BUMP_FLASH_PAGE, BUMP_FLASH_WORDS);
+    memcpy(&verify, flash_union_buffer, sizeof(verify));
+    if (!BumpMode_LoadRecord(&verify, &verified_config))
+    {
+        return 0U;
+    }
+    if ((verified_config.pwm_gain != config.pwm_gain) ||
+        (verified_config.target_speed != config.target_speed))
+    {
+        return 0U;
+    }
+    return 1U;
+}
 
 // ====================================================================
 // 功能 1：真正操作硬件，把参数写入 Flash (Core B 调用)

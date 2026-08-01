@@ -1218,6 +1218,12 @@
             <name>$PROJ_DIR$\..\..\code\course3_display_state.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\bump_mode_logic.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\bump_mode_logic.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\course3_bridge_logic.c</name>
         </file>
         <file>

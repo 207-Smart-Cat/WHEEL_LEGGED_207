@@ -29,7 +29,8 @@ typedef enum {
 
 typedef enum {
     MANUAL_TEST_MODE_NONE = 0,
-    MANUAL_TEST_MODE_BRIDGE = 1
+    MANUAL_TEST_MODE_BRIDGE = 1,
+    MANUAL_TEST_MODE_BUMP = 2
 } ManualTestMode_t;
 
 typedef enum {
@@ -152,6 +153,11 @@ typedef struct {
     int16 vision_lane_error_px;
     uint8 vision_enabled;
     uint8 vision_valid;
+    float bump_pwm_gain;
+    float bump_target_speed;
+    uint32 bump_config_seq;
+    uint8 bump_run;
+    uint8 bump_reserved[3];
 } CoreB_Command_t;
 
 // ==========================================================
@@ -189,6 +195,12 @@ void IPC_Request_Param_Update(ParamID_e id, float value);
 void IPC_Request_All_Params_Update(void);
 void IPC_Set_Manual_Test_Mode(ManualTestMode_t mode);
 ManualTestMode_t IPC_Get_Manual_Test_Mode(void);
+void IPC_Bump_Set_Config(float pwm_gain, float target_speed);
+void IPC_Bump_Get_Config(float *pwm_gain, float *target_speed);
+void IPC_Bump_Set_Run(uint8 enabled);
+uint8 IPC_Bump_Get_Run(void);
+void IPC_Bump_Load_Config_From_Flash(void);
+uint8 IPC_Bump_Save_Config_To_Flash(void);
 void IPC_Request_Motor_Zero_Calibration(void);
 void IPC_Request_Nav_Jump(void);
 void IPC_Set_Nav_Record_Preview_Start(uint16 start);

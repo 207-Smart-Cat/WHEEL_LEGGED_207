@@ -12,6 +12,7 @@
 #include "navigation_action.h"
 #include "vision_align_calibration.h"
 #include "course3_tuning.h"
+#include "bump_mode_logic.h"
 
 #define BALANCE_CONTROL_RUN_LEG_CONTROL 1
 #define VISION_FRAME_TIMEOUT_TICKS 150U  // balance loop runs at 1 ms.
@@ -123,6 +124,10 @@ float anti_stall_dbg_enabled = 0.0f;
 float anti_stall_dbg_integral = 0.0f;
 float anti_stall_dbg_pwm = 0.0f;
 float anti_stall_dbg_clear_reason = 0.0f;
+float anti_stall_pwm_gain = BUMP_PWM_GAIN_DEFAULT;
+volatile uint8 bump_control_mode_active = 0U;
+volatile uint8 bump_control_run_enabled = 0U;
+volatile float bump_control_target_speed = COURSE3_AUX_SEGMENT_SPEED;
 
 static float speed_tilt_to_leg_x(float leg_tilt_deg, float leg_height)
 {
@@ -171,8 +176,6 @@ static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float m
     const float ANTI_STALL_RECOVER_RATIO = 0.85f;
     const float ANTI_STALL_INTEGRAL_GAIN = 1.6f;
     const float ANTI_STALL_INTEGRAL_LIMIT = 50000.0f;
-    const float ANTI_STALL_PWM_GAIN = 0.32f;
-    const float ANTI_STALL_PWM_LIMIT = 4000.0f;
     float speed_error = target_velocity_cmd - measured_velocity;
 
     anti_stall_dbg_enabled = enabled ? 1.0f : 0.0f;
@@ -212,7 +215,9 @@ static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float m
     }
     g_anti_stall_assist.integral += ANTI_STALL_INTEGRAL_GAIN * speed_error;
     g_anti_stall_assist.integral = constrain_float(g_anti_stall_assist.integral, 0.0f, ANTI_STALL_INTEGRAL_LIMIT);
-    g_anti_stall_assist.assist_pwm = constrain_float(ANTI_STALL_PWM_GAIN * g_anti_stall_assist.integral, 0.0f, ANTI_STALL_PWM_LIMIT);
+    g_anti_stall_assist.assist_pwm = constrain_float(anti_stall_pwm_gain * g_anti_stall_assist.integral,
+                                                     0.0f,
+                                                     (float)BUMP_ASSIST_PWM_LIMIT);
     g_anti_stall_assist.clear_reason = ANTI_STALL_CLEAR_NONE;
     anti_stall_dbg_integral = g_anti_stall_assist.integral;
     anti_stall_dbg_pwm = g_anti_stall_assist.assist_pwm;
@@ -896,14 +901,35 @@ void balance_control()
     static float Balance_Pwm = 0.0f;
     static uint8_t angle_loop_div = 0;
     static uint8_t speed_loop_div = 0;
+    static BumpTargetArbiter_t bump_target_arbiter = {0U};
 #if BALANCE_CONTROL_RUN_LEG_CONTROL
     static uint8_t leg_loop_div = 0;
 #endif
     float Gyro_Pwm;
     float assist_pwm = 0.0f;
+    float bump_target_command = target_velocity;
+    uint8 emergency_active;
+    uint8 wifi_ready;
+    uint8 bump_safety_ready;
     float raw_gyro_x = process_rx_gyro_x_dps((float)imu660rc_gyro_x);
 
-    if (Vehicle_Is_Emergency_Stop())
+    emergency_active = Vehicle_Is_Emergency_Stop();
+    wifi_ready = IPC_CoreB_Wifi_Is_Connected();
+    bump_safety_ready = (!emergency_active && wifi_ready &&
+                         (g_runtime_status.module_enable_mask & RUNTIME_MODULE_BIT(RUNTIME_MODULE_MOTOR)) &&
+                         (g_runtime_status.module_enable_mask & RUNTIME_MODULE_BIT(RUNTIME_MODULE_BALANCE))) ? 1U : 0U;
+    if (BumpMode_ArbitrateTarget(&bump_target_arbiter,
+                                 bump_control_mode_active,
+                                 bump_control_run_enabled,
+                                 emergency_active,
+                                 bump_safety_ready,
+                                 bump_control_target_speed,
+                                 &bump_target_command))
+    {
+        target_velocity = bump_target_command;
+    }
+
+    if (emergency_active)
     {
         Vision_Turn_Reset();
         Runtime_Set_Balance_Reason(RUNTIME_REASON_BALANCE_OFF);
@@ -915,7 +941,7 @@ void balance_control()
         return;
     }
 
-    if (IPC_CoreB_Wifi_Is_Connected() == 0)
+    if (!wifi_ready)
     {
         Vision_Turn_Reset();
         Runtime_Set_Balance_Reason(RUNTIME_REASON_WIFI_OFF);
