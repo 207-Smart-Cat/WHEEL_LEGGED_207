@@ -123,11 +123,13 @@ uint8 Course3Segment_ShouldQueueAction(uint8 vehicle_mode,
 uint8 Course3Segment_ShouldApproach(uint8 vehicle_mode,
                                     uint8 waypoint_type,
                                     uint16 action_cmd,
-                                    float distance_m)
+                                    float distance_m,
+                                    float trigger_distance_m)
 {
     return (Course3Segment_ShouldQueueAction(vehicle_mode, waypoint_type, action_cmd) &&
             distance_m >= 0.0f &&
-            distance_m <= NAVI_COURSE3_APPROACH_DISTANCE) ? 1U : 0U;
+            trigger_distance_m >= 0.0f &&
+            distance_m <= trigger_distance_m) ? 1U : 0U;
 }
 
 uint8 Course3Remote_SelectSpecialType(int32 ch4_value)

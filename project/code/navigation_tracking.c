@@ -61,6 +61,7 @@ typedef struct
     uint8_t meter_active;
     uint16_t target_idx;
     WayPoint_Type type;
+    float approach_speed;
 } NaviCourse3Approach_t;
 
 static NaviCourse3Approach_t navi_course3_approach;
@@ -440,6 +441,7 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
     uint8_t course2_rotate;
     uint8_t course3_segment;
     uint8_t visual_approach;
+    NaviWaypointApproachConfig_t approach_config;
 
     if (is_action_busy)
     {
@@ -465,7 +467,10 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
                        Course3Segment_RequiresVisionForMode(mode,
                                                             (uint8)target->type)) ? 1U : 0U;
 
-    if (!target->valid || (!course2_rotate && !course3_segment))
+    if (!target->valid || (!course2_rotate && !course3_segment) ||
+        !Navi_CourseSpeed_Get_Approach(mode,
+                                       (uint8)target->type,
+                                       &approach_config))
     {
         navi_course3_approach_reset(1U);
         return 0U;
@@ -489,7 +494,7 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
 
     if (course2_rotate)
     {
-        if (distance > NAVI_COURSE3_APPROACH_DISTANCE)
+        if (distance > approach_config.trigger_distance_m)
         {
             return 0U;
         }
@@ -497,7 +502,8 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
     else if (!Course3Segment_ShouldApproach(mode,
                                              (uint8)target->type,
                                              target->action_cmd,
-                                             distance))
+                                             distance,
+                                             approach_config.trigger_distance_m))
     {
         return 0U;
     }
@@ -506,17 +512,18 @@ static uint8_t navi_course3_approach_update(uint16_t target_idx,
     navi_course3_approach.meter_active = visual_approach;
     navi_course3_approach.target_idx = target_idx;
     navi_course3_approach.type = target->type;
+    navi_course3_approach.approach_speed = approach_config.approach_speed;
     if (visual_approach)
     {
-        Navi_Course3_Calibration_Meter_Begin(NAVI_COURSE3_APPROACH_DISTANCE);
+        Navi_Course3_Calibration_Meter_Begin(approach_config.trigger_distance_m);
     }
     Turn_Reset();
     navi_speed_profile_reset();
     IPC_LOG_Printf("\r\n[NAVI_APPROACH] %s point %d: distance <= %.2f m, speed=%d.\r\n",
                    get_enum_name(target->type),
                    target_idx,
-                   (double)NAVI_COURSE3_APPROACH_DISTANCE,
-                   (int)(course2_rotate ? NAVI_COURSE2_MINE_APPROACH_SPEED : NAVI_COURSE3_APPROACH_SPEED));
+                   (double)approach_config.trigger_distance_m,
+                   (int)approach_config.approach_speed);
     return 1U;
 }
 
@@ -1489,10 +1496,7 @@ void task_navigation_control(void) {
                 if (course3_approach_active)
                 {
                     target_velocity = nav_info_valid ?
-                        ((Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_COURSE_2 &&
-                          point_map[curr_idx].type == WP_TYPE_MINE_SWEEP) ?
-                         NAVI_COURSE2_MINE_APPROACH_SPEED : NAVI_COURSE3_APPROACH_SPEED) :
-                        0.0f;
+                        navi_course3_approach.approach_speed : 0.0f;
                     target_velocity = navi_apply_min_running_speed(
                         target_velocity, curr_idx, total_points, nav_info_valid);
                 }

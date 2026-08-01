@@ -26,7 +26,16 @@ typedef struct
     uint8 allow_vofa_step_override;
 } NaviCourseSpeedProfile_t;
 
+typedef struct
+{
+    float trigger_distance_m;
+    float approach_speed;
+} NaviWaypointApproachConfig_t;
+
 NaviCourseSlot_t Navi_CourseSpeed_Get_Slot(uint8 vehicle_mode);
 const NaviCourseSpeedProfile_t *Navi_CourseSpeed_Get_Profile(uint8 vehicle_mode);
+uint8 Navi_CourseSpeed_Get_Approach(uint8 vehicle_mode,
+                                    uint8 waypoint_type,
+                                    NaviWaypointApproachConfig_t *out);
 
 #endif
