@@ -196,6 +196,7 @@ uint8 IPC_Consume_Motor_Zero_Request_Core0(void);
 uint8 IPC_Consume_Nav_Jump_Request_Core0(void);
 void IPC_Update_Motor_Zero_State_From_Core0(uint8 state);
 void IPC_Nav_Group_Core0_Task(void);
+uint8 IPC_Nav_Get_Active_Group(void);
 void IPC_Nav_Group_Core0_Tick10ms(void);
 void IPC_Nav_Record_Mark_Dirty(void);
 void NavStore_Init(void);

@@ -69,7 +69,7 @@
 #define NAVI_COURSE3_LINE_LOOKAHEAD_DISTANCE 0.40f
 
 #define NAVI_COURSE3_ANGLE_SLEW_RATE_DEG_S   180.0f
-#define NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS 3U
+
 
 
 //=================================================定义  结构体================================================

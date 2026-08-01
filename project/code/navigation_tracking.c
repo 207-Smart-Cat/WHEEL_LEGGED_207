@@ -24,6 +24,7 @@
 #include "runtime_status.h"
 #include "navigation_smooth_logic.h"
 #include "navigation_course_speed.h"
+#include "navigation_speed_zone.h"
 #include "vehicle_supervisor.h"
 #include "course3_bridge_logic.h"
 
@@ -87,9 +88,7 @@ static float navi_update_tracking_velocity(float distance, float stop_threshold,
 static void Navi_VOFA_Preview_Task(uint8_t current_print_cmd);
 static uint8_t navi_is_course1_smooth_point(uint16_t target_idx, uint16_t total_points);
 static float navi_get_normal_speed_limit(void);
-static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_points);
-static uint8_t navi_is_course12_return_high_speed_segment(uint16_t target_idx, uint16_t total_points);
-static uint8_t navi_is_course12_return_final_target(uint16_t target_idx, uint16_t total_points);
+
 static uint8_t navi_is_course12_speed_through_point(uint16_t target_idx);
 static const NaviCourseSpeedProfile_t *navi_get_course_speed_profile(void);
 static uint8_t navi_is_speed_floor_target(uint16_t target_idx, uint16_t total_points);
@@ -718,104 +717,26 @@ static float navi_get_normal_speed_limit(void)
            configured_limit : profile->normal_max_velocity;
 }
 
-static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_points)
-{
-    uint8_t mode = Runtime_Get_Vehicle_Mode();
-    float segment_x;
-    float segment_y;
-    float segment_length_sq;
-    float progress;
-
-    if ((mode != VEHICLE_MODE_COURSE_1 && mode != VEHICLE_MODE_COURSE_2) ||
-        target_idx == 0U || target_idx >= total_points || target_idx >= NAVI_POINT_MAX ||
-        !point_map[target_idx - 1U].valid || !point_map[target_idx].valid ||
-        point_map[target_idx - 1U].type != WP_TYPE_HIGH_SPEED ||
-        point_map[target_idx].type != WP_TYPE_HIGH_SPEED)
-    {
-        return 0U;
-    }
-
-    segment_x = point_map[target_idx].x - point_map[target_idx - 1U].x;
-    segment_y = point_map[target_idx].y - point_map[target_idx - 1U].y;
-    segment_length_sq = segment_x * segment_x + segment_y * segment_y;
-    if (segment_length_sq < 0.0001f)
-    {
-        return 0U;
-    }
-
-    progress = ((robot_pose.x - point_map[target_idx - 1U].x) * segment_x +
-                (robot_pose.y - point_map[target_idx - 1U].y) * segment_y) /
-               segment_length_sq;
-    return (progress >= 0.0f) ? 1U : 0U;
-}
-
-static uint8_t navi_is_course12_return_high_speed_segment(uint16_t target_idx, uint16_t total_points)
-{
-    uint8_t mode = Runtime_Get_Vehicle_Mode();
-    uint16_t return_start_idx;
-
-    if ((mode != VEHICLE_MODE_COURSE_1 && mode != VEHICLE_MODE_COURSE_2) ||
-        total_points < NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS ||
-        NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS < 2U ||
-        target_idx >= total_points || target_idx >= NAVI_POINT_MAX ||
-        !point_map[target_idx].valid)
-    {
-        return 0U;
-    }
-
-    return_start_idx = total_points - (NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS - 1U);
-    if (target_idx < return_start_idx)
-    {
-        return 0U;
-    }
-
-    return (point_map[target_idx].type == WP_TYPE_NORMAL ||
-            point_map[target_idx].type == WP_TYPE_HIGH_SPEED ||
-            point_map[target_idx].type == WP_TYPE_HOME ||
-            point_map[target_idx].type == WP_TYPE_STOP) ? 1U : 0U;
-}
-
-static uint8_t navi_is_course12_return_final_target(uint16_t target_idx, uint16_t total_points)
-{
-    if (!navi_is_course12_return_high_speed_segment(target_idx, total_points))
-    {
-        return 0U;
-    }
-
-    return (target_idx >= (total_points - 1U) ||
-            point_map[target_idx].type == WP_TYPE_STOP) ? 1U : 0U;
-}
-
 static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t total_points, float distance)
 {
-    const NaviCourseSpeedProfile_t *profile = navi_get_course_speed_profile();
-    float normal_limit = navi_get_normal_speed_limit();
-    float high_limit = profile->high_speed_max_velocity;
+    const NaviCourseSpeedProfile_t *profile;
+    float normal_limit;
+    float zone_speed;
 
-    if (normal_limit > high_limit)
+    (void)total_points;
+    (void)distance;
+    profile = navi_get_course_speed_profile();
+    normal_limit = navi_get_normal_speed_limit();
+    zone_speed = Navi_SpeedZone_Get_Speed(target_idx);
+
+    if (zone_speed >= 0.0f)
     {
-        high_limit = normal_limit;
+        return constrain_float(zone_speed,
+                               0.0f,
+                               profile->high_speed_max_velocity);
     }
 
-    if (navi_is_course12_return_high_speed_segment(target_idx, total_points))
-    {
-        return high_limit;
-    }
-
-    if (!navi_is_high_speed_segment(target_idx, total_points))
-    {
-        return normal_limit;
-    }
-
-    if (target_idx + 1U >= total_points ||
-        !point_map[target_idx + 1U].valid ||
-        point_map[target_idx + 1U].type != WP_TYPE_HIGH_SPEED)
-    {
-        float ratio = constrain_float(distance / profile->high_speed_exit_distance_m, 0.0f, 1.0f);
-        return normal_limit + (high_limit - normal_limit) * ratio;
-    }
-
-    return high_limit;
+    return normal_limit;
 }
 
 static float navi_calc_turn_speed_limit(float turn_error_deg, float straight_speed_limit)
@@ -926,6 +847,7 @@ void Navi_Tracking_Init(void) {
     navi_record_origin_cal_pending = 0U;
     navi_start_cal_pending = 0U;
     Navi_Yaw_Calibration_Cancel();
+    Navi_SpeedZone_Reset();
     record_point_count = 0;
     memset(record_point_map, 0, sizeof(record_point_map));        //系统启动时，生成一次静态地图保存在后台待命
     memset(static_point_map, 0, sizeof(static_point_map));
@@ -1251,6 +1173,7 @@ void task_navigation_control(void) {
         // --- 驱动模式切换处理 ---
         if (navi_ctrl.navi_mode_driver == 0) {     
             if (last_mode_driver != 0) {
+                Navi_SpeedZone_Reset();
                 navi_course3_approach_reset(1U);
                 navi_course3_angle_slew_reset();
                 navi_bridge_reset(1U);
@@ -1260,6 +1183,7 @@ void task_navigation_control(void) {
 
         }
         else if (navi_ctrl.navi_mode_driver == 1 && last_mode_driver != 1) {            //发车时，将选择的地图复印到导航地图上
+            Navi_SpeedZone_Reset();
             memset(point_map, 0, sizeof(point_map)); 
             active_nav_map_type = navi_ctrl.navi_mode_map; // 更新并锁定待发车的地图
             navi_ctrl.point_current_idx = 0;
@@ -1298,6 +1222,17 @@ void task_navigation_control(void) {
                     IPC_LOG_Printf(" [路径加载] 已开启线性插值并完成加密，当前总点数: %d\r\n", navi_ctrl.point_total_count);
                 }
                 #endif
+
+                if (active_nav_map_type == 1U)
+                {
+                    (void)Navi_SpeedZone_Select_Profile(IPC_Nav_Get_Active_Group(),
+                                                        point_map,
+                                                        navi_ctrl.point_total_count);
+                }
+                else
+                {
+                    Navi_SpeedZone_Reset();
+                }
 
                 target_velocity = 0.0f;
                 target_angle = IMU_data.filter_result.yaw;
@@ -1349,6 +1284,7 @@ void task_navigation_control(void) {
                 navi_course3_approach_reset(1U);
                 navi_course3_angle_slew_reset();
                 Navi_Action_Reset_New_Course3_Segments();
+                Navi_SpeedZone_Reset();
                 navi_speed_profile_reset();
                 break;
             }
@@ -1472,6 +1408,7 @@ void task_navigation_control(void) {
                     target_velocity = 0.0f;
                     vofa_mode_driver = 0.0f;
                     navi_ctrl.navi_mode_driver = 0;
+                    Navi_SpeedZone_Reset();
                     navi_speed_profile_reset();
                     break;
                 }
@@ -1511,7 +1448,7 @@ void task_navigation_control(void) {
                 float segment_speed_limit = navi_resolve_segment_speed_limit(curr_idx, total_points, distance);
                 float speed_plan_distance = navi_calc_speed_plan_distance(curr_idx, distance, &speed_target_idx);
                 float speed_stop_threshold = navi_get_reach_threshold(speed_target_idx);
-                float speed_cmd = navi_is_course12_return_final_target(curr_idx, total_points) ?
+                float speed_cmd = Navi_SpeedZone_Is_Final_Target_Hold(curr_idx, total_points) ?
                     (nav_info_valid ? segment_speed_limit : 0.0f) :
                     navi_update_tracking_velocity(
                         speed_plan_distance,
@@ -1521,10 +1458,10 @@ void task_navigation_control(void) {
                         segment_speed_limit
                     );
                 float turn_speed_limit = navi_calc_turn_speed_limit(print_turn_angle, segment_speed_limit);
-                uint8_t high_speed_segment = navi_is_high_speed_segment(curr_idx, total_points);
+                uint8_t speed_zone_active = Navi_SpeedZone_Is_Active();
                 uint8_t apply_smooth_speed_limit =
                     (smooth_zone_active || smooth_switch_triggered) ? 1U : 0U;
-                float smooth_speed_limit = high_speed_segment ?
+                float smooth_speed_limit = speed_zone_active ?
                     segment_speed_limit : navi_get_course_speed_profile()->smooth_zone_speed_limit;
 
                 target_velocity = Navi_Smooth_Resolve_Target_Velocity(
@@ -1583,6 +1520,7 @@ void task_navigation_control(void) {
                     navi_ctrl.navi_mode_driver = 0;
                     navi_course3_approach_reset(1U);
                     navi_course3_angle_slew_reset();
+                    Navi_SpeedZone_Reset();
                     navi_speed_profile_reset();
                     IPC_LOG_Printf("\r\n[NAVI] final/stop point %d reached, navigation stopped.\r\n", curr_idx);
                     break;
@@ -1616,6 +1554,7 @@ void task_navigation_control(void) {
         case 2: {         
             //拖动到清空地图，就清空，然后就可以直接记录了（无论是否退出状态  2  ）
             if (navi_ctrl.navi_mode_map == 2) {             //清图
+                Navi_SpeedZone_Reset();
                 record_point_count = 0;
                 navi_ctrl.origin_set_flag = 0;  // 重新标定原点
                 navi_ctrl.point_total_count = 0;

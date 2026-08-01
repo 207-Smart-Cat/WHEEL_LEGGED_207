@@ -1164,6 +1164,15 @@ static volatile uint16 g_nav_record_save_delay = 0;
 static uint8 g_nav_record_active_group = 0;
 #endif
 
+uint8 IPC_Nav_Get_Active_Group(void)
+{
+#if defined(CY_CORE_CM7_0)
+    return g_nav_record_active_group;
+#else
+    return core_a_status.nav_active_group;
+#endif
+}
+
 void IPC_Nav_Record_Mark_Dirty(void)
 {
     g_nav_record_generation++;

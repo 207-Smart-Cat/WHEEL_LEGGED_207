@@ -50,5 +50,6 @@ Reject-Text $trackingHeader "NAVI_COURSE3_APPROACH_DISTANCE" "Old shared approac
 Reject-Text $trackingHeader "NAVI_COURSE3_APPROACH_SPEED" "Old shared approach speed remains."
 Reject-Text $trackingHeader "NAVI_COURSE2_MINE_APPROACH_SPEED" "Old mine approach macro remains."
 Reject-Text $smoothHeader "NAVI_SMOOTH_ZONE_SPEED_LIMIT" "Old smooth speed macro remains."
+Reject-Text $trackingHeader "NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS" "Old return sprint macro remains."
 
 Write-Output "navigation course speed isolation checks passed"
