@@ -80,6 +80,7 @@ void TripleJumpRuntime_Task5ms(void)
     if (start_requested)
     {
         Runtime_Set_Module_Enabled(RUNTIME_MODULE_NAVIGATION, 0U);
+        Runtime_Set_Module_Enabled(RUNTIME_MODULE_REMOTE, 0U);
         jump_force_idle();
         triple_jump_runtime_fault = 0U;
         if (!TripleJump_Start(&triple_jump_context,

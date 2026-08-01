@@ -38,6 +38,7 @@ foreach ($token in @('IPC_Request_Triple_Jump_Start',
 foreach ($token in @('TripleJump_Start', 'TripleJump_Update5ms',
                       'JumpAction_Start', 'JumpAction_Task5ms',
                       'RUNTIME_MODULE_NAVIGATION',
+                      'RUNTIME_MODULE_REMOTE',
                       'motor_value.receive_left_speed_data',
                       'motor_value.receive_right_speed_data',
                       'target_velocity', 'target_angle')) {
