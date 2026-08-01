@@ -15,16 +15,16 @@ static void test_defaults_and_adjustments(void)
     BumpConfig_t config = BumpMode_DefaultConfig();
 
     assert(float_near(config.pwm_gain, 0.32f));
-    assert(float_near(config.target_speed, 300.0f));
-    assert(BumpMode_AssistPwmLimit() == 4000);
+    assert(float_near(config.target_speed, 314.0f));
+    assert(BumpMode_AssistPwmLimit() == 6000);
 
     assert(float_near(BumpMode_AdjustGain(0.32f, 1, 0U), 0.33f));
     assert(float_near(BumpMode_AdjustGain(0.32f, -1, 1U), 0.22f));
-    assert(float_near(BumpMode_AdjustGain(0.99f, 1, 1U), 1.00f));
+    assert(float_near(BumpMode_AdjustGain(1.99f, 1, 1U), 2.00f));
     assert(float_near(BumpMode_AdjustGain(0.01f, -1, 1U), 0.00f));
 
-    assert(float_near(BumpMode_AdjustTargetSpeed(300.0f, 1, 0U), 310.0f));
-    assert(float_near(BumpMode_AdjustTargetSpeed(300.0f, -1, 1U), 250.0f));
+    assert(float_near(BumpMode_AdjustTargetSpeed(314.0f, 1, 0U), 324.0f));
+    assert(float_near(BumpMode_AdjustTargetSpeed(314.0f, -1, 1U), 264.0f));
     assert(float_near(BumpMode_AdjustTargetSpeed(790.0f, 1, 1U), 800.0f));
     assert(float_near(BumpMode_AdjustTargetSpeed(10.0f, -1, 1U), 0.0f));
 }
@@ -97,12 +97,54 @@ static void test_record_round_trip_and_fallback(void)
     loaded.target_speed = 700.0f;
     assert(BumpMode_LoadRecord(&record, &loaded) == 0U);
     assert(float_near(loaded.pwm_gain, 0.32f));
-    assert(float_near(loaded.target_speed, 300.0f));
+    assert(float_near(loaded.target_speed, 314.0f));
 
     memset(&record, 0xFF, sizeof(record));
     assert(BumpMode_LoadRecord(&record, &loaded) == 0U);
     assert(float_near(loaded.pwm_gain, 0.32f));
-    assert(float_near(loaded.target_speed, 300.0f));
+    assert(float_near(loaded.target_speed, 314.0f));
+}
+
+static void test_reverse_assist_requires_prior_motion_and_recovers(void)
+{
+    BumpReverseAssistState_t state;
+    float command = 0.0f;
+    uint16_t i;
+
+    BumpMode_ReverseAssistReset(&state);
+
+    for (i = 0U; i < 120U; ++i)
+    {
+        assert(BumpMode_ReverseAssistUpdate(&state, 1U, 1U, 1U, 314.0f, 0.0f, &command) == 1U);
+        assert(float_near(command, 314.0f));
+    }
+
+    for (i = 0U; i < 150U; ++i)
+    {
+        assert(BumpMode_ReverseAssistUpdate(&state, 1U, 1U, 1U, 314.0f, 16.0f, &command) == 1U);
+        assert(float_near(command, 314.0f));
+    }
+
+    for (i = 0U; i < 99U; ++i)
+    {
+        assert(BumpMode_ReverseAssistUpdate(&state, 1U, 1U, 1U, 314.0f, 2.0f, &command) == 1U);
+        assert(float_near(command, 314.0f));
+    }
+
+    assert(BumpMode_ReverseAssistUpdate(&state, 1U, 1U, 1U, 314.0f, 2.0f, &command) == 1U);
+    assert(float_near(command, -314.0f));
+
+    for (i = 0U; i < 499U; ++i)
+    {
+        assert(BumpMode_ReverseAssistUpdate(&state, 1U, 1U, 1U, 314.0f, 0.0f, &command) == 1U);
+        assert(float_near(command, -314.0f));
+    }
+
+    assert(BumpMode_ReverseAssistUpdate(&state, 1U, 1U, 1U, 314.0f, 0.0f, &command) == 1U);
+    assert(float_near(command, 314.0f));
+
+    assert(BumpMode_ReverseAssistUpdate(&state, 1U, 0U, 1U, 314.0f, 0.0f, &command) == 1U);
+    assert(float_near(command, 0.0f));
 }
 
 int main(void)
@@ -112,5 +154,6 @@ int main(void)
     test_target_ownership_is_fail_safe();
     test_target_arbiter_reasserts_priority_and_releases_at_zero();
     test_record_round_trip_and_fallback();
+    test_reverse_assist_requires_prior_motion_and_recovers();
     return 0;
 }

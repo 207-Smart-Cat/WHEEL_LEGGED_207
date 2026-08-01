@@ -1,6 +1,7 @@
 #include "bump_mode_logic.h"
 
 #include <float.h>
+#include <math.h>
 #include <stddef.h>
 
 #include "course3_tuning.h"
@@ -48,7 +49,7 @@ BumpConfig_t BumpMode_DefaultConfig(void)
 {
     BumpConfig_t config;
     config.pwm_gain = BUMP_PWM_GAIN_DEFAULT;
-    config.target_speed = COURSE3_AUX_SEGMENT_SPEED;
+    config.target_speed = BUMP_TARGET_SPEED_DEFAULT;
     return config;
 }
 
@@ -144,6 +145,93 @@ uint8_t BumpMode_ArbitrateTarget(BumpTargetArbiter_t *arbiter,
     }
 
     return 0U;
+}
+
+void BumpMode_ReverseAssistReset(BumpReverseAssistState_t *state)
+{
+    if (state == NULL)
+    {
+        return;
+    }
+
+    state->motion_ticks = 0U;
+    state->zero_ticks = 0U;
+    state->reverse_ticks_remaining = 0U;
+}
+
+uint8_t BumpMode_ReverseAssistUpdate(BumpReverseAssistState_t *state,
+                                     uint8_t mode_active,
+                                     uint8_t run_enabled,
+                                     uint8_t safety_ready,
+                                     float configured_target,
+                                     float current_speed,
+                                     float *target_command)
+{
+    float target;
+    float abs_speed;
+
+    if ((state == NULL) || (target_command == NULL))
+    {
+        return 0U;
+    }
+
+    if (!mode_active)
+    {
+        BumpMode_ReverseAssistReset(state);
+        return 0U;
+    }
+
+    *target_command = 0.0f;
+    if (!run_enabled || !safety_ready)
+    {
+        BumpMode_ReverseAssistReset(state);
+        return 1U;
+    }
+
+    target = bump_clampf(configured_target, BUMP_TARGET_SPEED_MIN, BUMP_TARGET_SPEED_MAX);
+    abs_speed = fabsf(current_speed);
+
+    if (state->reverse_ticks_remaining > 0U)
+    {
+        *target_command = -target;
+        state->reverse_ticks_remaining--;
+        return 1U;
+    }
+
+    if (abs_speed > BUMP_REVERSE_MOTION_SPEED)
+    {
+        if (state->motion_ticks < BUMP_REVERSE_MOTION_TICKS)
+        {
+            state->motion_ticks++;
+        }
+        state->zero_ticks = 0U;
+    }
+    else if (abs_speed < BUMP_REVERSE_ZERO_SPEED)
+    {
+        if (state->motion_ticks >= BUMP_REVERSE_MOTION_TICKS)
+        {
+            if (state->zero_ticks < BUMP_REVERSE_ZERO_TICKS)
+            {
+                state->zero_ticks++;
+            }
+            if (state->zero_ticks >= BUMP_REVERSE_ZERO_TICKS)
+            {
+                state->motion_ticks = 0U;
+                state->zero_ticks = 0U;
+                state->reverse_ticks_remaining = BUMP_REVERSE_HOLD_TICKS;
+                *target_command = -target;
+                state->reverse_ticks_remaining--;
+                return 1U;
+            }
+        }
+    }
+    else
+    {
+        state->zero_ticks = 0U;
+    }
+
+    *target_command = target;
+    return 1U;
 }
 
 void BumpMode_BuildRecord(BumpConfigRecord_t *record, BumpConfig_t config)

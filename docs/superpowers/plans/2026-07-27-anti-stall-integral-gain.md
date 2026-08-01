@@ -12,7 +12,7 @@
 
 - Use `ANTI_STALL_INTEGRAL_GAIN = 1.6f`.
 - Retain the integral clamp `[0.0f, 50000.0f]`.
-- Retain the PWM mapping gain `0.04f` and PWM clamp `[0.0f, 4000.0f]`.
+- Retain the PWM mapping gain `0.04f` and PWM clamp `[0.0f, 6000.0f]`.
 
 ---
 

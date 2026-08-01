@@ -1234,6 +1234,9 @@ static void ui_set_screen(ui_screen_t screen)
     if (screen == UI_SCREEN_BUMP && ui_screen != UI_SCREEN_BUMP)
     {
         IPC_Bump_Get_Config(&ui_bump_gain, &ui_bump_target_speed);
+        ui_bump_gain = BUMP_ACTIVE_PWM_GAIN;
+        ui_bump_target_speed = BUMP_TARGET_SPEED_DEFAULT;
+        IPC_Bump_Set_Config(ui_bump_gain, ui_bump_target_speed);
         IPC_Bump_Set_Run(0U);
         IPC_Set_Manual_Test_Mode(MANUAL_TEST_MODE_BUMP);
         ui_bump_index = 0U;

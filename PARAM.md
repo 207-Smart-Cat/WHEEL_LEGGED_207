@@ -24,10 +24,10 @@ Source: `project/code/param.c`
 | `Air_roll_p_init` | `3.0f` | Air roll control P |
 | `Air_roll_i_init` | `0.03f` | Air roll control I |
 | `Air_roll_d_init` | `0.0015f` | Air roll control D |
-| `Direction_p_init` | `15.00f` | Yaw/direction control P |
+| `Direction_p_init` | `90.00f` | Yaw/direction control P |
 | `Direction_i_init` | `0.010f` | Low-profile yaw/direction control I |
 | `Direction_d_init` | `2.330f` | Low-profile yaw/direction control D |
-| Bridge high-profile direction PID | `50.0 / 0.012 / 0.875` | Original high-profile P/I/D; low-profile exit restores `15.0 / 0.010 / 2.330` |
+| Bridge high-profile direction PID | `50.0 / 0.012 / 0.875` | Original high-profile P/I/D; low-profile exit restores `20.0 / 0.010 / 2.330` |
 | `Leg_Kp_init` | `0.0f` | Leg-height PID P |
 | `Leg_Ki_init` | `0.0f` | Leg-height PID I |
 | `Leg_Kd_init` | `0.0f` | Leg-height PID D |
@@ -174,8 +174,9 @@ Source: `project/code/control.c`
 | `ANTI_STALL_RECOVER_ERROR` | `20.0f` | Recovery speed error threshold |
 | `ANTI_STALL_RECOVER_RATIO` | `0.85f` | Recovery ratio threshold |
 | `ANTI_STALL_INTEGRAL_LIMIT` | `50000.0f` | Anti-stall integral clamp |
-| `ANTI_STALL_PWM_GAIN` | `0.04f` | Anti-stall integral-to-PWM gain |
-| `ANTI_STALL_PWM_LIMIT` | `4000.0f` | Anti-stall assist PWM limit |
+| `anti_stall_integral_gain` | `9.6f` global, `8.0f` in BUMP | Anti-stall integral accumulation gain |
+| `anti_stall_pwm_gain` | `0.32f` default, `1.5f` in BUMP | Anti-stall integral-to-PWM gain |
+| `ANTI_STALL_PWM_LIMIT` | `6000.0f` | Anti-stall assist PWM limit |
 | Airborne accel threshold | `0.5f` | `fabs(accel_z - 1) > 0.5` |
 | Output jump limiter | `4.0f` | Local output change limit in `limit_jumps()` |
 

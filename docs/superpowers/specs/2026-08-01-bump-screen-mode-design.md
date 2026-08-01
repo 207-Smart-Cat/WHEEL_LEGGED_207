@@ -22,7 +22,7 @@ The page displays these values:
     Target Speed: 300
     Current Spd : 0.0
     Assist PWM  : 0.0
-    PWM Limit   : 4000
+    PWM Limit   : 6000
     Left PWM    : 0
     Right PWM   : 0
     PWM Gain    : 0.32
@@ -37,7 +37,7 @@ The screen may compact labels and spacing to fit the 240x320 display, but the da
 - Target Speed: BUMP-only configured speed.
 - Current Spd: arithmetic mean of current left and right wheel speeds. It uses the same forward-speed sign convention as the balance controller measured velocity.
 - Assist PWM: anti_stall_dbg_pwm.
-- PWM Limit: the active anti-stall assist output limit, currently 4000.
+- PWM Limit: the active anti-stall assist output limit, currently 6000.
 - Left PWM and Right PWM: existing final limited Motor_Left and Motor_Right status values.
 - PWM Gain: the BUMP configuration value actively used by anti_stall_update().
 

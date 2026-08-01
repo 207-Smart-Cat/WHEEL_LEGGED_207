@@ -105,7 +105,7 @@ g_anti_stall_assist.assist_pwm = constrain_float(
 | `ANTI_STALL_RECOVER_RATIO` | `0.85f` | 实际速度达到目标速度 85% 时清零 |
 | `ANTI_STALL_INTEGRAL_LIMIT` | `50000.0f` | 积分状态限幅 |
 | `ANTI_STALL_PWM_GAIN` | `0.04f` | 积分到 PWM 的比例 |
-| `ANTI_STALL_PWM_LIMIT` | `2000.0f` | assist PWM 输出限幅 |
+| `ANTI_STALL_PWM_LIMIT` | `6000.0f` | assist PWM 输出限幅 |
 
 等价公式：
 
@@ -114,7 +114,7 @@ error[k] = target_velocity - now_velocity
 
 integral[k] = clamp(integral[k-1] + error[k], 0, 50000)
 
-assist_pwm[k] = clamp(0.04 * integral[k], 0, 2000)
+assist_pwm[k] = clamp(0.04 * integral[k], 0, 6000)
 ```
 
 因为没有乘以 `dt`，积分速度取决于 `balance_control()` 的实际调用周期。若 `error = 400`，则每周期 PWM 增量约为：
@@ -202,7 +202,7 @@ else
 assist 单项限幅为：
 
 ```c
-ANTI_STALL_PWM_LIMIT = 2000.0f
+ANTI_STALL_PWM_LIMIT = 6000.0f
 ```
 
 最终电机输出还会经过总限幅：

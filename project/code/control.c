@@ -124,6 +124,7 @@ float anti_stall_dbg_enabled = 0.0f;
 float anti_stall_dbg_integral = 0.0f;
 float anti_stall_dbg_pwm = 0.0f;
 float anti_stall_dbg_clear_reason = 0.0f;
+float anti_stall_integral_gain = 9.6f;
 float anti_stall_pwm_gain = BUMP_PWM_GAIN_DEFAULT;
 volatile uint8 bump_control_mode_active = 0U;
 volatile uint8 bump_control_run_enabled = 0U;
@@ -174,7 +175,6 @@ static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float m
     const float ANTI_STALL_ERROR_START = 60.0f;
     const float ANTI_STALL_RECOVER_ERROR = 20.0f;
     const float ANTI_STALL_RECOVER_RATIO = 0.85f;
-    const float ANTI_STALL_INTEGRAL_GAIN = 1.6f;
     const float ANTI_STALL_INTEGRAL_LIMIT = 50000.0f;
     float speed_error = target_velocity_cmd - measured_velocity;
 
@@ -213,7 +213,7 @@ static float anti_stall_update(uint8 enabled, float target_velocity_cmd, float m
         anti_stall_dbg_enabled = 1.0f;
         return 0.0f;
     }
-    g_anti_stall_assist.integral += ANTI_STALL_INTEGRAL_GAIN * speed_error;
+    g_anti_stall_assist.integral += anti_stall_integral_gain * speed_error;
     g_anti_stall_assist.integral = constrain_float(g_anti_stall_assist.integral, 0.0f, ANTI_STALL_INTEGRAL_LIMIT);
     g_anti_stall_assist.assist_pwm = constrain_float(anti_stall_pwm_gain * g_anti_stall_assist.integral,
                                                      0.0f,
@@ -902,6 +902,11 @@ void balance_control()
     static uint8_t angle_loop_div = 0;
     static uint8_t speed_loop_div = 0;
     static BumpTargetArbiter_t bump_target_arbiter = {0U};
+    static BumpReverseAssistState_t bump_reverse_assist = {0U};
+    static uint8_t bump_params_applied = 0U;
+    static float bump_saved_direction_p = 0.0f;
+    static float bump_saved_integral_gain = 0.0f;
+    static float bump_saved_pwm_gain = 0.0f;
 #if BALANCE_CONTROL_RUN_LEG_CONTROL
     static uint8_t leg_loop_div = 0;
 #endif
@@ -927,6 +932,41 @@ void balance_control()
                                  &bump_target_command))
     {
         target_velocity = bump_target_command;
+    }
+
+    if (bump_control_mode_active)
+    {
+        if (!bump_params_applied)
+        {
+            bump_saved_direction_p = Direction_p;
+            bump_saved_integral_gain = anti_stall_integral_gain;
+            bump_saved_pwm_gain = anti_stall_pwm_gain;
+            bump_params_applied = 1U;
+        }
+        Direction_p = BUMP_ACTIVE_DIRECTION_P;
+        anti_stall_integral_gain = BUMP_ACTIVE_INTEGRAL_GAIN;
+        anti_stall_pwm_gain = BUMP_ACTIVE_PWM_GAIN;
+        if (BumpMode_ReverseAssistUpdate(&bump_reverse_assist,
+                                         1U,
+                                         bump_control_run_enabled,
+                                         bump_safety_ready,
+                                         bump_control_target_speed,
+                                         now_velocity,
+                                         &bump_target_command))
+        {
+            target_velocity = bump_target_command;
+        }
+    }
+    else
+    {
+        BumpMode_ReverseAssistReset(&bump_reverse_assist);
+        if (bump_params_applied)
+        {
+            Direction_p = bump_saved_direction_p;
+            anti_stall_integral_gain = bump_saved_integral_gain;
+            anti_stall_pwm_gain = bump_saved_pwm_gain;
+            bump_params_applied = 0U;
+        }
     }
 
     if (emergency_active)
