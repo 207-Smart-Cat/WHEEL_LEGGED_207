@@ -2,6 +2,7 @@
 #define JUMP_CONTROL_H
 
 #include "zf_common_headfile.h"
+#include "jump_action_types.h"
 
 typedef enum
 {
@@ -38,6 +39,10 @@ extern volatile uint32 jump_dbg_trigger_count;
 
 int jump_calc_prepare_pwm(uint16 elapsed_ms, uint16 prepare_ms, int target_pwm);
 void jump_drive_symmetric_pwm(int pwm1);
+uint8 JumpAction_Start(JumpActionProfile_e profile);
+JumpActionResult_e JumpAction_Task5ms(float accel_z_g);
+void JumpAction_Abort(void);
+uint8 JumpAction_BaselineReady(void);
 uint8 jump_start(void);
 void jump_process_control(float *current_x, float *current_y);
 void jump_abort(void);
