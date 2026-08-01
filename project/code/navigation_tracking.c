@@ -23,6 +23,7 @@
 #include "wifi.h"
 #include "runtime_status.h"
 #include "navigation_smooth_logic.h"
+#include "navigation_course_speed.h"
 #include "vehicle_supervisor.h"
 #include "course3_bridge_logic.h"
 
@@ -89,8 +90,9 @@ static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_po
 static uint8_t navi_is_course12_return_high_speed_segment(uint16_t target_idx, uint16_t total_points);
 static uint8_t navi_is_course12_return_final_target(uint16_t target_idx, uint16_t total_points);
 static uint8_t navi_is_course12_speed_through_point(uint16_t target_idx);
-static uint8_t navi_is_course12_unfinished_target(uint16_t target_idx, uint16_t total_points);
-static float navi_apply_course12_min_running_speed(float velocity, uint16_t target_idx, uint16_t total_points, uint8_t nav_valid);
+static const NaviCourseSpeedProfile_t *navi_get_course_speed_profile(void);
+static uint8_t navi_is_speed_floor_target(uint16_t target_idx, uint16_t total_points);
+static float navi_apply_min_running_speed(float velocity, uint16_t target_idx, uint16_t total_points, uint8_t nav_valid);
 
 static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t total_points, float distance);
 static uint8_t navi_record_segment_state(WayPoint_Type *open_type, uint8_t *next_ordinal);
@@ -627,12 +629,14 @@ static uint8_t navi_is_course12_speed_through_point(uint16_t target_idx)
     return (point_map[target_idx].type == WP_TYPE_MINE_SWEEP) ? 1U : 0U;
 }
 
-static uint8_t navi_is_course12_unfinished_target(uint16_t target_idx, uint16_t total_points)
+static const NaviCourseSpeedProfile_t *navi_get_course_speed_profile(void)
 {
-    uint8_t mode = Runtime_Get_Vehicle_Mode();
+    return Navi_CourseSpeed_Get_Profile(Runtime_Get_Vehicle_Mode());
+}
 
-    if ((mode != VEHICLE_MODE_COURSE_1 && mode != VEHICLE_MODE_COURSE_2) ||
-        target_idx >= total_points || target_idx >= NAVI_POINT_MAX ||
+static uint8_t navi_is_speed_floor_target(uint16_t target_idx, uint16_t total_points)
+{
+    if (target_idx >= total_points || target_idx >= NAVI_POINT_MAX ||
         !point_map[target_idx].valid)
     {
         return 0U;
@@ -642,15 +646,18 @@ static uint8_t navi_is_course12_unfinished_target(uint16_t target_idx, uint16_t 
             point_map[target_idx].type != WP_TYPE_STOP) ? 1U : 0U;
 }
 
-static float navi_apply_course12_min_running_speed(float velocity, uint16_t target_idx, uint16_t total_points, uint8_t nav_valid)
+static float navi_apply_min_running_speed(float velocity, uint16_t target_idx, uint16_t total_points, uint8_t nav_valid)
 {
-    if (!nav_valid || !navi_is_course12_unfinished_target(target_idx, total_points))
+    const NaviCourseSpeedProfile_t *profile = navi_get_course_speed_profile();
+
+    if (!nav_valid || profile->min_running_speed <= 0.0f ||
+        !navi_is_speed_floor_target(target_idx, total_points))
     {
         return velocity;
     }
 
-    return (velocity < NAVI_COURSE12_MIN_RUNNING_SPEED) ?
-           NAVI_COURSE12_MIN_RUNNING_SPEED : velocity;
+    return (velocity < profile->min_running_speed) ?
+           profile->min_running_speed : velocity;
 }
 static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_distance, uint16_t *speed_target_idx)
 {
@@ -692,9 +699,16 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
 
 static float navi_get_normal_speed_limit(void)
 {
-    float configured_limit = (navi_speed_max > 0.0f) ? navi_speed_max : Navi_Speed_Max_init;
-    return (configured_limit < NAVI_NORMAL_MAX_VELOCITY) ?
-           configured_limit : NAVI_NORMAL_MAX_VELOCITY;
+    const NaviCourseSpeedProfile_t *profile = navi_get_course_speed_profile();
+    float configured_limit = profile->fixed_tracking_velocity;
+
+    if (profile->allow_vofa_max_override && navi_speed_max > 0.0f)
+    {
+        configured_limit = navi_speed_max;
+    }
+
+    return (configured_limit < profile->normal_max_velocity) ?
+           configured_limit : profile->normal_max_velocity;
 }
 
 static uint8_t navi_is_high_speed_segment(uint16_t target_idx, uint16_t total_points)
@@ -767,8 +781,9 @@ static uint8_t navi_is_course12_return_final_target(uint16_t target_idx, uint16_
 
 static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t total_points, float distance)
 {
+    const NaviCourseSpeedProfile_t *profile = navi_get_course_speed_profile();
     float normal_limit = navi_get_normal_speed_limit();
-    float high_limit = NAVI_HIGH_SPEED_MAX_VELOCITY;
+    float high_limit = profile->high_speed_max_velocity;
 
     if (normal_limit > high_limit)
     {
@@ -789,7 +804,7 @@ static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t tota
         !point_map[target_idx + 1U].valid ||
         point_map[target_idx + 1U].type != WP_TYPE_HIGH_SPEED)
     {
-        float ratio = constrain_float(distance / NAVI_HIGH_SPEED_EXIT_DISTANCE_M, 0.0f, 1.0f);
+        float ratio = constrain_float(distance / profile->high_speed_exit_distance_m, 0.0f, 1.0f);
         return normal_limit + (high_limit - normal_limit) * ratio;
     }
 
@@ -798,10 +813,11 @@ static float navi_resolve_segment_speed_limit(uint16_t target_idx, uint16_t tota
 
 static float navi_calc_turn_speed_limit(float turn_error_deg, float straight_speed_limit)
 {
+    const NaviCourseSpeedProfile_t *profile = navi_get_course_speed_profile();
     float abs_turn = fabsf(turn_error_deg);
-    const float turn_min_speed = 100.0f;
-    float corner_entry_speed = (straight_speed_limit < NAVI_NORMAL_MAX_VELOCITY) ?
-                               straight_speed_limit : NAVI_NORMAL_MAX_VELOCITY;
+    float turn_min_speed = profile->turn_min_speed;
+    float corner_entry_speed = (straight_speed_limit < profile->turn_entry_max_velocity) ?
+                               straight_speed_limit : profile->turn_entry_max_velocity;
 
     if (straight_speed_limit < turn_min_speed)
     {
@@ -835,7 +851,13 @@ static float navi_update_tracking_velocity(float distance, float stop_threshold,
     float speed_kp = navi_speed_kp ? navi_speed_kp : Navi_Speed_Kp_init;
     float speed_ki = navi_speed_ki ? navi_speed_ki : Navi_Speed_Ki_init;
     float speed_kd = navi_speed_kd ? navi_speed_kd : Navi_Speed_Kd_init;
-    float max_step = navi_speed_max_step > 0.0f ? navi_speed_max_step : Navi_Speed_MaxStep_init;
+    const NaviCourseSpeedProfile_t *profile = navi_get_course_speed_profile();
+    float max_step = profile->speed_max_step;
+
+    if (profile->allow_vofa_step_override && navi_speed_max_step > 0.0f)
+    {
+        max_step = navi_speed_max_step;
+    }
     float raw_output;
     float delta;
 
@@ -1471,14 +1493,14 @@ void task_navigation_control(void) {
                           point_map[curr_idx].type == WP_TYPE_MINE_SWEEP) ?
                          NAVI_COURSE2_MINE_APPROACH_SPEED : NAVI_COURSE3_APPROACH_SPEED) :
                         0.0f;
-                    target_velocity = navi_apply_course12_min_running_speed(
+                    target_velocity = navi_apply_min_running_speed(
                         target_velocity, curr_idx, total_points, nav_info_valid);
                 }
                 else
                 {
 #if (USE_HOST_TARGET_VELOCITY == 0)
                    
-                    target_velocity = DEFAULT_TRACKING_VELOCITY;       // 恒定速度，专门用于安全调试动作
+                    target_velocity = navi_get_course_speed_profile()->fixed_tracking_velocity;       // 恒定速度，专门用于安全调试动作
                     
 #elif (USE_HOST_TARGET_VELOCITY == 2)              // PID ????滮???
                 uint16_t speed_target_idx = curr_idx;
@@ -1499,14 +1521,14 @@ void task_navigation_control(void) {
                 uint8_t apply_smooth_speed_limit =
                     (smooth_zone_active || smooth_switch_triggered) ? 1U : 0U;
                 float smooth_speed_limit = high_speed_segment ?
-                    segment_speed_limit : NAVI_SMOOTH_ZONE_SPEED_LIMIT;
+                    segment_speed_limit : navi_get_course_speed_profile()->smooth_zone_speed_limit;
 
                 target_velocity = Navi_Smooth_Resolve_Target_Velocity(
                     speed_cmd,
                     turn_speed_limit,
                     smooth_speed_limit,
                     apply_smooth_speed_limit);
-                target_velocity = navi_apply_course12_min_running_speed(
+                target_velocity = navi_apply_min_running_speed(
                     target_velocity, curr_idx, total_points, nav_info_valid);
 #endif
                 }

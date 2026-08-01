@@ -1257,6 +1257,12 @@
             <name>$PROJ_DIR$\..\..\code\navigation_tracking.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_course_speed.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\navigation_course_speed.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\navigation_smooth_logic.c</name>
         </file>
         <file>

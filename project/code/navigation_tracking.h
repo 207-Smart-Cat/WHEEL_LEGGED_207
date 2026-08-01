@@ -55,7 +55,6 @@
 
 #define USE_HOST_TARGET_VELOCITY 2   // 0：固定速度          1；上位机更新         2：pid动态规划速度
 
-#define DEFAULT_TRACKING_VELOCITY 550.0f   //默认速度
 
 #define NAVI_VISION_SEGMENT_ACTION_CALIBRATE 1U
 #define NAVI_VISION_SEGMENT_ACTION_ENTRY     2U
@@ -72,11 +71,7 @@
 #define NAVI_COURSE3_APPROACH_SPEED          100.0f
 #define NAVI_COURSE2_MINE_APPROACH_SPEED      120.0f
 #define NAVI_COURSE3_ANGLE_SLEW_RATE_DEG_S   180.0f
-#define NAVI_NORMAL_MAX_VELOCITY              700.0f
-#define NAVI_HIGH_SPEED_MAX_VELOCITY          950.0f
-#define NAVI_HIGH_SPEED_EXIT_DISTANCE_M       3.0f
 #define NAVI_RETURN_HIGH_SPEED_AFTER_LAST_N_POINTS 3U
-#define NAVI_COURSE12_MIN_RUNNING_SPEED       50.0f
 
 
 //=================================================定义  结构体================================================
