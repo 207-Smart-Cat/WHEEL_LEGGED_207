@@ -10,6 +10,7 @@
 #include "vofa_protocol.h"
 #include "runtime_status.h"
 #include "vehicle_supervisor.h"
+#include "triple_jump_config.h"
 #include "battery_monitor.h"
 #include "course3_display_state.h"
 #if defined(CY_CORE_CM7_1)
@@ -21,6 +22,10 @@ uint8 IPS200_flag = 0;      // 屏幕显示flag（PIT中断置位）
 uint8 current_page = 0;     // Monitor 子页面索引 (0/1/2)
 uint8 force_ui_refresh = 1;
 static uint8_t ui_battery_low_active = 0;
+static TripleJumpConfig_t ui_jump_config;
+static uint8_t ui_jump_index = 0U;
+static uint8_t ui_jump_editing = 0U;
+static uint8_t ui_jump_saved_notice = 0U;
 
 // Four-key setup UI. Active low with internal pull-up.
 #define UI_KEY_UP_PIN       P20_0
@@ -49,6 +54,7 @@ typedef enum {
 
 typedef enum {
     UI_SCREEN_HOME = 0,
+    UI_SCREEN_JUMP,
     UI_SCREEN_MODE_SELECT,
     UI_SCREEN_MODE_ACTION,
     UI_SCREEN_GROUP_SELECT,
@@ -576,6 +582,8 @@ static void screen_show_param_items(const screen_param_item_t *items, uint32_t c
  */
 void screen_display_init(void)
 {
+    TripleJumpConfig_SetDefaults(&ui_jump_config);
+    (void)TripleJumpConfig_Load(&ui_jump_config);
     ips200_set_dir(IPS200_PORTAIT);
     ips200_set_color(RGB565_WHITE, RGB565_BLACK);
     ips200_init(IPS200_TYPE);
@@ -1422,6 +1430,56 @@ static void ui_restore_default_params(void)
     }
 }
 
+static const char *ui_jump_state_name(uint8 state)
+{
+    switch (state)
+    {
+        case TRIPLE_JUMP_DRIVING: return "DRIVING";
+        case TRIPLE_JUMP_EXECUTING: return "JUMPING";
+        case TRIPLE_JUMP_RECOVERING: return "RECOVER";
+        case TRIPLE_JUMP_FAULT: return "FAULT";
+        case TRIPLE_JUMP_STANDBY:
+        default: return "STANDBY";
+    }
+}
+
+static void ui_draw_jump(void)
+{
+    char line[40];
+    uint8 state = core_a_status.triple_jump_state;
+    const char *mode = (state == TRIPLE_JUMP_STANDBY) ? "Standby" :
+                       ((state == TRIPLE_JUMP_FAULT) ? "Fault" : "Go");
+
+    ips200_show_string(52, 8, "--- TRIPLE JUMP ---");
+    ips200_draw_line(0, 26, 239, 26, RGB565_SKYBLUE);
+
+    sprintf(line, "%c Mode : %-8s", (ui_jump_index == 0U) ? '>' : ' ', mode);
+    ips200_show_string(8, 38, line);
+    sprintf(line, "%c%c x1   : %4.2f m", (ui_jump_index == 1U) ? '>' : ' ',
+            (ui_jump_editing && ui_jump_index == 1U) ? '*' : ' ', ui_jump_config.x1_m);
+    ips200_show_string(8, 68, line);
+    sprintf(line, "%c%c x2   : %4.2f m", (ui_jump_index == 2U) ? '>' : ' ',
+            (ui_jump_editing && ui_jump_index == 2U) ? '*' : ' ', ui_jump_config.x2_m);
+    ips200_show_string(8, 98, line);
+    sprintf(line, "%c%c x3   : %4.2f m", (ui_jump_index == 3U) ? '>' : ' ',
+            (ui_jump_editing && ui_jump_index == 3U) ? '*' : ' ', ui_jump_config.x3_m);
+    ips200_show_string(8, 128, line);
+    sprintf(line, "%c%c Speed: %3d", (ui_jump_index == 4U) ? '>' : ' ',
+            (ui_jump_editing && ui_jump_index == 4U) ? '*' : ' ', (int)ui_jump_config.speed);
+    ips200_show_string(8, 158, line);
+
+    sprintf(line, "State: %-8s", ui_jump_state_name(state));
+    ips200_show_string(8, 194, line);
+    sprintf(line, "Segment: %6.3f m", core_a_status.triple_jump_distance_m);
+    ips200_show_string(8, 218, line);
+    sprintf(line, "Landings: %d / 3", (int)core_a_status.triple_jump_landings);
+    ips200_show_string(8, 242, line);
+    sprintf(line, "Hold yaw: %6.1f", core_a_status.triple_jump_yaw_deg);
+    ips200_show_string(8, 266, line);
+    ips200_show_string(174, 194, core_a_status.triple_jump_fault ? "FAULT" :
+                       (ui_jump_saved_notice ? "SAVED" : "     "));
+    ui_draw_footer_text_str("OK run/edit LOK save BACK");
+}
 static void ui_draw_home(void)
 {
     char line[32];
@@ -2047,6 +2105,84 @@ static void ui_draw_confirm(void)
     ui_draw_footer_text(UI_TEXT_T_HINT_SELECT);
 }
 
+static float ui_jump_clamp(float value, float maximum)
+{
+    if (value < 0.0f) return 0.0f;
+    if (value > maximum) return maximum;
+    return value;
+}
+
+static void ui_jump_adjust(int8 direction)
+{
+    if (ui_jump_index == 1U)
+        ui_jump_config.x1_m = ui_jump_clamp(ui_jump_config.x1_m + 0.01f * direction, 1.0f);
+    else if (ui_jump_index == 2U)
+        ui_jump_config.x2_m = ui_jump_clamp(ui_jump_config.x2_m + 0.01f * direction, 0.2f);
+    else if (ui_jump_index == 3U)
+        ui_jump_config.x3_m = ui_jump_clamp(ui_jump_config.x3_m + 0.01f * direction, 0.2f);
+    else if (ui_jump_index == 4U)
+        ui_jump_config.speed = ui_jump_clamp(ui_jump_config.speed + 10.0f * direction, 300.0f);
+    ui_jump_saved_notice = 0U;
+}
+
+static void ui_handle_jump(ui_key_event_t events[UI_KEY_COUNT])
+{
+    uint8 state = core_a_status.triple_jump_state;
+    uint8 standby = (state == TRIPLE_JUMP_STANDBY) ? 1U : 0U;
+
+    if (events[UI_KEY_OK] == UI_EVENT_LONG)
+    {
+        if (standby && TripleJumpConfig_Save(&ui_jump_config))
+        {
+            ui_jump_saved_notice = 1U;
+        }
+        ui_set_screen(UI_SCREEN_JUMP);
+    }
+    else if (events[UI_KEY_UP])
+    {
+        if (ui_jump_editing && standby) ui_jump_adjust(-1);
+        else ui_jump_index = (ui_jump_index == 0U) ? 4U : (uint8)(ui_jump_index - 1U);
+        ui_set_screen(UI_SCREEN_JUMP);
+    }
+    else if (events[UI_KEY_DOWN])
+    {
+        if (ui_jump_editing && standby) ui_jump_adjust(1);
+        else ui_jump_index = (uint8)((ui_jump_index + 1U) % 5U);
+        ui_set_screen(UI_SCREEN_JUMP);
+    }
+    else if (events[UI_KEY_OK] == UI_EVENT_SHORT)
+    {
+        ui_jump_saved_notice = 0U;
+        if (ui_jump_index == 0U)
+        {
+            ui_jump_editing = 0U;
+            if (standby) IPC_Request_Triple_Jump_Start(&ui_jump_config);
+            else IPC_Request_Triple_Jump_Stop();
+        }
+        else if (standby)
+        {
+            ui_jump_editing = !ui_jump_editing;
+        }
+        ui_set_screen(UI_SCREEN_JUMP);
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        if (ui_jump_editing)
+        {
+            ui_jump_editing = 0U;
+            ui_set_screen(UI_SCREEN_JUMP);
+        }
+        else if (!standby)
+        {
+            IPC_Request_Triple_Jump_Stop();
+            ui_set_screen(UI_SCREEN_JUMP);
+        }
+        else
+        {
+            ui_set_screen(UI_SCREEN_HOME);
+        }
+    }
+}
 static void ui_handle_home(ui_key_event_t events[UI_KEY_COUNT])
 {
     if (events[UI_KEY_UP])
@@ -2072,8 +2208,10 @@ static void ui_handle_home(ui_key_event_t events[UI_KEY_COUNT])
         else if (ui_home_index == 3)
 #endif
         {
-            IPC_Request_Nav_Jump();
-            ui_set_screen(UI_SCREEN_HOME);
+            ui_jump_index = 0U;
+            ui_jump_editing = 0U;
+            ui_jump_saved_notice = 0U;
+            ui_set_screen(UI_SCREEN_JUMP);
         }
 #if defined(CY_CORE_CM7_1)
         else if (ui_home_index == 5)
@@ -2745,7 +2883,8 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         ui_screen != UI_SCREEN_RECORD_PREVIEW &&
         ui_screen != UI_SCREEN_RECORD_MANAGE &&
         ui_screen != UI_SCREEN_GROUP_SELECT &&
-        ui_screen != UI_SCREEN_CONFIRM)
+        ui_screen != UI_SCREEN_CONFIRM &&
+        ui_screen != UI_SCREEN_JUMP)
     {
         ui_set_screen(UI_SCREEN_HOME);
         return;
@@ -2754,6 +2893,7 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
     switch (ui_screen)
     {
         case UI_SCREEN_HOME:        ui_handle_home(events); break;
+        case UI_SCREEN_JUMP:        ui_handle_jump(events); break;
         case UI_SCREEN_MODE_SELECT: ui_handle_mode(events); break;
         case UI_SCREEN_MODE_ACTION: ui_handle_mode_action(events); break;
         case UI_SCREEN_GROUP_SELECT: ui_handle_group_select(events); break;
@@ -2788,6 +2928,9 @@ static void ui_render(void)
     {
         case UI_SCREEN_HOME:
             ui_draw_home();
+            break;
+        case UI_SCREEN_JUMP:
+            ui_draw_jump();
             break;
         case UI_SCREEN_MODE_SELECT:
             ui_draw_mode();

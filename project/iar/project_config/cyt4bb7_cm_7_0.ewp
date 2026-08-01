@@ -1170,6 +1170,12 @@
             <name>$PROJ_DIR$\..\..\code\triple_jump_runtime.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\triple_jump_config.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\triple_jump_config.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\bumpy_control.c</name>
         </file>
         <file>
