@@ -5,35 +5,35 @@
 static const NaviCourseSpeedProfile_t navi_course_speed_profiles[NAVI_COURSE_SLOT_COUNT] =
 {
     {
-        550.0f,
-        700.0f,
-        950.0f,
+        900.0f,
+        900.0f,
+        1500.0f, /* high_speed_max_velocity */
         3.0f,
-        550.0f,
-        50.0f,
+        800.0f,
         100.0f,
-        700.0f,
+        100.0f,
+        900.0f,
         80.0f,
         0U,
         0U
     },
     {
         550.0f,
-        700.0f,
-        950.0f,
+        900.0f,
+        2000.0f, /* high_speed_max_velocity */
         3.0f,
-        550.0f,
-        50.0f,
+        600.0f,
+        120.0f,
         100.0f,
-        700.0f,
-        80.0f,
-        1U,
-        1U
+        1000.0f,
+        200.0f,
+        0U,
+        0U
     },
     {
         300.0f,
         300.0f,
-        500.0f,
+        1000.0f, /* high_speed_max_velocity */
         3.0f,
         300.0f,
         0.0f,

@@ -26,6 +26,7 @@ $trackingSource = Read-ProjectText "navigation_tracking.c"
 $ipcHeader = Read-ProjectText "ipc_shared_data.h"
 $ipcSource = Read-ProjectText "ipc_shared_data.c"
 $screenSource = Read-ProjectText "screen_display.c"
+$courseSpeedSource = Read-ProjectText "navigation_course_speed.c"
 
 Require-Text $zoneHeader "NaviMapSpeedZoneProfile_t" "Missing per-map zone profile."
 Require-Text $zoneHeader "return_high_speed_last_n_points" "Per-map return sprint setting is missing."
@@ -37,6 +38,13 @@ Require-Text $zoneSource "{NULL, 0U, 3U}, /* UI map 6, Flash group 5 */" "UI map
 Require-Text $zoneSource "{NULL, 0U, 3U}, /* UI map 7, Flash group 6 */" "UI map 7 return sprint is not enabled."
 Require-Text $zoneSource "navi_speed_zone_selected_count - (uint16)last_n" "Return sprint start is not derived from the loaded map length."
 Require-Text $zoneSource "NAVI_SPEED_ZONE_INDEX_RETURN" "Return sprint activity is not tracked separately."
+if ([regex]::Matches($courseSpeedSource, "1200\.0f, /\* high_speed_max_velocity \*/").Count -ne 1) {
+    throw "Course 1 high-speed limit is not configured to 1200."
+}
+if ([regex]::Matches($courseSpeedSource, "1000\.0f, /\* high_speed_max_velocity \*/").Count -ne 2) {
+    throw "Course 2/3 high-speed limits are not configured to 1000."
+}
+Require-Text $zoneSource "Runtime_Get_Vehicle_Mode())->high_speed_max_velocity" "Return sprint does not use the current course high-speed limit."
 Require-Text $zoneSource "current_target_idx > start_point_idx" "Passage start must be exclusive."
 Require-Text $zoneSource "current_target_idx <= end_point_idx" "Passage end must be inclusive."
 Require-Text $zoneSource "for (idx = 0U; idx < navi_speed_zone_selected_profile->zone_count; idx++)" "A map cannot hold multiple zones."
