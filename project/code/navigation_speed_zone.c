@@ -34,8 +34,8 @@ static const NaviSpeedZone_t map04_speed_zones[] =
 };
 static const NaviSpeedZone_t map05_speed_zones[] =
 {
-    {4U, 5U, 2000.0f},
-    {5U, 8U, 700.0f}
+    {4U, 5U, 1000.0f},
+    {5U, 8U, 600.0f}
 };
 
 static const NaviMapSpeedZoneProfile_t

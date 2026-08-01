@@ -19,13 +19,13 @@ static const NaviCourseSpeedProfile_t navi_course_speed_profiles[NAVI_COURSE_SLO
     },
     {
         550.0f,
-        900.0f,
+        800.0f,
         2000.0f, /* high_speed_max_velocity */
         3.0f,
-        600.0f,
+        500.0f,
         120.0f,
         100.0f,
-        1000.0f,
+        700.0f,
         200.0f,
         0U,
         0U
