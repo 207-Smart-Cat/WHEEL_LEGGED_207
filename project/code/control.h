@@ -25,6 +25,12 @@ extern float Turn_Pwm, leg_error;
 extern float leg_dbg_speed_tilt, leg_dbg_x_offset, leg_dbg_x_target, leg_dbg_x_cmd, leg_dbg_tick;
 extern float leg_dbg_x_gain_used, leg_dbg_x_limit_used, leg_dbg_x_step_used, leg_dbg_x_limit_hit;
 extern float anti_stall_dbg_enabled, anti_stall_dbg_integral, anti_stall_dbg_pwm, anti_stall_dbg_clear_reason;
+extern float anti_stall_integral_gain, anti_stall_pwm_gain, anti_stall_pwm_limit;
+extern volatile uint8 bump_control_mode_active, bump_control_run_enabled;
+extern volatile float bump_control_target_speed;
+void Bump_Control_Set_Manual_Mode(uint8 active, uint8 run_enabled, float target_speed, float pwm_gain);
+void Bump_Control_Set_Navigation_Mode(uint8 active);
+uint8 Bump_Control_Navigation_Active(void);
 extern float vision_dbg_yaw_error, vision_dbg_raw_yaw_rate, vision_dbg_yaw_rate;
 extern float vision_dbg_p_output, vision_dbg_i_output, vision_dbg_d_output, vision_dbg_integral;
 //******************

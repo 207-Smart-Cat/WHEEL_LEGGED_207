@@ -14,6 +14,7 @@
 #include "course3_display_state.h"
 #include "course3_bridge_logic.h"
 #include "course3_tuning.h"
+#include "bump_mode_logic.h"
 #if defined(CY_CORE_CM7_1)
 #include "camera_assist.h"
 #include "camera_test_display.h"
@@ -72,6 +73,7 @@ typedef enum {
     UI_SCREEN_WIFI_WAVE_SELECT,
     UI_SCREEN_MODULES,
     UI_SCREEN_SYSTEM,
+    UI_SCREEN_BUMP,
     UI_SCREEN_COURSE3_EXEC,
 #if defined(CY_CORE_CM7_1)
     UI_SCREEN_VISION,
@@ -317,6 +319,7 @@ static const uint16_t UI_TEXT_T_HOME_VISION[] = {0x0056, 0x0069, 0x0073, 0x0069,
 #endif
 static const uint16_t UI_TEXT_T_HOME_PARAM[] = {0x53C2, 0x6570, 0x8C03, 0x8282, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_JUMP[] = {0x004A, 0x0075, 0x006D, 0x0070, 0x0000};
+static const uint16_t UI_TEXT_T_HOME_BUMP[] = {0x0042, 0x0055, 0x004D, 0x0050, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_WIFI[] = {0x0057, 0x0069, 0x0046, 0x0069, 0x6A21, 0x5F0F, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_MODULE[] = {0x6A21, 0x5757, 0x5F00, 0x5173, 0x0000};
 static const uint16_t UI_TEXT_T_HOME_SYSTEM[] = {0x7CFB, 0x7EDF, 0x64CD, 0x4F5C, 0x0000};
@@ -858,6 +861,7 @@ void show_page_3(void)
 // ================= Setup UI state and helpers ==============
 static ui_screen_t ui_screen = UI_SCREEN_HOME;
 static uint8_t ui_home_index = 0;
+static uint8_t ui_home_top = 0;
 static uint8_t ui_mode_index = 0;
 static uint8_t ui_mode_action_index = 0;
 static uint8_t ui_manual_test_applied = 0;
@@ -883,6 +887,13 @@ static uint8_t ui_wave_var_top = 0;
 static uint8_t ui_module_index = 0;
 static uint8_t ui_system_index = 0;
 static uint8_t ui_confirm_yes = 0;
+static uint8_t ui_bump_index = 0;
+static uint8_t ui_bump_editing = 0;
+static uint8_t ui_bump_saved_state = 0;
+static uint8_t ui_bump_saved_assist_enabled = 0;
+static float ui_bump_gain = BUMP_PWM_GAIN_DEFAULT;
+static float ui_bump_target_speed = COURSE3_AUX_SEGMENT_SPEED;
+static float ui_bump_edit_original = 0.0f;
 static ui_confirm_action_t ui_confirm_action = UI_ACTION_NONE;
 static uint8_t ui_param_group = 0;
 static uint8_t ui_param_group_top = 0;
@@ -912,6 +923,7 @@ static const char *const k_home_items[] = {
 #endif
     "Param Adjust",
     "Jump",
+    "BUMP",
     "WiFi Mode",
     "Module Switch",
     "System Ops"
@@ -960,6 +972,7 @@ static const uint16_t *const k_home_texts[] = {
 #endif
     UI_TEXT_T_HOME_PARAM,
     UI_TEXT_T_HOME_JUMP,
+    UI_TEXT_T_HOME_BUMP,
     UI_TEXT_T_HOME_WIFI,
     UI_TEXT_T_HOME_MODULE,
     UI_TEXT_T_HOME_SYSTEM
@@ -1209,6 +1222,30 @@ static uint8_t ui_handle_emergency_combo(void)
 }
 static void ui_set_screen(ui_screen_t screen)
 {
+    if (ui_screen == UI_SCREEN_BUMP && screen != UI_SCREEN_BUMP)
+    {
+        IPC_Bump_Set_Run(0U);
+        Runtime_Set_Module_Enabled(RUNTIME_MODULE_ANTI_STALL,
+                                   ui_bump_saved_assist_enabled);
+        if (IPC_Get_Manual_Test_Mode() == MANUAL_TEST_MODE_BUMP)
+        {
+            IPC_Set_Manual_Test_Mode(MANUAL_TEST_MODE_NONE);
+        }
+        ui_bump_editing = 0U;
+    }
+
+    if (screen == UI_SCREEN_BUMP && ui_screen != UI_SCREEN_BUMP)
+    {
+        IPC_Bump_Get_Config(&ui_bump_gain, &ui_bump_target_speed);
+        ui_bump_saved_assist_enabled =
+            Runtime_Is_Module_Enabled(RUNTIME_MODULE_ANTI_STALL);
+        IPC_Bump_Set_Run(0U);
+        IPC_Set_Manual_Test_Mode(MANUAL_TEST_MODE_BUMP);
+        ui_bump_index = 0U;
+        ui_bump_editing = 0U;
+        ui_bump_saved_state = 0U;
+    }
+
     if (ui_screen == UI_SCREEN_MODE_ACTION &&
         screen != UI_SCREEN_MODE_ACTION &&
         Runtime_Get_Vehicle_Mode() == VEHICLE_MODE_MANUAL &&
@@ -1581,11 +1618,63 @@ static void ui_draw_home(void)
     ui_show_text(120, 88, UI_TEXT_T_MOTOR);
     ui_show_text(168, 88, (wifi_is_connected && Runtime_Is_Module_Enabled(RUNTIME_MODULE_MOTOR)) ? UI_TEXT_T_ALLOW : UI_TEXT_T_LOCK);
 
-    for (uint8_t i = 0; i < ARRAY_SIZE(k_home_texts); i++)
+    for (uint8_t row = 0; row < 8U; row++)
     {
-        ui_show_text_selected(8, 110 + i * 23, i == ui_home_index, k_home_texts[i]);
+        uint8_t i = (uint8_t)(ui_home_top + row);
+        if (i < ARRAY_SIZE(k_home_texts))
+        {
+            ui_show_text_selected(8, 110 + row * 23, i == ui_home_index, k_home_texts[i]);
+        }
     }
     ui_draw_footer_text(UI_TEXT_T_HINT_HOME);
+}
+
+static void ui_show_string_selected(uint16_t x, uint16_t y, uint8_t selected, const char *text)
+{
+    ips200_show_char(x, y, selected ? '>' : ' ');
+    ui_show_string_safe((uint16_t)(x + 16U), y, text);
+}
+
+static void ui_draw_bump(void)
+{
+    char line[32];
+    uint8_t run_enabled = IPC_Bump_Get_Run();
+    uint8_t assist_enabled = Runtime_Is_Module_Enabled(RUNTIME_MODULE_ANTI_STALL);
+
+    ips200_show_string(8, 8, "BUMP");
+    ips200_draw_line(0, 26, 239, 26, RGB565_SKYBLUE);
+
+    sprintf(line, "Run       : %s", run_enabled ? "ON" : "OFF");
+    ui_show_string_selected(4, 34, !ui_bump_editing && ui_bump_index == 0U, line);
+    sprintf(line, "Assist    : %s", assist_enabled ? "ON" : "OFF");
+    ui_show_string_selected(4, 56, !ui_bump_editing && ui_bump_index == 1U, line);
+    sprintf(line, "Target Spd: %6.0f%s", ui_bump_target_speed,
+            (ui_bump_editing && ui_bump_index == 2U) ? " *" : "");
+    ui_show_string_selected(4, 78, ui_bump_index == 2U, line);
+    sprintf(line, "Current Sp: %7.1f", core_a_status.bump_current_speed);
+    ui_show_string_safe(20, 100, line);
+    sprintf(line, "Assist PWM: %7.1f", core_a_status.anti_stall_pwm);
+    ui_show_string_safe(20, 122, line);
+    sprintf(line, "PWM Limit : %7.0f", core_a_status.anti_stall_pwm_limit);
+    ui_show_string_safe(20, 144, line);
+    sprintf(line, "Left PWM  : %7d", (int)core_a_status.left_pwm_duty);
+    ui_show_string_safe(20, 166, line);
+    sprintf(line, "Right PWM : %7d", (int)core_a_status.right_pwm_duty);
+    ui_show_string_safe(20, 188, line);
+    sprintf(line, "PWM Gain  : %6.2f%s", ui_bump_gain,
+            (ui_bump_editing && ui_bump_index == 3U) ? " *" : "");
+    ui_show_string_selected(4, 210, ui_bump_index == 3U, line);
+    ui_show_string_selected(4, 242, !ui_bump_editing && ui_bump_index == 4U, "Save Flash");
+
+    if (ui_bump_saved_state == 1U)
+    {
+        ui_show_string_safe(20, 270, "Saved OK");
+    }
+    else if (ui_bump_saved_state == 2U)
+    {
+        ui_show_string_safe(20, 270, "Save ERROR");
+    }
+    ui_draw_footer_text_str(ui_bump_editing ? "UP/DN change OK set BACK undo" : "UP/DN select OK BACK exit");
 }
 
 #if defined(CY_CORE_CM7_1)
@@ -2273,11 +2362,15 @@ static void ui_handle_home(ui_key_event_t events[UI_KEY_COUNT])
     if (events[UI_KEY_UP])
     {
         ui_home_index = (ui_home_index == 0) ? (ARRAY_SIZE(k_home_items) - 1) : (ui_home_index - 1);
+        if (ui_home_index < ui_home_top) ui_home_top = ui_home_index;
+        else if (ui_home_index >= (uint8_t)(ui_home_top + 8U)) ui_home_top = (uint8_t)(ui_home_index - 7U);
         ui_set_screen(UI_SCREEN_HOME);
     }
     else if (events[UI_KEY_DOWN])
     {
         ui_home_index = (ui_home_index + 1) % ARRAY_SIZE(k_home_items);
+        if (ui_home_index < ui_home_top) ui_home_top = ui_home_index;
+        else if (ui_home_index >= (uint8_t)(ui_home_top + 8U)) ui_home_top = (uint8_t)(ui_home_index - 7U);
         ui_set_screen(UI_SCREEN_HOME);
     }
     else if (events[UI_KEY_OK])
@@ -2297,20 +2390,104 @@ static void ui_handle_home(ui_key_event_t events[UI_KEY_COUNT])
             ui_set_screen(UI_SCREEN_HOME);
         }
 #if defined(CY_CORE_CM7_1)
-        else if (ui_home_index == 5)
+        else if (ui_home_index == 5) ui_set_screen(UI_SCREEN_BUMP);
+        else if (ui_home_index == 6)
 #else
-        else if (ui_home_index == 4)
+        else if (ui_home_index == 4) ui_set_screen(UI_SCREEN_BUMP);
+        else if (ui_home_index == 5)
 #endif
         {
             ui_wifi_index = ((uint8_t)current_wifi_mode < ARRAY_SIZE(k_wifi_names)) ? (uint8_t)current_wifi_mode : 0;
             ui_set_screen(UI_SCREEN_WIFI);
         }
 #if defined(CY_CORE_CM7_1)
-        else if (ui_home_index == 6) ui_set_screen(UI_SCREEN_MODULES);
+        else if (ui_home_index == 7) ui_set_screen(UI_SCREEN_MODULES);
 #else
-        else if (ui_home_index == 5) ui_set_screen(UI_SCREEN_MODULES);
+        else if (ui_home_index == 6) ui_set_screen(UI_SCREEN_MODULES);
 #endif
         else ui_set_screen(UI_SCREEN_SYSTEM);
+    }
+}
+
+static void ui_handle_bump(ui_key_event_t events[UI_KEY_COUNT])
+{
+    if (ui_bump_editing)
+    {
+        if (events[UI_KEY_UP] || events[UI_KEY_DOWN])
+        {
+            int direction = events[UI_KEY_UP] ? 1 : -1;
+            uint8_t long_press = ((events[UI_KEY_UP] == UI_EVENT_LONG) ||
+                                  (events[UI_KEY_DOWN] == UI_EVENT_LONG)) ? 1U : 0U;
+            if (ui_bump_index == 2U)
+            {
+                ui_bump_target_speed = BumpMode_AdjustTargetSpeed(ui_bump_target_speed,
+                                                                  direction,
+                                                                  long_press);
+            }
+            else
+            {
+                ui_bump_gain = BumpMode_AdjustGain(ui_bump_gain, direction, long_press);
+            }
+            IPC_Bump_Set_Config(ui_bump_gain, ui_bump_target_speed);
+            ui_bump_saved_state = 0U;
+            ui_set_screen(UI_SCREEN_BUMP);
+        }
+        else if (events[UI_KEY_OK])
+        {
+            ui_bump_editing = 0U;
+            ui_set_screen(UI_SCREEN_BUMP);
+        }
+        else if (events[UI_KEY_BACK])
+        {
+            if (ui_bump_index == 2U) ui_bump_target_speed = ui_bump_edit_original;
+            else ui_bump_gain = ui_bump_edit_original;
+            IPC_Bump_Set_Config(ui_bump_gain, ui_bump_target_speed);
+            ui_bump_editing = 0U;
+            ui_set_screen(UI_SCREEN_BUMP);
+        }
+        return;
+    }
+
+    if (events[UI_KEY_UP])
+    {
+        ui_bump_index = (ui_bump_index == 0U) ? 4U : (uint8_t)(ui_bump_index - 1U);
+        ui_set_screen(UI_SCREEN_BUMP);
+    }
+    else if (events[UI_KEY_DOWN])
+    {
+        ui_bump_index = (uint8_t)((ui_bump_index + 1U) % 5U);
+        ui_set_screen(UI_SCREEN_BUMP);
+    }
+    else if (events[UI_KEY_OK])
+    {
+        if (ui_bump_index == 0U)
+        {
+            uint8_t run_enabled = IPC_Bump_Get_Run() ? 0U : 1U;
+            IPC_Set_Manual_Test_Mode(MANUAL_TEST_MODE_BUMP);
+            if (run_enabled)
+            {
+                Runtime_Set_Module_Enabled(RUNTIME_MODULE_ANTI_STALL, 1U);
+            }
+            IPC_Bump_Set_Run(run_enabled);
+        }
+        else if (ui_bump_index == 1U)
+        {
+            Runtime_Toggle_Module(RUNTIME_MODULE_ANTI_STALL);
+        }
+        else if (ui_bump_index == 2U || ui_bump_index == 3U)
+        {
+            ui_bump_edit_original = (ui_bump_index == 2U) ? ui_bump_target_speed : ui_bump_gain;
+            ui_bump_editing = 1U;
+        }
+        else
+        {
+            ui_bump_saved_state = IPC_Bump_Save_Config_To_Flash() ? 1U : 2U;
+        }
+        ui_set_screen(UI_SCREEN_BUMP);
+    }
+    else if (events[UI_KEY_BACK])
+    {
+        ui_set_screen(UI_SCREEN_HOME);
     }
 }
 
@@ -3013,6 +3190,7 @@ static void ui_handle_events(ui_key_event_t events[UI_KEY_COUNT])
         case UI_SCREEN_WIFI_WAVE_SELECT: ui_handle_wifi_wave_select(events); break;
         case UI_SCREEN_MODULES:     ui_handle_modules(events); break;
         case UI_SCREEN_SYSTEM:      ui_handle_system(events); break;
+        case UI_SCREEN_BUMP:        ui_handle_bump(events); break;
         case UI_SCREEN_COURSE3_EXEC: if (events[UI_KEY_BACK]) ui_set_screen(UI_SCREEN_HOME); break;
 #if defined(CY_CORE_CM7_1)
         case UI_SCREEN_VISION:      ui_handle_vision(events); break;
@@ -3081,6 +3259,9 @@ static void ui_render(void)
             break;
         case UI_SCREEN_SYSTEM:
             ui_draw_system();
+            break;
+        case UI_SCREEN_BUMP:
+            ui_draw_bump();
             break;
         case UI_SCREEN_COURSE3_EXEC:
             ui_draw_course3_exec();

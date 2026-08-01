@@ -267,6 +267,12 @@ void Navi_Course3_Calibration_Meter_End(void);
 uint8_t Navi_Course3_Calibration_Meter_Is_Complete(void);
 float Navi_Course3_Calibration_Meter_Get_Travelled(void);
 float Navi_Course3_Calibration_Meter_Get_Target(void);
+void Navi_Course3_Bump_Meter_Begin(float target_distance_m);
+void Navi_Course3_Bump_Meter_End(void);
+uint8_t Navi_Course3_Bump_Meter_Is_Complete(void);
+float Navi_Course3_Bump_Meter_Get_Travelled(void);
+float Navi_Course3_Bump_Meter_Get_Target(void);
+void Navi_Data_Set_Position(float x, float y);
 
 //=================================================ÉùÃ÷  »ù´¡º¯Êý================================================
 

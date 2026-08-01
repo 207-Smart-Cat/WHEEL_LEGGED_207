@@ -11,6 +11,7 @@
 #include "bridge_roll_peak.h"
 #include "course3_bridge_logic.h"
 #include "course3_tuning.h"
+#include "bump_mode_logic.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -207,11 +208,19 @@ float Navi_Action_Get_Course3_Calibration_Target(void)
 }
 float Navi_Action_Get_Course3_Action_Travelled(void)
 {
+    if (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP)
+    {
+        return Navi_Course3_Bump_Meter_Get_Travelled();
+    }
     return Navi_Course3_Bridge_Odometry_Get_Travelled();
 }
 
 float Navi_Action_Get_Course3_Action_Target(void)
 {
+    if (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP)
+    {
+        return Navi_Course3_Bump_Meter_Get_Target();
+    }
     return Navi_Course3_Bridge_Odometry_Get_Target();
 }
 
@@ -390,6 +399,8 @@ void Navi_Action_Reset_New_Course3_Segments(void)
     }
     Navi_Course3_Calibration_Meter_End();
     Navi_Course3_Bridge_Odometry_End();
+    Navi_Course3_Bump_Meter_End();
+    Bump_Control_Set_Navigation_Mode(0U);
     course3_aux_restore_direction();
     course3_aux_restore_anti_stall();
     memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
@@ -421,6 +432,8 @@ static uint8_t course3_aux_begin(WayPoint_Type type,
     course3_aux_segment.target_yaw = target_yaw;
     if (type == WP_TYPE_BUMP)
     {
+        course3_aux_segment.target_yaw =
+            course3_segment_get_map_target_yaw(start_idx, end_idx);
         course3_aux_segment.saved_anti_stall_enabled =
             Runtime_Is_Module_Enabled(RUNTIME_MODULE_ANTI_STALL);
         course3_aux_segment.anti_stall_saved = 1U;
@@ -979,15 +992,13 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
             /* 普通点、单边桥、台阶共用的科目三 Action 方向环参数。 */
             if (course3_aux_segment.kind != COURSE3_AUX_SEGMENT_NONE)
             {
-                float segment_azimuth = 0.0f;
-                float segment_distance = 0.0f;
                 uint8_t segment_complete = 0U;
 
                 is_action_busy = 1U;
                 if (!course3_aux_segment.initialized)
                 {
                     Direction_p = (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP) ?
-                                  COURSE3_BUMP_DIRECTION_P : COURSE3_AUX_SEGMENT_DIRECTION_P;
+                                  BUMP_ACTIVE_DIRECTION_P : COURSE3_AUX_SEGMENT_DIRECTION_P;
                     PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
                     Turn_Reset();
                     navi_tracking_speed_profile_reset();
@@ -999,39 +1010,35 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                             point_map[course3_aux_segment.end_idx].x,
                             point_map[course3_aux_segment.end_idx].y);
                     }
+                    else
+                    {
+                        float map_distance = navi_get_two_points_distance(
+                            point_map[course3_aux_segment.start_idx].x,
+                            point_map[course3_aux_segment.start_idx].y,
+                            point_map[course3_aux_segment.end_idx].x,
+                            point_map[course3_aux_segment.end_idx].y);
+                        Navi_Course3_Bump_Meter_Begin(
+                            map_distance + BUMP_DISTANCE_COMPENSATION_M);
+                        Bump_Control_Set_Navigation_Mode(1U);
+                    }
                     course3_aux_segment.initialized = 1U;
                     action_fsm.state_timer_ms = 0U;
                 }
 
                 if (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP)
                 {
-                    if (!navi_calcnavinfo(course3_aux_segment.end_idx,
-                                          &segment_azimuth, &segment_distance))
-                    {
-                        target_velocity = 0.0f;
-                        course3_aux_restore_direction();
-                        course3_aux_restore_anti_stall();
-                        memset(&course3_aux_segment, 0, sizeof(course3_aux_segment));
-                        Turn_Reset();
-                        navi_tracking_speed_profile_reset();
-                        navi_ctrl.navi_mode_driver = 0U;
-                        vofa_mode_driver = 0.0f;
-                        action_fsm.state = FSM_IDLE;
-                        is_action_busy = 0U;
-                        break;
-                    }
-                    target_angle = navi_limit_angle180(IMU_data.filter_result.yaw -
-                        navi_limit_angle180(segment_azimuth - robot_pose.yaw));
-                    segment_complete = (segment_distance <= DISTANCE_THRESHOLD) ? 1U : 0U;
+                    target_angle = course3_aux_segment.target_yaw;
+                    segment_complete = Navi_Course3_Bump_Meter_Is_Complete();
                 }
                 else
                 {
                     target_angle = course3_aux_segment.target_yaw;
                     segment_complete = Navi_Course3_Bridge_Odometry_Is_Complete();
                 }
-                target_velocity = COURSE3_AUX_SEGMENT_SPEED;
+                target_velocity = (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP) ?
+                                  BUMP_TARGET_SPEED_DEFAULT : COURSE3_AUX_SEGMENT_SPEED;
                 Direction_p = (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP) ?
-                              COURSE3_BUMP_DIRECTION_P : COURSE3_AUX_SEGMENT_DIRECTION_P;
+                              BUMP_ACTIVE_DIRECTION_P : COURSE3_AUX_SEGMENT_DIRECTION_P;
                 PidChange(&motor_direction, Direction_p, Direction_i, Direction_d);
 
                 if (segment_complete)
@@ -1040,11 +1047,20 @@ static void navi_action_fsm_update(uint16_t target_idx, float distance) {
                     uint16_t completed_end_idx = course3_aux_segment.end_idx;
                     uint8_t was_ramp =
                         (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_STAIR_RAMP) ? 1U : 0U;
+                    uint8_t was_bump =
+                        (course3_aux_segment.kind == COURSE3_AUX_SEGMENT_BUMP) ? 1U : 0U;
 
                     target_velocity = 0.0f;
                     if (was_ramp)
                     {
                         Navi_Course3_Bridge_Odometry_End();
+                    }
+                    if (was_bump)
+                    {
+                        Navi_Course3_Bump_Meter_End();
+                        Bump_Control_Set_Navigation_Mode(0U);
+                        Navi_Data_Set_Position(point_map[completed_end_idx].x,
+                                               point_map[completed_end_idx].y);
                     }
                     course3_aux_restore_direction();
                     course3_aux_restore_anti_stall();

@@ -53,6 +53,7 @@ int main(void)
     pit_ms_init(PIT_IPC, 5);
     screen_boot_show_status("IPC", "OK");
     IPC_Load_Params_From_Flash();
+    IPC_Bump_Load_Config_From_Flash();
     screen_boot_show_status("Params", "OK");
 
     // ============================= WiFi ≥ı ºªØ =============================

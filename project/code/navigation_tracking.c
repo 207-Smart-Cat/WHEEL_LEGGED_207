@@ -646,7 +646,14 @@ static float navi_calc_speed_plan_distance(uint16_t curr_idx, float current_dist
 
 static float navi_get_normal_speed_limit(void)
 {
+    uint8_t mode = Runtime_Get_Vehicle_Mode();
     float configured_limit = (navi_speed_max > 0.0f) ? navi_speed_max : Navi_Speed_Max_init;
+
+    if (mode == VEHICLE_MODE_COURSE_3 || mode == VEHICLE_MODE_COURSE_3_INERTIAL)
+    {
+        return NAVI_COURSE3_NORMAL_MAX_VELOCITY;
+    }
+
     return (configured_limit < NAVI_NORMAL_MAX_VELOCITY) ?
            configured_limit : NAVI_NORMAL_MAX_VELOCITY;
 }

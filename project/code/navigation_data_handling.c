@@ -71,6 +71,8 @@ static Course3BridgeOdometry_t course3_bridge_odometry;
 static uint8_t course3_bridge_odometry_active = 0U;
 static Course3TravelMeter_t course3_calibration_meter;
 static uint8_t course3_calibration_meter_active = 0U;
+static Course3TravelMeter_t course3_bump_meter;
+static uint8_t course3_bump_meter_active = 0U;
 
 // 在文件上方的全局变量区添加：
 #if USE_WIFI_TUNE
@@ -167,6 +169,37 @@ float Navi_Course3_Calibration_Meter_Get_Travelled(void)
 float Navi_Course3_Calibration_Meter_Get_Target(void)
 {
     return course3_calibration_meter.target_distance_m;
+}
+void Navi_Course3_Bump_Meter_Begin(float target_distance_m)
+{
+    Course3TravelMeter_Begin(&course3_bump_meter, target_distance_m);
+    course3_bump_meter_active = 1U;
+}
+
+void Navi_Course3_Bump_Meter_End(void)
+{
+    course3_bump_meter_active = 0U;
+}
+
+uint8_t Navi_Course3_Bump_Meter_Is_Complete(void)
+{
+    return (course3_bump_meter_active && course3_bump_meter.completed) ? 1U : 0U;
+}
+
+float Navi_Course3_Bump_Meter_Get_Travelled(void)
+{
+    return course3_bump_meter.travelled_distance_m;
+}
+
+float Navi_Course3_Bump_Meter_Get_Target(void)
+{
+    return course3_bump_meter.target_distance_m;
+}
+
+void Navi_Data_Set_Position(float x, float y)
+{
+    robot_pose.x = x;
+    robot_pose.y = y;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -674,6 +707,13 @@ void navi_ekf_update(void) {
         if (course3_calibration_meter_active)
         {
             Course3TravelMeter_Update(&course3_calibration_meter,
+                                      filter_data.left_mps,
+                                      filter_data.right_mps,
+                                      ENCODER_DT);
+        }
+        if (course3_bump_meter_active)
+        {
+            Course3TravelMeter_Update(&course3_bump_meter,
                                       filter_data.left_mps,
                                       filter_data.right_mps,
                                       ENCODER_DT);
