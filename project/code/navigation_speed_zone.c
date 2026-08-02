@@ -28,26 +28,35 @@
  * The third member enables the original last-three-point return sprint.
  */
 
+static const NaviSpeedZone_t map02_speed_zones[] =
+{
+    {4U, 5U, 900.0f},
+    {5U, 8U, 550.0f}
+  
+};
+
 static const NaviSpeedZone_t map04_speed_zones[] =
 {
     {1U, 2U, 1500.0f},
 };
+
+
 static const NaviSpeedZone_t map05_speed_zones[] =
 {
-    {4U, 5U, 1000.0f},
+    {4U, 5U, 900.0f},
     {5U, 8U, 600.0f}
 };
 
 static const NaviMapSpeedZoneProfile_t
 navi_speed_zone_profiles[NAV_EXEC_GROUP_COUNT] =
 {
-    {NULL, 0U, 3U}, /* UI map 1, Flash group 0 */
-    {NULL, 0U, 3U}, /* UI map 2, Flash group 1 */
+    {NULL, 0U, 0U}, /* UI map 1, Flash group 0 */
+    {NULL, 0U, 2U}, /* UI map 2, Flash group 1 */
     {NULL, 0U, 0U}, /* UI map 3, Flash group 2 */
     {map04_speed_zones, 1U, 3U}, /* UI map 4, Flash group 3 */
-    {map05_speed_zones, 2U, 3U}, /* UI map 5, Flash group 4 */
-    {NULL, 0U, 3U}, /* UI map 6, Flash group 5 */
-    {NULL, 0U, 3U}, /* UI map 7, Flash group 6 */
+    {NULL, 0U, 0U}, /* UI map 5, Flash group 4 */
+    {NULL, 0U, 0U}, /* UI map 6, Flash group 5 */
+    {NULL, 0U, 0U}, /* UI map 7, Flash group 6 */
     {NULL, 0U, 0U}, /* UI map 8, Flash group 7 */
     {NULL, 0U, 0U}, /* UI map 9, Flash group 8 */
     {NULL, 0U, 0U}, /* UI map 10, Flash group 9 */
